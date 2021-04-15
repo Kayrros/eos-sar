@@ -1,0 +1,9 @@
+include docs/*
+include examples/*
+include scripts/*
+include tests/*
+
+include CHANGELOG.md
+include LICENCE
+include README.md
+include requirements.txt

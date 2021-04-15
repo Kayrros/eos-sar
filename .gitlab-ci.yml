@@ -1,0 +1,42 @@
+default:
+  image: python:3.8
+
+stages:
+  - test
+  - deploy
+
+variables:
+  PIP_EXTRA_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
+
+test:unit:
+  stage: test
+  before_script:
+    - pip install -e ".[test]"
+  script:
+    - pytest tests/unit
+  allow_failure: true
+
+test:integration:
+  stage: test
+  before_script:
+    - pip install -e ".[test]"
+  script:
+    - pytest tests/integration
+  allow_failure: true
+
+deploy:
+  stage: deploy
+  before_script:
+    - pip install twine
+  script:
+    - python setup.py sdist
+    - python setup.py bdist_wheel
+    - pip install dist/*.tar.gz
+    - pip install dist/*.whl
+    - twine upload
+      --repository-url ${PIP_EXTRA_INDEX_URL}
+      -u ${PYPI_USERNAME}
+      -p ${PYPI_PASSWORD}
+      dist/*
+  only:
+    - tags
