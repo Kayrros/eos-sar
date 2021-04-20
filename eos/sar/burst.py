@@ -112,7 +112,7 @@ def ta2y(ta, burst_meta):
 
 def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True, 
                bistatic_correction=True, epsg=4326, degree = 11, iterative = True, 
-               max_iterations = 20, tol = 1.2*1e-7): 
+               max_iterations = 20, tol = 1.2*1e-7, orbit = None): 
     """
 
     Parameters
@@ -134,6 +134,7 @@ def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True,
                 Defaults to 4326 (i.e. WGS 84 - 'lonlat').
     degree : int, optional
         degree of the polynomial fitting the orbit. The default is 11.
+        Ignored if the orbit is provided 
     iterative : boolean, optional
         Enables the iterative(Newton) projection algorithm. The default is True.
     max_iterations : int, optional
@@ -142,6 +143,10 @@ def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     tol : float, optional
         Ignored if iterative is False, tolerance on the azimuth time step size (in seconds)
         used to stop the iterations. The default is 1.2*1e-7.
+    orbit: eos.sar.backproj.Orbit
+        If provided, used to interpolate the position and velocity along the orbit 
+        otherwise, we need to fit it from burst_metadata['state_vectors'] each time
+        the function is called
 
     Returns
     -------
@@ -160,9 +165,9 @@ def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     transformer = pyproj.Transformer.from_crs('epsg:{}'.format(epsg), 'epsg:4978')
     x, y, z = transformer.transform(lat, lon, alt)
     # orbit
-    orbit = backproj.Orbit(burst_metadata['state_vectors'], degree = degree )
+    if orbit is None: 
+        orbit = backproj.Orbit(burst_metadata['state_vectors'], degree = degree )
     # project in the slc image
-
     if iterative:     
         tinit = (burst_metadata['burst_times'][1] + burst_metadata['burst_times'][2])/2 * np.ones_like(x)
         t, r, i = backproj.iterative_projection(orbit, x, y, z, tinit, 
