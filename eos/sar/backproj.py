@@ -1,6 +1,6 @@
 import numpy as np
-from . import cheb 
-from . import const 
+from eos.sar import cheb 
+from eos.sar import const 
 
 class Orbit:
     '''

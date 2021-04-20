@@ -1,8 +1,8 @@
 # Sentinel-1 specific burst functions 
 import numpy as np 
 import pyproj 
-from . import backproj 
-from . import const
+from eos.sar import backproj 
+from eos.sar import const
 
 def fill_meta(model , bid): 
     """
