@@ -1,5 +1,6 @@
 import numpy as np
 from . import cheb 
+from . import const 
 
 class Orbit:
     '''
@@ -274,9 +275,8 @@ def solveRD(orbit, rdist, aztime, h_point, initial_xyz
     Returns: 
         xyz: the localized 3D point in geocentric coordinates
     """
-    # hardcoded semi-minor and semi-major axis of earth 
-    AXE_A = 6378137.000
-    AXE_B = 6356752.314245
+    AXE_A = const.EARTH_WGS84_AXIS_A_M
+    AXE_B = const.EARTH_WGS84_AXIS_B_M
     # xyz is variable that will change throughout the iterations
     xyz = initial_xyz.copy()
     # find satellite position and speed along the orbit at given time        

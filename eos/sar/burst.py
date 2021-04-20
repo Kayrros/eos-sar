@@ -2,8 +2,7 @@
 import numpy as np 
 import pyproj 
 from . import backproj 
-
-LIGHT_SPEED = 299792458
+from . import const
 
 def fill_meta(model , bid): 
     """
@@ -48,7 +47,7 @@ def x2r(x, burst_meta):
     x0 = burst_meta['burst_roi'][0]
     Fr = burst_meta['range_frequency'] 
     tau0 = burst_meta['slant_range_time']
-    return ( (x + x0)/Fr  + tau0) * LIGHT_SPEED/2 
+    return ( (x + x0)/Fr  + tau0) * const.LIGHT_SPEED_M_PER_SEC/2 
 
 def r2x(r, burst_meta): 
     """
@@ -68,7 +67,7 @@ def r2x(r, burst_meta):
     x0 = burst_meta['burst_roi'][0]
     Fr = burst_meta['range_frequency'] 
     tau0 = burst_meta['slant_range_time']
-    return (2*r/LIGHT_SPEED - tau0)*Fr - x0 
+    return (2*r/const.LIGHT_SPEED_M_PER_SEC - tau0)*Fr - x0 
 
 def y2ta(y, burst_meta):
     """
@@ -181,7 +180,7 @@ def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True,
         r += (alt * alt  / 8.55e7 - alt / 3411.0 + 2.41) / np.cos(i)
 
     # slant range (x coordinate)
-    x = (2 * r / LIGHT_SPEED - burst_metadata['slant_range_time']) * burst_metadata['range_frequency']
+    x = (2 * r / const.LIGHT_SPEED_M_PER_SEC - burst_metadata['slant_range_time']) * burst_metadata['range_frequency']
 
     # bistatic residual error correction, as described by Schubert et al in
     # Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
