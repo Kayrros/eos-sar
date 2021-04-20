@@ -55,9 +55,7 @@ class Orbit:
             # estimate coeffs
             der_coeffs = cheb.get_diff_coeffs(self.coeffs, self.cheb_domain, der = der )
         return cheb.evaluate_cheb_interp(t, der_coeffs, self.cheb_domain)    
-         
-### Author: Thomas COQUET
-
+# projection functions 
 def distance_linear_interp(t0, t1, P0, P1, M):
     """Compute the time that minimizes the distance between M and the line
     defined by (P0, P1). The function is vectorized.
@@ -93,9 +91,6 @@ def distance_linear_interp(t0, t1, P0, P1, M):
 
     return t, P, d
 
-# minor change introduced 
-# orbit instance passed as argument
-# to avoid re-fitting the chebychev coeff each call 
 def closest_approach(orbit, xs, ys, zs, start, end):
     """Find when and at what distance the sensor flew over a list of points
 
@@ -171,7 +166,6 @@ def closest_approach(orbit, xs, ys, zs, start, end):
 
     return t.squeeze(), distances.squeeze(), incidence_angles.squeeze()
 
-# projection functions 
 def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol = 1.2*1e-7 ): 
     """Solves the point of closest approach using the Newton-Raphson algorithm
     Args: 

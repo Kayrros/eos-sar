@@ -29,7 +29,7 @@ def fill_meta(model , bid):
     burst_metadata['lines_per_burst'] = model.lines_per_burst
     burst_metadata['samples_per_burst'] = model.samples_per_burst
     # temporary burst bounds taken as the swath bound
-    # TODO should be replaced by actual burst bounds from gcps (in Jeremy's branch)
+    # TODO should be replaced by actual burst bounds from gcps (in EACOP_new_attrs)
     lons, lats = model.lon_lat_bbox.boundary.xy
     burst_metadata['lon_lat_bbox'] = [(lon, lat) for lon,lat in zip(lons[:4], lats[:4])]
     return burst_metadata

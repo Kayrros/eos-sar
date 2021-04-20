@@ -317,7 +317,6 @@ def evaluate_cheb_interp(t, coeffs, domain):
         tensor=True
     ).T
 
-## added by Rakiki
 def get_diff_coeffs(coeffs, domain, der):
     """Compute the derivative coeffs
     used for speed and acceleration computation
