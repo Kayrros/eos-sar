@@ -28,10 +28,8 @@ def fill_meta(model , bid):
     burst_metadata['burst_roi'] = model.burst_rois[bid]
     burst_metadata['lines_per_burst'] = model.lines_per_burst
     burst_metadata['samples_per_burst'] = model.samples_per_burst
-    # temporary burst bounds taken as the swath bound
-    # TODO should be replaced by actual burst bounds from gcps (in EACOP_new_attrs)
-    lons, lats = model.lon_lat_bbox.boundary.xy
-    burst_metadata['lon_lat_bbox'] = [(lon, lat) for lon,lat in zip(lons[:4], lats[:4])]
+    burst_metadata['azimuth_anx_time'] = model.burst_azimuth_anx_times[bid]
+    burst_metadata['lon_lat_bbox'] = model.burst_lon_lat_bboxes[bid]
     return burst_metadata
 
 def x2r(x, burst_meta): 
