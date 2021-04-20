@@ -28,6 +28,10 @@ def fill_meta(model , bid):
     burst_metadata['burst_roi'] = model.burst_rois[bid]
     burst_metadata['lines_per_burst'] = model.lines_per_burst
     burst_metadata['samples_per_burst'] = model.samples_per_burst
+    # temporary burst bounds taken as the swath bound
+    # TODO should be replaced by actual burst bounds from gcps (in Jeremy's branch)
+    lons, lats = model.lon_lat_bbox.boundary.xy
+    burst_metadata['lon_lat_bbox'] = [(lon, lat) for lon,lat in zip(lons[:4], lats[:4])]
     return burst_metadata
 
 def x2r(x, burst_meta): 
@@ -196,3 +200,91 @@ def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     x = x - burst_metadata['burst_roi'][0]
     y = ta2y(t, burst_metadata)
     return x, y, i 
+
+def burstlocalization(burst_metadata, x, y, alt, apd_correction = True, bistatic_correction = True,
+                      degree = 11, max_iterations = 10000, tol = 0.01, orbit = None):
+    """
+    
+
+    Parameters
+    ----------
+    burst_metadata : dict
+        Metadata of burst.
+    x : np.ndarray or scalar
+        x coordinate in burst referenced to the first valid column.
+    y : np.ndarray or scalar
+        y coordinate in burst referenced to the first valid line.
+    alt : np.ndarray or scalar
+        Altitude above the EARTH_WGS84 ellipsoid.
+    apd_correction : boolean, optional
+           Atmospheric Path Delay (APD) range correction . The default is True.
+    bistatic_correction : boolean, optional
+        Bistatic azimuth correction. The default is True.
+    degree : int, optional
+        degree of the polynomial fitting the orbit. The default is 11.
+        Ignored if the orbit is provided 
+    max_iterations : int, optional
+        Maximum iterations until solution is returned.
+        The default is 10000.
+    tol : float, optional
+        Tolerance on the 3D point location in the x, y, z direction (in meters)
+        used to stop the iterations. The default is 0.01 meters.
+    orbit: eos.sar.backproj.Orbit
+        If provided, used to interpolate the position and velocity along the orbit 
+        otherwise, we need to fit it from burst_metadata['state_vectors'] each time
+        the function is called
+
+    Returns
+    -------
+    lon : np.ndarray or scalar
+        longitude in the crs defined by epsg 4326. 
+    lat : np.ndarray or scalar
+        latitude in the crs defined by epsg 4326.
+
+    """
+    AXE_A = const.EARTH_WGS84_AXIS_A_M
+    AXE_B = const.EARTH_WGS84_AXIS_B_M
+    # make sure we work with numpy arrays
+    x = np.atleast_1d(x)
+    y = np.atleast_1d(y)
+    alt = np.atleast_1d(alt)
+    num_pts = len(x)
+    if orbit is None: 
+        orbit = backproj.Orbit(burst_metadata['state_vectors'], degree = degree)
+    # image coordinates to range and az time 
+    r = x2r(x, burst_metadata)
+    ta = y2ta(y, burst_metadata)
+    if bistatic_correction: 
+        # correct azimuth time
+        ta += ((x + burst_metadata['burst_roi'][0]) - \
+            0.5*burst_metadata['samples_per_burst'])/(2*burst_metadata['range_frequency'])
+    # now evaluate satellite position and velocity 
+    positions = orbit.evaluate(ta)
+    velocities = orbit.evaluate_der(ta, der = 1)
+    if apd_correction: 
+        # Rough estimation of geometry 
+        Lsat = np.linalg.norm(positions, axis = 1)
+        # Earth radius taken at the intersection of the line joining satellite 
+        # and earth center with the ellipsoid
+        ERadius = np.sqrt( (AXE_A * AXE_B)**2/(AXE_B**2 * \
+              (positions[:,0]**2 + positions[:, 1]**2) + (AXE_A * positions[:,2])**2 ) )\
+                * Lsat
+        # cosine rule 
+        incidence = np.arccos((Lsat**2 - (ERadius+alt)**2 - r**2) / (2 * (ERadius + alt ) * r))
+        # correct range 
+        r -= (alt**2/8.55e7 - alt/3411.0 + 2.41)/np.cos(incidence)
+    # initial geocentric point xyz definition
+    # from lon, lat, alt to x, y, z 
+    toXYZ = pyproj.Transformer.from_crs('epsg:4326', 'epsg:4978')
+    # point at swath centroid, 0 altitude as init 
+    lonc, latc = np.mean(burst_metadata['lon_lat_bbox'], axis = 0)
+    XYZ = np.array(toXYZ.transform(lonc, latc, 0))
+    # localize each point
+    points3D = np.zeros((num_pts, 3))
+    for j in range(num_pts): 
+        XYZ = backproj.solveRD(positions[j], velocities[j], r[j] , alt[j], XYZ, max_iterations, tol)
+        points3D[j] = XYZ
+    points3D = points3D.squeeze() 
+    tolonlat = pyproj.Transformer.from_crs('epsg:4978','epsg:4326',always_xy=True)
+    lon, lat , _ = tolonlat.transform(*points3D.T)
+    return lon, lat 

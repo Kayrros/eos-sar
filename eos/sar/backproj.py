@@ -246,7 +246,7 @@ def get_E_dE(t, orbit, M):
     return E, dE   
 
 # localization functions 
-def solveRD(orbit, rdist, aztime, h_point, initial_xyz
+def solveRD(satPos, satV, rdist, h_point, initial_xyz
             , max_iterations = 10000,
             tol = 0.01 ): 
     """
@@ -263,10 +263,9 @@ def solveRD(orbit, rdist, aztime, h_point, initial_xyz
     Linearization: find the xyz that solve -F(xyz0) = A*(xyz-xyz0)
     
     Args: 
-        orbit: fitted sar.orb.Orbit instance
+        satPos: the geocentric position of the satellite np.1darray [x, y, z]
+        satV: the speed of the satellite np.1darray [Vx, Vy, Vz]
         rdist: the range distance from the point to the satellite in meters
-        aztime: azimuth timestamp of the point (sec) in the same convention 
-        as the orbit state vector time
         h_point: the height at which we localize 
         initial_xyz: the initial xyz point from which to begin iterations 
         max_iterations: the maximum number of iterations of Newton-Raphson
@@ -279,21 +278,18 @@ def solveRD(orbit, rdist, aztime, h_point, initial_xyz
     AXE_B = const.EARTH_WGS84_AXIS_B_M
     # xyz is variable that will change throughout the iterations
     xyz = initial_xyz.copy()
-    # find satellite position and speed along the orbit at given time        
-    pos = orbit.evaluate(aztime)
-    vel = orbit.evaluate_der(aztime, der = 1)
     # iterate 
     for i in range(max_iterations):
         # compute -F(xyz)
-        distance_sat_xyz = np.array([xyz[0]-pos[0], xyz[1]-pos[1], xyz[2]-pos[2]])
+        distance_sat_xyz = np.array([xyz[0]-satPos[0], xyz[1]-satPos[1], xyz[2]-satPos[2]])
         b = np.zeros(3)
-        b[0] = - vel.dot(distance_sat_xyz)
+        b[0] = - satV.dot(distance_sat_xyz)
         b[1] = - (np.linalg.norm(distance_sat_xyz) ** 2 - rdist** 2)
         b[2] = - (((xyz[0] * xyz[0] + xyz[1] * xyz[1]) / ((h_point + AXE_A) ** 2)) + (
                     (xyz[2] * xyz[2]) / ((h_point + AXE_B) ** 2)) - 1)
         # compute A the jacobian matrix 
         delta = np.zeros((3, 3))
-        delta[0, :] = vel
+        delta[0, :] = satV
         delta[1, :] = 2 * distance_sat_xyz
         delta[2, :2] = 2 * xyz[:2] / ((AXE_A + h_point) ** 2)
         delta[2, 2] = 2 * xyz[2] / ((AXE_B + h_point) ** 2)
