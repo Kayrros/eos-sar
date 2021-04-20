@@ -1,5 +1,5 @@
 import numpy as np
-from sar import cheb 
+from . import cheb 
 
 class Orbit:
     '''

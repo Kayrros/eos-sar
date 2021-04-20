@@ -1,7 +1,7 @@
 # Sentinel-1 specific burst functions 
 import numpy as np 
 import pyproj 
-from sar import backproj 
+from . import backproj 
 
 LIGHT_SPEED = 299792458
 
