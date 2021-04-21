@@ -114,7 +114,7 @@ def ta2y(ta, burst_meta):
     return (ta - start_valid)*PRF
 
 
-def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True, 
+def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True, 
                bistatic_correction=True, epsg=4326, degree = 11, iterative = True, 
                max_iterations = 20, tol = 1.2*1e-7, orbit = None): 
     """
@@ -201,7 +201,7 @@ def burstprojection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     y = ta2y(t, burst_metadata)
     return x, y, i 
 
-def burstlocalization(burst_metadata, x, y, alt, apd_correction = True, bistatic_correction = True,
+def burst_localization(burst_metadata, x, y, alt, apd_correction = True, bistatic_correction = True,
                       degree = 11, max_iterations = 10000, tol = 0.01, orbit = None):
     """
     
@@ -282,7 +282,7 @@ def burstlocalization(burst_metadata, x, y, alt, apd_correction = True, bistatic
     # localize each point
     points3D = np.zeros((num_pts, 3))
     for j in range(num_pts): 
-        XYZ = backproj.solveRD(positions[j], velocities[j], r[j] , alt[j], XYZ, max_iterations, tol)
+        XYZ = backproj.solve_range_doppler(positions[j], velocities[j], r[j] , alt[j], XYZ, max_iterations, tol)
         points3D[j] = XYZ
     points3D = points3D.squeeze() 
     tolonlat = pyproj.Transformer.from_crs('epsg:4978','epsg:4326',always_xy=True)

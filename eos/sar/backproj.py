@@ -3,50 +3,60 @@ from eos.sar import cheb
 from eos.sar import const 
 
 class Orbit:
-    '''
+    """
     Orbit object encapsulating the position variation with time,
     as well the possibility to get the nth derivative ( for speed and acceleration for ex)
-    '''
+    """
     def __init__(self, state_vectors, degree = 11):
-        '''
+        """
         Constructor
-        Args: 
-            state_vectors: list of dict
-                List of state vectors (time, position, velocity)
-            degree: the degree of the polynomial
-        '''
+        Parameters
+        ----------
+        state_vectors: list of dict
+                        List of state vectors (time, position, velocity)
+        degree: int 
+            the degree of the polynomial
+        """
         self.sv = state_vectors
         self.degree = degree
         self.fit() 
    
   
     def fit(self):
-        '''
-        fit the orbit representation on the samples
-        '''
+        """
+        Fit the orbit representation on the samples
+        """
         self.coeffs, self.cheb_domain = cheb.build_cheb_interp(self.sv, self.degree)
         # Also store the speed/acc coefficients 
         self.speed_coeffs = cheb.get_diff_coeffs(self.coeffs, self.cheb_domain, der = 1 )
         self.acc_coeffs = cheb.get_diff_coeffs(self.speed_coeffs, self.cheb_domain, der = 1)
     
     def evaluate(self, t):
-        '''
-        Args: 
-            t: the time on which to evaluate, (n, ) numpy.1d array
-        Returns: 
-            (n, 3) numpy.ndarray : position
-        '''
+        """Evaluate the position of satellite along the orbit at time t
+        Parameters
+        ----------
+        t: numpy.1d array (n, )
+           The time on which to evaluate the position of satellite along orbit
+        Returns:
+        -------
+        (n, 3) numpy.ndarray 
+            position of satellite for each azimuth time provided
+        """
         return cheb.evaluate_cheb_interp(t, self.coeffs, self.cheb_domain)
         
     def evaluate_der(self, t, der = 1):
         
-        '''
-            Args: 
-                t: the time on which to evaluate, (n, ) numpy.1d array
-                der: the derivative order
-            Returns: 
-                (n, 3) numpy.ndarray : speed/acceleration/higher order derivative
-        '''
+        """Evaluate the derivative of the orbit 
+        Parameters: 
+        ----------
+        t: numpy.1d array (n, )
+           The time on which to evaluate the orbit derivative 
+        der: the derivative order
+        Returns
+        -------
+        (n, 3) numpy.ndarray 
+                 speed/acceleration/higher order derivative
+        """
         if der == 1:
             der_coeffs = self.speed_coeffs
         elif der == 2:
@@ -55,6 +65,7 @@ class Orbit:
             # estimate coeffs
             der_coeffs = cheb.get_diff_coeffs(self.coeffs, self.cheb_domain, der = der )
         return cheb.evaluate_cheb_interp(t, der_coeffs, self.cheb_domain)    
+
 # projection functions 
 def distance_linear_interp(t0, t1, P0, P1, M):
     """Compute the time that minimizes the distance between M and the line
@@ -168,17 +179,26 @@ def closest_approach(orbit, xs, ys, zs, start, end):
 
 def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol = 1.2*1e-7 ): 
     """Solves the point of closest approach using the Newton-Raphson algorithm
-    Args: 
-        orbit: fitted Orbit instance 
-        x, y, z: list of geocentric coordinates
-        tinit: Iterable of initial guess for the azimuth time, same len as x
-        max_iterations: maximum number of iterations for reaching the solution
-        tol: the tolerance in seconds of azimuth time precision on the orbit 
-                below which the iterations stop
-    Return:
-        t: time of closest approach (float or list)
-        r: distance to sensor (float or list)
-        i: incidence angle (float or list)
+    Parameters
+    ----------
+    orbit: fitted Orbit instance 
+    x, y, z: Iterable  
+        geocentric coordinates
+    tinit: Iterable
+           Initial guess for the azimuth time, same len as x
+    max_iterations: int
+            maximum number of iterations for reaching the solution
+    tol: float 
+            the tolerance in seconds of azimuth time precision on the orbit 
+            below which the iterations stop
+    Returns
+    ------
+        t: ndarray 
+            time of closest approach 
+        r: ndarray 
+            distance to sensor
+        i: ndarray 
+            incidence angle
     """
  
     points = np.column_stack((x, y, z))
@@ -190,7 +210,7 @@ def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol 
         # initial guess 
         tcurr = (start + end)/2 * np.ones((len(points),))
     else: 
-        tcurr = tinit
+        tcurr = np.array(tinit)
     # mask on points on which to iterate
     index = np.ones((len(tcurr), ), dtype=bool)
     # initialization of step
@@ -212,17 +232,34 @@ def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol 
     return tcurr.squeeze(), ps.squeeze(), incidence_angles.squeeze()
     
 def get_E_dE(t, orbit, M): 
-    '''
-    From Delft Object-oriented Radar Interferometric Software User’s manual 
-    and technical documentation.
-    Args: 
-        t: azimuth times along the orbit (N, ) np.ndarray
-        orbit: fitted sar.orb.Orbit instance 
-        M: points in geocentric coordinates (N, 3 ) np.ndarray
-    Returns: 
-        E = V(t).(M - Orbit(t)) the scalar product of the speed with the LOS vector
-        dE/dt  = acc(t).(M - Orbit(t))  - ||V(t)||^2 
-    '''
+    """
+    Parameters
+    ----------
+    t : ndarray (N, )
+        Azimuth times along the orbit (N, ) np.ndarray.
+    orbit : Orbit instance 
+    M : ndarray (N, 3 ) 
+        Points in geocentric coordinates.
+
+    Returns
+    -------
+    E : ndarray (N,)
+        The scalar product of the speed with the LOS vector
+    dE : ndarray (N, )
+        The derivative of E w.r.t. time
+    
+    Notes
+    -----
+    In this function is computed E = V(t).(M - Orbit(t)) the scalar product of the speed
+    with the LOS vector and dE/dt  = acc(t).(M - Orbit(t))  - ||V(t)||^2.
+    Formula is taken from [0]
+    
+    References
+    ----------
+    [0] Delft Object-oriented Radar Interferometric Software User manual.
+        Available at http://doris.tudelft.nl/usermanual/node195.html
+
+    """
     # speed 
     V = orbit.evaluate_der(t, der = 1).reshape(-1, 3)
     # LOS vector
@@ -240,33 +277,54 @@ def get_E_dE(t, orbit, M):
     return E, dE   
 
 # localization functions 
-def solveRD(satPos, satV, rdist, h_point, initial_xyz
+def solve_range_doppler(satPos, satV, rdist, h_point, initial_xyz
             , max_iterations = 10000,
             tol = 0.01 ): 
-    """
-    Solves the Range-Doppler equations for one point 
-    first order Taylor approximation of: 
-    f(xyz) denote the dot product between 
-    the vector that goes from the satellite to the current xyz and 
-    the satellite speed, should be 0 when xyz is correct.
-    g(xyz) denote the square norm of the vector that goes from the satellite
-    to the current xyz minus the distance calculated with the range time
-    h(xyz) = (x^2 +y^2)/(a+h)^2 + (z^2)/(b+h)^2 - 1 that denote the ellipsoid 
-    taking the earth with constant height h
-    F(xyz) = (f(xyz), g(xyz), h(xyz))^2, we need to find the root where F(xyz) = 0 
-    Linearization: find the xyz that solve -F(xyz0) = A*(xyz-xyz0)
+    """Solves the Range-Doppler equations for ONE point using the Newton-Raphson method
     
-    Args: 
-        satPos: the geocentric position of the satellite np.1darray [x, y, z]
-        satV: the speed of the satellite np.1darray [Vx, Vy, Vz]
-        rdist: the range distance from the point to the satellite in meters
-        h_point: the height at which we localize 
-        initial_xyz: the initial xyz point from which to begin iterations 
-        max_iterations: the maximum number of iterations of Newton-Raphson
-        tol: the tolerance on the step in x, y, z (in meters) on which 
-                to stop the iterations 
+    Parameters
+    ----------
+    satPos: 1darray (3,)
+           The geocentric position of the satellite [x, y, z]  
+    satV: 1darray (3,)
+        The speed of the satellite  [Vx, Vy, Vz]
+    rdist: float
+        The range distance from the point to the satellite in meters
+    h_point: float
+        The height at which we localize the point 
+    initial_xyz: 1darray (3, )
+        the initial xyz point from which to begin iterations 
+    max_iterations: int
+        The maximum number of iterations of Newton-Raphson
+    tol: float
+        the tolerance on the step in x, y, z (in meters)
+        iterations stop when all steps dx, dy and dz are below tol 
     Returns: 
         xyz: the localized 3D point in geocentric coordinates
+        
+    Notes
+    -----
+    F(xyz) = (f(xyz), g(xyz), h(xyz))
+    where 
+        f(xyz) = satV.(xyz - satPos) 
+            denotes the dot product between speed and the LOS
+            f(xyz) = 0 means that the point is in the plane ortogonal to speed
+        g(xyz) = (xyz - satPos)**2 - rdist**2 
+            denotes LOS distance squared minus range squared
+            g(xyz) = 0 means LOS distance equals the range
+    h(xyz) = (x^2 +y^2)/(a+h)^2 + (z^2)/(b+h)^2 - 1 
+            denotes the ellipsoid above the earth with height h  
+            h(xyz) = 0 means that the point is on the ellipsoid (at height h)
+    To find the 3D position of the point
+    We need to find the root where F(xyz) = 0 
+    Linearization with Taylor expansion:  
+         Find the xyz that solve -F(xyz0) = A*(xyz-xyz0)
+         where A is the derivative matrix
+    
+    References
+    ----------
+    [0] Delft Object-oriented Radar Interferometric Software User manual.
+        Available at http://doris.tudelft.nl/usermanual/node195.html
     """
     AXE_A = const.EARTH_WGS84_AXIS_A_M
     AXE_B = const.EARTH_WGS84_AXIS_B_M
@@ -276,10 +334,10 @@ def solveRD(satPos, satV, rdist, h_point, initial_xyz
     for i in range(max_iterations):
         # compute -F(xyz)
         distance_sat_xyz = np.array([xyz[0]-satPos[0], xyz[1]-satPos[1], xyz[2]-satPos[2]])
-        b = np.zeros(3)
-        b[0] = - satV.dot(distance_sat_xyz)
-        b[1] = - (np.linalg.norm(distance_sat_xyz) ** 2 - rdist** 2)
-        b[2] = - (((xyz[0] * xyz[0] + xyz[1] * xyz[1]) / ((h_point + AXE_A) ** 2)) + (
+        F = np.zeros(3)
+        F[0] = - satV.dot(distance_sat_xyz)
+        F[1] = - (np.linalg.norm(distance_sat_xyz) ** 2 - rdist** 2)
+        F[2] = - (((xyz[0] * xyz[0] + xyz[1] * xyz[1]) / ((h_point + AXE_A) ** 2)) + (
                     (xyz[2] * xyz[2]) / ((h_point + AXE_B) ** 2)) - 1)
         # compute A the jacobian matrix 
         delta = np.zeros((3, 3))
@@ -288,7 +346,7 @@ def solveRD(satPos, satV, rdist, h_point, initial_xyz
         delta[2, :2] = 2 * xyz[:2] / ((AXE_A + h_point) ** 2)
         delta[2, 2] = 2 * xyz[2] / ((AXE_B + h_point) ** 2)
         # find the step in xyz
-        step = np.linalg.solve(delta, b)
+        step = np.linalg.solve(delta, F)
         xyz += step
         if np.abs(step[0]) <= tol and np.abs(step[1]) <= tol and np.abs(step[2]) <= tol:
             break
