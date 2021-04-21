@@ -156,22 +156,20 @@ def get_E_dE(t, orbit, M):
     return E, dE   
 
 # localization functions 
-def solve_range_doppler(satPos, satV, rdist, h_point, initial_xyz
-            , max_iterations = 10000,
-            tol = 0.01 ): 
+def solve_range_doppler(orbit, t, r, alt, xyz_init
+            , max_iterations = 10000, tol = 0.01 ): 
     """Solves the Range-Doppler equations for ONE point using the Newton-Raphson method
     
     Parameters
     ----------
-    satPos: 1darray (3,)
-        Geocentric position of the satellite [x, y, z]  
-    satV: 1darray (3,)
-        Speed of the satellite  [Vx, Vy, Vz]
-    rdist: float
-        Range distance from the point to the satellite in meters
-    h_point: float
+    orbit: fitted Orbit instance
+    t: float 
+        Time of closest approach 
+    r: float 
+        Distance to sensor
+    alt: float
         Height at which we localize the point 
-    initial_xyz: 1darray (3, )
+    xyz_init: 1darray (3, )
         Initial xyz point from which to begin iterations 
     max_iterations: int
         Maximum number of iterations of Newton-Raphson
@@ -198,37 +196,39 @@ def solve_range_doppler(satPos, satV, rdist, h_point, initial_xyz
     To find the 3D position of the point
     We need to find the root where F(xyz) = 0 
     Linearization with Taylor expansion:  
-         Find the xyz that solve -F(xyz0) = A*(xyz-xyz0)
-         where A is the derivative matrix
+         Find the xyz that solve -F(xyz0) = delta*(xyz-xyz0)
+         where delta is the derivative matrix
     
     References
     ----------
     [0] Delft Object-oriented Radar Interferometric Software User manual.
         Available at http://doris.tudelft.nl/usermanual/node195.html
     """
-    AXE_A = const.EARTH_WGS84_AXIS_A_M
-    AXE_B = const.EARTH_WGS84_AXIS_B_M
+    # localization functions 
+    satPos = orbit.evaluate(t)
+    satV = orbit.evaluate(t, order = 1)
     # xyz is variable that will change throughout the iterations
-    xyz = initial_xyz.copy()
+    xyz = xyz_init.copy()
+    # init
+    F = np.zeros(3)
+    delta = np.zeros((3, 3))
+    ell_axis = ( const.EARTH_WGS84_AXIS_A_M + alt) * np.ones(3)
+    ell_axis[2] = const.EARTH_WGS84_AXIS_B_M + alt
     # iterate 
     for i in range(max_iterations):
-        # compute -F(xyz)
-        distance_sat_xyz = np.array([xyz[0]-satPos[0], xyz[1]-satPos[1], xyz[2]-satPos[2]])
-        F = np.zeros(3)
-        F[0] = - satV.dot(distance_sat_xyz)
-        F[1] = - (np.linalg.norm(distance_sat_xyz) ** 2 - rdist** 2)
-        F[2] = - (((xyz[0] * xyz[0] + xyz[1] * xyz[1]) / ((h_point + AXE_A) ** 2)) + (
-                    (xyz[2] * xyz[2]) / ((h_point + AXE_B) ** 2)) - 1)
-        # compute A the jacobian matrix 
-        delta = np.zeros((3, 3))
+        # vector between satellite and point 
+        LOS = xyz - satPos
+        # compute F(xyz)
+        F[0] =  satV.dot(LOS)
+        F[1] =  np.linalg.norm(LOS) ** 2 - r** 2
+        F[2] = np.sum((xyz / ell_axis)**2) - 1 
+        # compute the jacobian matrix 
         delta[0, :] = satV
-        delta[1, :] = 2 * distance_sat_xyz
-        delta[2, :2] = 2 * xyz[:2] / ((AXE_A + h_point) ** 2)
-        delta[2, 2] = 2 * xyz[2] / ((AXE_B + h_point) ** 2)
+        delta[1, :] = 2 * LOS
+        delta[2, :] = 2 * xyz / (ell_axis ** 2)
         # find the step in xyz
-        step = np.linalg.solve(delta, F)
+        step = np.linalg.solve(delta, -F)
         xyz += step
         if np.abs(step[0]) <= tol and np.abs(step[1]) <= tol and np.abs(step[2]) <= tol:
             break
     return xyz
-
