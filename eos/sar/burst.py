@@ -249,12 +249,9 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction = True, 
     # point at swath centroid, 0 altitude as init 
     lonc, latc = np.mean(burst_metadata['lon_lat_bbox'], axis = 0)
     XYZ = np.array(toXYZ.transform(lonc, latc, 0))
+    XYZ = np.repeat(XYZ.reshape(1, 3), repeats = num_pts, axis = 0)
     # localize each point
-    points3D = np.zeros((num_pts, 3))
-    for j in range(num_pts): 
-        XYZ = backproj.solve_range_doppler(orbit, ta[j], r[j] , alt[j], XYZ, max_iterations, tol)
-        points3D[j] = XYZ
-    points3D = points3D.squeeze() 
+    points3D = backproj.solve_range_doppler(orbit, ta, r , alt, XYZ, max_iterations, tol)
     tolonlat = pyproj.Transformer.from_crs('epsg:4978','epsg:4326',always_xy=True)
     lon, lat , _ = tolonlat.transform(*points3D.T)
     return lon, lat 

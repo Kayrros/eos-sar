@@ -204,31 +204,65 @@ def solve_range_doppler(orbit, t, r, alt, xyz_init
     [0] Delft Object-oriented Radar Interferometric Software User manual.
         Available at http://doris.tudelft.nl/usermanual/node195.html
     """
-    # localization functions 
-    satPos = orbit.evaluate(t)
-    satV = orbit.evaluate(t, order = 1)
+    # deal with scalar case
+    t = np.atleast_1d(t)
+    r = np.atleast_1d(r)
+    N = len(t)
+    satPos = orbit.evaluate(t).reshape(N,3) # (N, 3)
+    satV = orbit.evaluate(t, order = 1).reshape(N,3) # (N, 3)
     # xyz is variable that will change throughout the iterations
-    xyz = xyz_init.copy()
+    xyz = xyz_init.copy().reshape(N,3)
     # init
-    F = np.zeros(3)
-    delta = np.zeros((3, 3))
-    ell_axis = ( const.EARTH_WGS84_AXIS_A_M + alt) * np.ones(3)
-    ell_axis[2] = const.EARTH_WGS84_AXIS_B_M + alt
+    ell_axis = np.outer(const.EARTH_WGS84_AXIS_A_M + alt, np.ones(3)).reshape(N,3) 
+    ell_axis[:, 2] = const.EARTH_WGS84_AXIS_B_M + alt  # (N, 3)
+    # mask on points on which to iterate
+    index = np.ones((N,), dtype=bool)
+    step = np.ones((N, 3))
     # iterate 
     for i in range(max_iterations):
-        # vector between satellite and point 
-        LOS = xyz - satPos
-        # compute F(xyz)
-        F[0] =  satV.dot(LOS)
-        F[1] =  np.linalg.norm(LOS) ** 2 - r** 2
-        F[2] = np.sum((xyz / ell_axis)**2) - 1 
-        # compute the jacobian matrix 
-        delta[0, :] = satV
-        delta[1, :] = 2 * LOS
-        delta[2, :] = 2 * xyz / (ell_axis ** 2)
-        # find the step in xyz
-        step = np.linalg.solve(delta, -F)
-        xyz += step
-        if np.abs(step[0]) <= tol and np.abs(step[1]) <= tol and np.abs(step[2]) <= tol:
-            break
-    return xyz
+        step[index] = get_step(xyz[index], satPos[index], satV[index], r[index], ell_axis[index])
+        xyz[index] += step[index]
+        index = np.any(np.abs(step) > tol, axis = 1) 
+        if index.sum() == 0:
+                break
+    return xyz.squeeze() 
+
+def get_step(xyz, satPos, satV, r, ell_axis): 
+    """Computes the Newton-Raphson step of the Range-Doppler localization
+    algorithm on an array of points 
+
+    Parameters
+    ----------
+    xyz : ndarray (N, 3)
+        Geocentric coordinates of points. Current solution of the Range-Doppler equations 
+    satPos : ndarray (N, 3)
+        Satellite position for each point.
+    satV : ndarray (N, 3)
+        Satellite velocity for each point.
+    r : ndarray (N, )
+        the range of each point.
+    ell_axis : ndarray (N, 3)
+        Earth ellipsoid axis in the x, y, z direction, incremented by the altitude of each point
+        
+    Returns
+    -------
+    step : ndarray (N, 3)
+        Step to take in geocentric coordinates to move towards the optimal solution.
+
+    """
+    N = len(xyz)
+    F = np.zeros( (N, 3) )
+    delta = np.zeros((N, 3, 3))
+    # vector between satellite and point 
+    LOS = xyz - satPos # (N, 3)
+    # compute F(xyz)
+    F[:, 0] = np.sum(satV * LOS, axis = 1)
+    F[:, 1] = np.linalg.norm(LOS, axis = 1) ** 2 - r** 2
+    F[:, 2] = np.sum((xyz / ell_axis)**2, axis = 1) - 1 
+    # compute the jacobian matrix 
+    delta[:, 0, :] = satV
+    delta[:, 1, :] = 2 * LOS
+    delta[:, 2, :] = 2 * xyz / (ell_axis ** 2)
+    # find the step in xyz
+    step = np.linalg.solve(delta, -F)
+    return step 
