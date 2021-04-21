@@ -115,7 +115,7 @@ def ta2y(ta, burst_meta):
 
 
 def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=True, 
-               bistatic_correction=True, epsg=4326, iterative = True, 
+               bistatic_correction=True, crs='epsg:4326', iterative = True, 
                max_iterations = 20, tol = 1.2*1e-7, ): 
     """
 
@@ -135,9 +135,9 @@ def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=Tru
            Atmospheric Path Delay (APD) range correction . The default is True.
     bistatic_correction : boolean, optional
         Bistatic azimuth correction. The default is True.
-    epsg : int, optional
-        EPSG code of the coordinate system used for `lon` and `lat`
-                Defaults to 4326 (i.e. WGS 84 - 'lonlat').
+    crs : string, optional
+        the crs in which the 3D point is given
+                Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
     iterative : boolean, optional
         Enables the iterative(Newton) projection algorithm. The default is True.
     max_iterations : int, optional
@@ -162,7 +162,7 @@ def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=Tru
     lat = np.atleast_1d(lat)
     alt = np.atleast_1d(alt)
     # # convert to geocentric cartesian
-    transformer = pyproj.Transformer.from_crs('epsg:{}'.format(epsg), 'epsg:4978')
+    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4978')
     x, y, z = transformer.transform(lat, lon, alt)
     # project in the slc image
     if iterative:     
