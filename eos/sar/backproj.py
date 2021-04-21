@@ -15,7 +15,7 @@ class Orbit:
         state_vectors: list of dict
                         List of state vectors (time, position, velocity)
         degree: int 
-            the degree of the polynomial
+                Degree of the polynomial
         """
         self.sv = state_vectors
         self.degree = degree
@@ -40,14 +40,14 @@ class Orbit:
         Parameters
         ----------
         t: 1darray (n, )
-           The time on which to evaluate
+           Time on which to evaluate
         order: int
-            The order of the derivative, default is 0 
+            Order of the derivative, default is 0 
             for order = 0, the position of the satellite is returned        
         Returns:
         -------
         (n, 3) numpy.ndarray 
-            position of satellite for each azimuth time provided
+            Position of satellite for each azimuth time provided
         """
         assert order >=0, "order must be greater or equal to zero"
         if order < 3: 
@@ -62,13 +62,13 @@ def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol 
     ----------
     orbit: fitted Orbit instance 
     x, y, z: Iterable  
-        geocentric coordinates
+        Geocentric coordinates
     tinit: Iterable
            Initial guess for the azimuth time, same len as x
     max_iterations: int
-            maximum number of iterations for reaching the solution
+            Maximum number of iterations for reaching the solution
     tol: float 
-            the tolerance in seconds of azimuth time precision on the orbit 
+            Tolerance in seconds of azimuth time precision on the orbit 
             below which the iterations stop
     Returns
     ------
@@ -123,9 +123,9 @@ def get_E_dE(t, orbit, M):
     Returns
     -------
     E : ndarray (N,)
-        The scalar product of the speed with the LOS vector
+        Scalar product of the speed with the LOS vector
     dE : ndarray (N, )
-        The derivative of E w.r.t. time
+        Derivative of E, w.r.t. time
     
     Notes
     -----
@@ -164,22 +164,23 @@ def solve_range_doppler(satPos, satV, rdist, h_point, initial_xyz
     Parameters
     ----------
     satPos: 1darray (3,)
-           The geocentric position of the satellite [x, y, z]  
+        Geocentric position of the satellite [x, y, z]  
     satV: 1darray (3,)
-        The speed of the satellite  [Vx, Vy, Vz]
+        Speed of the satellite  [Vx, Vy, Vz]
     rdist: float
-        The range distance from the point to the satellite in meters
+        Range distance from the point to the satellite in meters
     h_point: float
-        The height at which we localize the point 
+        Height at which we localize the point 
     initial_xyz: 1darray (3, )
-        the initial xyz point from which to begin iterations 
+        Initial xyz point from which to begin iterations 
     max_iterations: int
-        The maximum number of iterations of Newton-Raphson
+        Maximum number of iterations of Newton-Raphson
     tol: float
-        the tolerance on the step in x, y, z (in meters)
+        Tolerance on the step in x, y, z (in meters)
         iterations stop when all steps dx, dy and dz are below tol 
     Returns: 
-        xyz: the localized 3D point in geocentric coordinates
+        xyz: ndarray
+           Localized 3D point in geocentric coordinates
         
     Notes
     -----
@@ -191,7 +192,7 @@ def solve_range_doppler(satPos, satV, rdist, h_point, initial_xyz
         g(xyz) = (xyz - satPos)**2 - rdist**2 
             denotes LOS distance squared minus range squared
             g(xyz) = 0 means LOS distance equals the range
-    h(xyz) = (x^2 +y^2)/(a+h)^2 + (z^2)/(b+h)^2 - 1 
+        h(xyz) = (x^2 +y^2)/(a+h)^2 + (z^2)/(b+h)^2 - 1 
             denotes the ellipsoid above the earth with height h  
             h(xyz) = 0 means that the point is on the ellipsoid (at height h)
     To find the 3D position of the point

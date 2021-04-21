@@ -124,11 +124,11 @@ def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=Tru
     burst_metadata : dict
         Metadata of burst.
     lon : np.ndarray or scalar
-        longitude in the crs defined by epsg. 
+        Longitude in the crs defined by epsg. 
     lat : np.ndarray or scalar
-        latitude in the crs defined by epsg.
+        Latitude in the crs defined by epsg.
     alt : np.ndarray or scalar
-        altitude in the crs defined by epsg.
+        Altitude in the crs defined by epsg.
     orbit: eos.sar.backproj.Orbit
         Used to interpolate the position and velocity along the orbit 
     apd_correction : boolean, optional
@@ -136,7 +136,7 @@ def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=Tru
     bistatic_correction : boolean, optional
         Bistatic azimuth correction. The default is True.
     crs : string, optional
-        the crs in which the 3D point is given
+        CRS in which the 3D point is given
                 Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
     max_iterations : int, optional
         Maximum iterations until solution is returned.
@@ -214,9 +214,9 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction = True, 
     Returns
     -------
     lon : np.ndarray or scalar
-        longitude in the crs defined by epsg 4326. 
+        Longitude in the crs defined by epsg 4326. 
     lat : np.ndarray or scalar
-        latitude in the crs defined by epsg 4326.
+        Latitude in the crs defined by epsg 4326.
 
     """
     AXE_A = const.EARTH_WGS84_AXIS_A_M
