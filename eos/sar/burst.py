@@ -115,7 +115,7 @@ def ta2y(ta, burst_meta):
 
 
 def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=True, 
-               bistatic_correction=True, crs='epsg:4326', iterative = True, 
+               bistatic_correction=True, crs='epsg:4326',
                max_iterations = 20, tol = 1.2*1e-7, ): 
     """
 
@@ -138,13 +138,11 @@ def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=Tru
     crs : string, optional
         the crs in which the 3D point is given
                 Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-    iterative : boolean, optional
-        Enables the iterative(Newton) projection algorithm. The default is True.
     max_iterations : int, optional
-        Ignored if iterative is False, maximum iterations until solution is returned.
+        Maximum iterations until solution is returned.
         The default is 20.
     tol : float, optional
-        Ignored if iterative is False, tolerance on the azimuth time step size (in seconds)
+        Tolerance on the azimuth time step size (in seconds)
         used to stop the iterations. The default is 1.2*1e-7.
     
 
@@ -165,18 +163,9 @@ def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=Tru
     transformer = pyproj.Transformer.from_crs(crs, 'epsg:4978')
     x, y, z = transformer.transform(lat, lon, alt)
     # project in the slc image
-    if iterative:     
-        tinit = (burst_metadata['burst_times'][1] + burst_metadata['burst_times'][2])/2 * np.ones_like(x)
-        t, r, i = backproj.iterative_projection(orbit, x, y, z, tinit, 
-                                                max_iterations, tol)
-    else: 
-        # start with invalid lines
-        start =  burst_metadata['burst_times'][0]
-        # end with invalid lines 
-        end = burst_metadata['lines_per_burst']/burst_metadata['azimuth_frequency'] + start
-        # take small margin 
-        margin = 0.05 * (end - start)
-        t, r, i  = backproj.closest_approach(orbit, x, y, z, start - margin,  end + margin)
+    tinit = (burst_metadata['burst_times'][1] + burst_metadata['burst_times'][2])/2 * np.ones_like(x)
+    t, r, i = backproj.iterative_projection(orbit, x, y, z, tinit, 
+                                            max_iterations, tol)
     if apd_correction:
         alt = alt.squeeze()
         r += (alt * alt  / 8.55e7 - alt / 3411.0 + 2.41) / np.cos(i)
