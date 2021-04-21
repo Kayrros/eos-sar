@@ -114,9 +114,9 @@ def ta2y(ta, burst_meta):
     return (ta - start_valid)*PRF
 
 
-def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True, 
-               bistatic_correction=True, epsg=4326, degree = 11, iterative = True, 
-               max_iterations = 20, tol = 1.2*1e-7, orbit = None): 
+def burst_projection(burst_metadata, lon, lat, alt , orbit ,  apd_correction=True, 
+               bistatic_correction=True, epsg=4326, iterative = True, 
+               max_iterations = 20, tol = 1.2*1e-7, ): 
     """
 
     Parameters
@@ -129,6 +129,8 @@ def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True,
         latitude in the crs defined by epsg.
     alt : np.ndarray or scalar
         altitude in the crs defined by epsg.
+    orbit: eos.sar.backproj.Orbit
+        Used to interpolate the position and velocity along the orbit 
     apd_correction : boolean, optional
            Atmospheric Path Delay (APD) range correction . The default is True.
     bistatic_correction : boolean, optional
@@ -136,9 +138,6 @@ def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     epsg : int, optional
         EPSG code of the coordinate system used for `lon` and `lat`
                 Defaults to 4326 (i.e. WGS 84 - 'lonlat').
-    degree : int, optional
-        degree of the polynomial fitting the orbit. The default is 11.
-        Ignored if the orbit is provided 
     iterative : boolean, optional
         Enables the iterative(Newton) projection algorithm. The default is True.
     max_iterations : int, optional
@@ -147,10 +146,7 @@ def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     tol : float, optional
         Ignored if iterative is False, tolerance on the azimuth time step size (in seconds)
         used to stop the iterations. The default is 1.2*1e-7.
-    orbit: eos.sar.backproj.Orbit
-        If provided, used to interpolate the position and velocity along the orbit 
-        otherwise, we need to fit it from burst_metadata['state_vectors'] each time
-        the function is called
+    
 
     Returns
     -------
@@ -168,9 +164,6 @@ def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     # # convert to geocentric cartesian
     transformer = pyproj.Transformer.from_crs('epsg:{}'.format(epsg), 'epsg:4978')
     x, y, z = transformer.transform(lat, lon, alt)
-    # orbit
-    if orbit is None: 
-        orbit = backproj.Orbit(burst_metadata['state_vectors'], degree = degree )
     # project in the slc image
     if iterative:     
         tinit = (burst_metadata['burst_times'][1] + burst_metadata['burst_times'][2])/2 * np.ones_like(x)
@@ -201,8 +194,8 @@ def burst_projection(burst_metadata, lon, lat, alt ,  apd_correction=True,
     y = ta2y(t, burst_metadata)
     return x, y, i 
 
-def burst_localization(burst_metadata, x, y, alt, apd_correction = True, bistatic_correction = True,
-                      degree = 11, max_iterations = 10000, tol = 0.01, orbit = None):
+def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction = True, bistatic_correction = True,
+                       max_iterations = 10000, tol = 0.01):
     """
     
 
@@ -216,23 +209,18 @@ def burst_localization(burst_metadata, x, y, alt, apd_correction = True, bistati
         y coordinate in burst referenced to the first valid line.
     alt : np.ndarray or scalar
         Altitude above the EARTH_WGS84 ellipsoid.
+    orbit: eos.sar.backproj.Orbit
+        Used to interpolate the position and velocity along the orbit
     apd_correction : boolean, optional
            Atmospheric Path Delay (APD) range correction . The default is True.
     bistatic_correction : boolean, optional
         Bistatic azimuth correction. The default is True.
-    degree : int, optional
-        degree of the polynomial fitting the orbit. The default is 11.
-        Ignored if the orbit is provided 
     max_iterations : int, optional
         Maximum iterations until solution is returned.
         The default is 10000.
     tol : float, optional
         Tolerance on the 3D point location in the x, y, z direction (in meters)
         used to stop the iterations. The default is 0.01 meters.
-    orbit: eos.sar.backproj.Orbit
-        If provided, used to interpolate the position and velocity along the orbit 
-        otherwise, we need to fit it from burst_metadata['state_vectors'] each time
-        the function is called
 
     Returns
     -------
@@ -249,8 +237,6 @@ def burst_localization(burst_metadata, x, y, alt, apd_correction = True, bistati
     y = np.atleast_1d(y)
     alt = np.atleast_1d(alt)
     num_pts = len(x)
-    if orbit is None: 
-        orbit = backproj.Orbit(burst_metadata['state_vectors'], degree = degree)
     # image coordinates to range and az time 
     r = x2r(x, burst_metadata)
     ta = y2ta(y, burst_metadata)
