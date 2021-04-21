@@ -246,7 +246,7 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction = True, 
             0.5*burst_metadata['samples_per_burst'])/(2*burst_metadata['range_frequency'])
     # now evaluate satellite position and velocity 
     positions = orbit.evaluate(ta)
-    velocities = orbit.evaluate_der(ta, der = 1)
+    velocities = orbit.evaluate(ta, order = 1)
     if apd_correction: 
         # Rough estimation of geometry 
         Lsat = np.linalg.norm(positions, axis = 1)

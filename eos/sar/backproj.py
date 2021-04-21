@@ -26,45 +26,35 @@ class Orbit:
         """
         Fit the orbit representation on the samples
         """
-        self.coeffs, self.cheb_domain = cheb.build_cheb_interp(self.sv, self.degree)
+        self.coeffs = []
+        coeffs, self.cheb_domain = cheb.build_cheb_interp(self.sv, self.degree)
+        self.coeffs.append(coeffs)
         # Also store the speed/acc coefficients 
-        self.speed_coeffs = cheb.get_diff_coeffs(self.coeffs, self.cheb_domain, der = 1 )
-        self.acc_coeffs = cheb.get_diff_coeffs(self.speed_coeffs, self.cheb_domain, der = 1)
-    
-    def evaluate(self, t):
-        """Evaluate the position of satellite along the orbit at time t
+        for i in range(2): 
+            self.coeffs.append(cheb.get_diff_coeffs(self.coeffs[-1], self.cheb_domain, der = 1 )) 
+        
+        
+    def evaluate(self, t, order = 0):
+        """Evaluate the nth order derivative of the position of satellite
+            along the orbit at time t
         Parameters
         ----------
-        t: numpy.1d array (n, )
-           The time on which to evaluate the position of satellite along orbit
+        t: 1darray (n, )
+           The time on which to evaluate
+        order: int
+            The order of the derivative, default is 0 
+            for order = 0, the position of the satellite is returned        
         Returns:
         -------
         (n, 3) numpy.ndarray 
             position of satellite for each azimuth time provided
         """
-        return cheb.evaluate_cheb_interp(t, self.coeffs, self.cheb_domain)
-        
-    def evaluate_der(self, t, der = 1):
-        
-        """Evaluate the derivative of the orbit 
-        Parameters: 
-        ----------
-        t: numpy.1d array (n, )
-           The time on which to evaluate the orbit derivative 
-        der: the derivative order
-        Returns
-        -------
-        (n, 3) numpy.ndarray 
-                 speed/acceleration/higher order derivative
-        """
-        if der == 1:
-            der_coeffs = self.speed_coeffs
-        elif der == 2:
-            der_coeffs = self.acc_coeffs
+        assert order >=0, "order must be greater or equal to zero"
+        if order < 3: 
+            coeff =  self.coeffs[order]
         else: 
-            # estimate coeffs
-            der_coeffs = cheb.get_diff_coeffs(self.coeffs, self.cheb_domain, der = der )
-        return cheb.evaluate_cheb_interp(t, der_coeffs, self.cheb_domain)    
+            coeff = cheb.get_diff_coeffs(self.coeffs[0], self.cheb_domain, der = order )
+        return cheb.evaluate_cheb_interp(t,coeff, self.cheb_domain)  
 
 # projection functions 
 def distance_linear_interp(t0, t1, P0, P1, M):
@@ -261,13 +251,13 @@ def get_E_dE(t, orbit, M):
 
     """
     # speed 
-    V = orbit.evaluate_der(t, der = 1).reshape(-1, 3)
+    V = orbit.evaluate(t, order = 1).reshape(-1, 3)
     # LOS vector
     D = (M - orbit.evaluate(t)).reshape(-1, 3)
     # scalar product 
     E = np.sum(V * D, axis = 1).squeeze()
     # acceleration 
-    Acc = orbit.evaluate_der(t, der = 2).reshape(-1, 3)
+    Acc = orbit.evaluate(t, order = 2).reshape(-1, 3)
     # scalar product 
     term1 = np.sum(D * Acc, axis = 1 ).squeeze()
     # squared speed norm
