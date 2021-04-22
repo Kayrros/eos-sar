@@ -1,13 +1,15 @@
 import numpy as np
-from eos.sar import cheb 
-from eos.sar import const 
+from eos.sar import cheb
+from eos.sar import const
+
 
 class Orbit:
     """
     Orbit object encapsulating the position variation with time,
-    as well the possibility to get the nth derivative ( for speed and acceleration for ex)
+    as well as the possibility to get the nth derivative (for speed and acceleration for ex)
     """
-    def __init__(self, state_vectors, degree = 11):
+
+    def __init__(self, state_vectors, degree=11):
         """
         Constructor
         Parameters
@@ -19,9 +21,8 @@ class Orbit:
         """
         self.sv = state_vectors
         self.degree = degree
-        self.fit() 
-   
-  
+        self.fit()
+
     def fit(self):
         """
         Fit the orbit representation on the samples
@@ -29,12 +30,12 @@ class Orbit:
         self.coeffs = []
         coeffs, self.cheb_domain = cheb.build_cheb_interp(self.sv, self.degree)
         self.coeffs.append(coeffs)
-        # Also store the speed/acc coefficients 
-        for i in range(2): 
-            self.coeffs.append(cheb.get_diff_coeffs(self.coeffs[-1], self.cheb_domain, der = 1 )) 
-        
-        
-    def evaluate(self, t, order = 0):
+        # Also store the speed/acc coefficients
+        for i in range(2):
+            self.coeffs.append(cheb.get_diff_coeffs(
+                self.coeffs[-1], self.cheb_domain, der=1))
+
+    def evaluate(self, t, order=0):
         """Evaluate the nth order derivative of the position of satellite
             along the orbit at time t
         Parameters
@@ -49,14 +50,16 @@ class Orbit:
         (n, 3) numpy.ndarray 
             Position of satellite for each azimuth time provided
         """
-        assert order >=0, "order must be greater or equal to zero"
-        if order < 3: 
-            coeff =  self.coeffs[order]
-        else: 
-            coeff = cheb.get_diff_coeffs(self.coeffs[0], self.cheb_domain, der = order )
-        return cheb.evaluate_cheb_interp(t,coeff, self.cheb_domain)  
+        assert order >= 0, "order must be greater or equal to zero"
+        if order < 3:
+            coeff = self.coeffs[order]
+        else:
+            coeff = cheb.get_diff_coeffs(
+                self.coeffs[0], self.cheb_domain, der=order)
+        return cheb.evaluate_cheb_interp(t, coeff, self.cheb_domain)
 
-def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol = 1.2*1e-7 ): 
+
+def iterative_projection(orbit, x, y, z, tinit=None, max_iterations=20, tol=1.2*1e-7):
     """Solves the point of closest approach using the Newton-Raphson algorithm
     Parameters
     ----------
@@ -79,38 +82,39 @@ def iterative_projection(orbit, x, y, z, tinit = None, max_iterations = 20, tol 
         i: ndarray 
             incidence angle
     """
- 
+
     points = np.column_stack((x, y, z))
-    if tinit is None: 
+    if tinit is None:
         # determine which state vectors to use
         sv_times = np.asarray([s['time'] for s in orbit.sv])
         start = sv_times.min()
         end = sv_times.max()
-        # initial guess 
+        # initial guess
         tcurr = (start + end)/2 * np.ones((len(points),))
-    else: 
+    else:
         tcurr = np.array(tinit)
     # mask on points on which to iterate
     index = np.ones((len(tcurr), ), dtype=bool)
     # initialization of step
     dt = np.ones_like(tcurr)
-    # Newton-Raphson iterations 
+    # Newton-Raphson iterations
     for j in range(max_iterations):
         E, dE = get_E_dE(tcurr[index], orbit, points[index])
-        dt[index] = -E/ dE
+        dt[index] = -E / dE
         tcurr[index] += dt[index]
         index = np.abs(dt) >= tol
         if index.sum() == 0:
-            break 
+            break
     closest_positions = orbit.evaluate(tcurr).reshape(-1, 3)
-     # apply the cosine rule to get the incidence angle
+    # apply the cosine rule to get the incidence angle
     op = np.linalg.norm(points, axis=1)
     os = np.linalg.norm(closest_positions, axis=1)
     ps = np.linalg.norm(closest_positions - points, axis=1)
     incidence_angles = np.arccos((os**2 - op**2 - ps**2) / (2 * op * ps))
     return tcurr.squeeze(), ps.squeeze(), incidence_angles.squeeze()
-    
-def get_E_dE(t, orbit, M): 
+
+
+def get_E_dE(t, orbit, M):
     """
     Parameters
     ----------
@@ -126,40 +130,41 @@ def get_E_dE(t, orbit, M):
         Scalar product of the speed with the LOS vector
     dE : ndarray (N, )
         Derivative of E, w.r.t. time
-    
+
     Notes
     -----
     In this function is computed E = V(t).(M - Orbit(t)) the scalar product of the speed
     with the LOS vector and dE/dt  = acc(t).(M - Orbit(t))  - ||V(t)||^2.
     Formula is taken from [0]
-    
+
     References
     ----------
     [0] Delft Object-oriented Radar Interferometric Software User manual.
         Available at http://doris.tudelft.nl/usermanual/node195.html
 
     """
-    # speed 
-    V = orbit.evaluate(t, order = 1).reshape(-1, 3)
+    # speed
+    V = orbit.evaluate(t, order=1).reshape(-1, 3)
     # LOS vector
     D = (M - orbit.evaluate(t)).reshape(-1, 3)
-    # scalar product 
-    E = np.sum(V * D, axis = 1).squeeze()
-    # acceleration 
-    Acc = orbit.evaluate(t, order = 2).reshape(-1, 3)
-    # scalar product 
-    term1 = np.sum(D * Acc, axis = 1 ).squeeze()
+    # scalar product
+    E = np.sum(V * D, axis=1).squeeze()
+    # acceleration
+    Acc = orbit.evaluate(t, order=2).reshape(-1, 3)
+    # scalar product
+    term1 = np.sum(D * Acc, axis=1).squeeze()
     # squared speed norm
-    term2 = (np.linalg.norm(V, axis = 1 ).squeeze() ) **2
-    # combine 
-    dE = term1 - term2 
-    return E, dE   
+    term2 = (np.linalg.norm(V, axis=1).squeeze()) ** 2
+    # combine
+    dE = term1 - term2
+    return E, dE
 
-# localization functions 
-def solve_range_doppler(orbit, t, r, alt, xyz_init
-            , max_iterations = 10000, tol = 0.01 ): 
+# localization functions
+
+
+def solve_range_doppler(orbit, t, r, alt, xyz_init, max_iterations=10000, tol=0.01):
     """Solves the Range-Doppler equations for ONE point using the Newton-Raphson method
-    
+
     Parameters
     ----------
     orbit: fitted Orbit instance
@@ -179,7 +184,7 @@ def solve_range_doppler(orbit, t, r, alt, xyz_init
     Returns: 
         xyz: ndarray
            Localized 3D point in geocentric coordinates
-        
+
     Notes
     -----
     F(xyz) = (f(xyz), g(xyz), h(xyz))
@@ -198,7 +203,7 @@ def solve_range_doppler(orbit, t, r, alt, xyz_init
     Linearization with Taylor expansion:  
          Find the xyz that solve -F(xyz0) = delta*(xyz-xyz0)
          where delta is the derivative matrix
-    
+
     References
     ----------
     [0] Delft Object-oriented Radar Interferometric Software User manual.
@@ -208,26 +213,29 @@ def solve_range_doppler(orbit, t, r, alt, xyz_init
     t = np.atleast_1d(t)
     r = np.atleast_1d(r)
     N = len(t)
-    satPos = orbit.evaluate(t).reshape(N,3) # (N, 3)
-    satV = orbit.evaluate(t, order = 1).reshape(N,3) # (N, 3)
+    satPos = orbit.evaluate(t).reshape(N, 3)  # (N, 3)
+    satV = orbit.evaluate(t, order=1).reshape(N, 3)  # (N, 3)
     # xyz is variable that will change throughout the iterations
-    xyz = xyz_init.copy().reshape(N,3)
+    xyz = xyz_init.copy().reshape(N, 3)
     # init
-    ell_axis = np.outer(const.EARTH_WGS84_AXIS_A_M + alt, np.ones(3)).reshape(N,3) 
+    ell_axis = np.outer(const.EARTH_WGS84_AXIS_A_M +
+                        alt, np.ones(3)).reshape(N, 3)
     ell_axis[:, 2] = const.EARTH_WGS84_AXIS_B_M + alt  # (N, 3)
     # mask on points on which to iterate
     index = np.ones((N,), dtype=bool)
     step = np.ones((N, 3))
-    # iterate 
+    # iterate
     for i in range(max_iterations):
-        step[index] = get_step(xyz[index], satPos[index], satV[index], r[index], ell_axis[index])
+        step[index] = get_step(xyz[index], satPos[index],
+                               satV[index], r[index], ell_axis[index])
         xyz[index] += step[index]
-        index = np.any(np.abs(step) > tol, axis = 1) 
+        index = np.any(np.abs(step) > tol, axis=1)
         if index.sum() == 0:
-                break
-    return xyz.squeeze() 
+            break
+    return xyz.squeeze()
 
-def get_step(xyz, satPos, satV, r, ell_axis): 
+
+def get_step(xyz, satPos, satV, r, ell_axis):
     """Computes the Newton-Raphson step of the Range-Doppler localization
     algorithm on an array of points 
 
@@ -243,7 +251,7 @@ def get_step(xyz, satPos, satV, r, ell_axis):
         the range of each point.
     ell_axis : ndarray (N, 3)
         Earth ellipsoid axis in the x, y, z direction, incremented by the altitude of each point
-        
+
     Returns
     -------
     step : ndarray (N, 3)
@@ -251,18 +259,18 @@ def get_step(xyz, satPos, satV, r, ell_axis):
 
     """
     N = len(xyz)
-    F = np.zeros( (N, 3) )
+    F = np.zeros((N, 3))
     delta = np.zeros((N, 3, 3))
-    # vector between satellite and point 
-    LOS = xyz - satPos # (N, 3)
+    # vector between satellite and point
+    LOS = xyz - satPos  # (N, 3)
     # compute F(xyz)
-    F[:, 0] = np.sum(satV * LOS, axis = 1)
-    F[:, 1] = np.linalg.norm(LOS, axis = 1) ** 2 - r** 2
-    F[:, 2] = np.sum((xyz / ell_axis)**2, axis = 1) - 1 
-    # compute the jacobian matrix 
+    F[:, 0] = np.sum(satV * LOS, axis=1)
+    F[:, 1] = np.linalg.norm(LOS, axis=1) ** 2 - r ** 2
+    F[:, 2] = np.sum((xyz / ell_axis)**2, axis=1) - 1
+    # compute the jacobian matrix
     delta[:, 0, :] = satV
     delta[:, 1, :] = 2 * LOS
     delta[:, 2, :] = 2 * xyz / (ell_axis ** 2)
     # find the step in xyz
     step = np.linalg.solve(delta, -F)
-    return step 
+    return step
