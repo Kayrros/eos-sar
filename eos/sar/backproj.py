@@ -86,9 +86,9 @@ def iterative_projection(orbit, x, y, z, tinit=None, max_iterations=20, tol=1.2*
     points = np.column_stack((x, y, z))
     if tinit is None:
         # determine which state vectors to use
-        sv_times = np.asarray([s['time'] for s in orbit.sv])
-        start = sv_times.min()
-        end = sv_times.max()
+        sv_times = [s['time'] for s in orbit.sv]
+        start = min(sv_times)
+        end = max(sv_times)
         # initial guess
         tcurr = (start + end)/2 * np.ones((len(points),))
     else:
