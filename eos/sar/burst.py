@@ -34,12 +34,12 @@ def fill_meta(model, bid):
     return burst_metadata
 
 
-def x2r(x, burst_meta):
+def col2r(col, burst_meta):
     """
     Parameters
     ----------
-    x : np.ndarray or scalar
-        x coordinate in burst referenced to the first valid column 
+    col : np.ndarray or scalar
+        col coordinate in burst referenced to the first valid column 
     burst_meta : dict 
         Metadata of burst
 
@@ -48,13 +48,13 @@ def x2r(x, burst_meta):
     np.ndarray or scalar
         One way range expressed in meters
     """
-    x0 = burst_meta['burst_roi'][0]
+    col0 = burst_meta['burst_roi'][0]
     Fr = burst_meta['range_frequency']
     tau0 = burst_meta['slant_range_time']
-    return ((x + x0)/Fr + tau0) * const.LIGHT_SPEED_M_PER_SEC/2
+    return ((col + col0)/Fr + tau0) * const.LIGHT_SPEED_M_PER_SEC/2
 
 
-def r2x(r, burst_meta):
+def r2col(r, burst_meta):
     """
     Parameters
     ----------
@@ -66,22 +66,22 @@ def r2x(r, burst_meta):
     Returns
     -------
     np.ndarray or scalar
-        x coordinate in burst referenced to the first valid column 
+        col coordinate in burst referenced to the first valid column 
 
     """
-    x0 = burst_meta['burst_roi'][0]
+    col0 = burst_meta['burst_roi'][0]
     Fr = burst_meta['range_frequency']
     tau0 = burst_meta['slant_range_time']
-    return (2*r/const.LIGHT_SPEED_M_PER_SEC - tau0)*Fr - x0
+    return (2*r/const.LIGHT_SPEED_M_PER_SEC - tau0)*Fr - col0
 
 
-def y2ta(y, burst_meta):
+def row2ta(row, burst_meta):
     """
 
     Parameters
     ----------
-    y : np.ndarray or scalar
-        y coordinate in burst referenced to the first valid line.
+    row : np.ndarray or scalar
+        row coordinate in burst referenced to the first valid line.
     burst_meta : dict
         Metadata of burst.
 
@@ -93,10 +93,10 @@ def y2ta(y, burst_meta):
     """
     start_valid = burst_meta['burst_times'][1]
     PRF = burst_meta['azimuth_frequency']
-    return y / PRF + start_valid
+    return row / PRF + start_valid
 
 
-def ta2y(ta, burst_meta):
+def ta2row(ta, burst_meta):
     """
 
     Parameters
@@ -109,7 +109,7 @@ def ta2y(ta, burst_meta):
     Returns
     -------
     np.ndarray or scalar
-        y coordinate in burst referenced to the first valid line.
+        row coordinate in burst referenced to the first valid line.
 
     """
     start_valid = burst_meta['burst_times'][1]
@@ -117,7 +117,7 @@ def ta2y(ta, burst_meta):
     return (ta - start_valid)*PRF
 
 
-def burst_projection(burst_metadata, lon, lat, alt, orbit, apd_correction=True,
+def burst_projection(burst_metadata, x, y, alt, orbit, apd_correction=True,
                      bistatic_correction=True, crs='epsg:4326',
                      max_iterations=20, tol=1.2*1e-7, ):
     """
@@ -126,12 +126,10 @@ def burst_projection(burst_metadata, lon, lat, alt, orbit, apd_correction=True,
     ----------
     burst_metadata : dict
         Metadata of burst.
-    lon : np.ndarray or scalar
-        Longitude in the crs defined by epsg. 
-    lat : np.ndarray or scalar
-        Latitude in the crs defined by epsg.
-    alt : np.ndarray or scalar
-        Altitude in the crs defined by epsg.
+    x, y : np.ndarray or scalar
+        Coordinates in the crs defined by crs parameter. 
+    alt: ndarray or scalar 
+        Altitude above the EARTH_WGS84 ellipsoid.
     orbit: eos.sar.backproj.Orbit
         Used to interpolate the position and velocity along the orbit 
     apd_correction : boolean, optional
@@ -151,46 +149,47 @@ def burst_projection(burst_metadata, lon, lat, alt, orbit, apd_correction=True,
 
     Returns
     -------
-    x : np.ndarray or scalar
-        x coordinate in burst referenced to the first valid column.
-    y : np.ndarray or scalar
-        y coordinate in burst referenced to the first valid line.
+    col : np.ndarray or scalar
+        column coordinate in burst referenced to the first valid column.
+    row : np.ndarray or scalar
+        row coordinate in burst referenced to the first valid line.
     i : np.ndarray or scalar
         Incidence angle.
 
     """
-    lon = np.atleast_1d(lon)
-    lat = np.atleast_1d(lat)
+    x = np.atleast_1d(x)
+    y = np.atleast_1d(y)
     alt = np.atleast_1d(alt)
     # # convert to geocentric cartesian
-    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4978')
-    x, y, z = transformer.transform(lat, lon, alt)
+    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4978', always_xy=True)
+    X, Y, Z = transformer.transform(x, y, alt)
+   
     # project in the slc image
     tinit = (burst_metadata['burst_times'][1] +
              burst_metadata['burst_times'][2])/2 * np.ones_like(x)
-    t, r, i = backproj.iterative_projection(orbit, x, y, z, tinit,
+    t, r, i = backproj.iterative_projection(orbit, X, Y, Z, tinit,
                                             max_iterations, tol)
     if apd_correction:
         alt = alt.squeeze()
         r += (alt * alt / 8.55e7 - alt / 3411.0 + 2.41) / np.cos(i)
 
-    # slant range (x coordinate)
-    x = (2 * r / const.LIGHT_SPEED_M_PER_SEC -
+    # slant range (col coordinate)
+    col = (2 * r / const.LIGHT_SPEED_M_PER_SEC -
          burst_metadata['slant_range_time']) * burst_metadata['range_frequency']
 
     # bistatic residual error correction, as described by Schubert et al in
     # Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
     # Results. Remote Sens. 7, 9431-9449 (2015)
     if bistatic_correction:
-        t -= (x - 0.5 * burst_metadata['samples_per_burst']
+        t -= (col - 0.5 * burst_metadata['samples_per_burst']
               ) / (2 * burst_metadata['range_frequency'])
 
-    x = x - burst_metadata['burst_roi'][0]
-    y = ta2y(t, burst_metadata)
-    return x, y, i
+    col = col - burst_metadata['burst_roi'][0]
+    row = ta2row(t, burst_metadata)
+    return col, row, i
 
 
-def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction=True,
+def burst_localization(burst_metadata, col, row, alt, orbit, apd_correction=True,
                        bistatic_correction=True, max_iterations=10000, tol=0.01):
     """
 
@@ -199,10 +198,10 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction=True,
     ----------
     burst_metadata : dict
         Metadata of burst.
-    x : np.ndarray or scalar
-        x coordinate in burst referenced to the first valid column.
-    y : np.ndarray or scalar
-        y coordinate in burst referenced to the first valid line.
+    col : np.ndarray or scalar
+        column coordinate in burst referenced to the first valid column.
+    row : np.ndarray or scalar
+        row coordinate in burst referenced to the first valid line.
     alt : np.ndarray or scalar
         Altitude above the EARTH_WGS84 ellipsoid.
     orbit: eos.sar.backproj.Orbit
@@ -227,21 +226,21 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction=True,
 
     """
     # make sure we work with numpy arrays
-    x = np.atleast_1d(x)
-    y = np.atleast_1d(y)
+    col = np.atleast_1d(col)
+    row = np.atleast_1d(row)
     alt = np.atleast_1d(alt)
     
-    num_pts = len(x)
+    num_pts = len(col)
     
     # image coordinates to range and az time
-    r = x2r(x, burst_metadata)
-    ta = y2ta(y, burst_metadata)
+    r = col2r(col, burst_metadata)
+    ta = row2ta(row, burst_metadata)
     
     if bistatic_correction:
         # correct azimuth time
-        x_mid = x + burst_metadata['burst_roi'][0] - \
+        col_mid = col + burst_metadata['burst_roi'][0] - \
             0.5*burst_metadata['samples_per_burst']
-        ta += x_mid/(2*burst_metadata['range_frequency'])
+        ta += col_mid/(2*burst_metadata['range_frequency'])
     
     if apd_correction:
         # evaluate satellite position
