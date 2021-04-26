@@ -1,7 +1,7 @@
 # Sentinel-1 specific burst functions
 import numpy as np
 import pyproj
-from eos.sar import backproj
+from eos.sar import range_doppler
 from eos.sar import const
 
 
@@ -130,7 +130,7 @@ def burst_projection(burst_metadata, x, y, alt, orbit, apd_correction=True,
         Coordinates in the crs defined by crs parameter. 
     alt: ndarray or scalar 
         Altitude above the EARTH_WGS84 ellipsoid.
-    orbit: eos.sar.backproj.Orbit
+    orbit: eos.sar.range_doppler.Orbit
         Used to interpolate the position and velocity along the orbit 
     apd_correction : boolean, optional
            Atmospheric Path Delay (APD) range correction . The default is True.
@@ -167,7 +167,7 @@ def burst_projection(burst_metadata, x, y, alt, orbit, apd_correction=True,
     # project in the slc image
     tinit = (burst_metadata['burst_times'][1] +
              burst_metadata['burst_times'][2])/2 * np.ones_like(x)
-    t, r, i = backproj.iterative_projection(orbit, X, Y, Z, tinit,
+    t, r, i = range_doppler.iterative_projection(orbit, X, Y, Z, tinit,
                                             max_iterations, tol)
     if apd_correction:
         alt = alt.squeeze()
@@ -204,7 +204,7 @@ def burst_localization(burst_metadata, col, row, alt, orbit, apd_correction=True
         row coordinate in burst referenced to the first valid line.
     alt : np.ndarray or scalar
         Altitude above the EARTH_WGS84 ellipsoid.
-    orbit: eos.sar.backproj.Orbit
+    orbit: eos.sar.range_doppler.Orbit
         Used to interpolate the position and velocity along the orbit
     apd_correction : boolean, optional
            Atmospheric Path Delay (APD) range correction . The default is True.
@@ -270,7 +270,7 @@ def burst_localization(burst_metadata, col, row, alt, orbit, apd_correction=True
     XYZ = np.repeat(XYZ.reshape(1, 3), repeats=num_pts, axis=0)
     
     # localize each point
-    points3D = backproj.solve_range_doppler(
+    points3D = range_doppler.solve_range_doppler(
         orbit, ta, r, alt, XYZ, max_iterations, tol)
     
     tolonlat = pyproj.Transformer.from_crs(
