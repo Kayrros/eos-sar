@@ -261,7 +261,7 @@ def build_cheb_interp(state_vectors, N):
     Parameters
     ----------
     state_vectors: Iterable of dict
-        A state vector is a dictionnary with three keys:
+        A state vector is a dictionary with three keys:
         - time (float) in s
         - position (list, tuple or ndarray of floats) in m
         - velocity (list, tuple or ndarray of floats) in m
@@ -326,13 +326,14 @@ def get_diff_coeffs(coeffs, domain, der):
     coeffs: ndarray
         Matrix of a_n
     domain: tuple of float
-
+    der: int 
+        Order of the derivative 
     Returns
     -------
-
+    Coefficients for the polynomial of the derivative
     """
     t0, t1 = domain
     return np.polynomial.polynomial.polyder(
-        coeffs, m = der, scl = 2/( t1 - t0))
+        coeffs, m=der, scl=2/(t1 - t0))
 
     

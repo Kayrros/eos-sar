@@ -163,18 +163,18 @@ def get_E_dE(t, orbit, M):
 
 
 def solve_range_doppler(orbit, t, r, alt, xyz_init, max_iterations=10000, tol=0.01):
-    """Solves the Range-Doppler equations for ONE point using the Newton-Raphson method
+    """Solves the Range-Doppler equations for a set of points using the Newton-Raphson method
 
     Parameters
     ----------
     orbit: fitted Orbit instance
-    t: float 
+    t: ndarray (N,) or float 
         Time of closest approach 
-    r: float 
+    r: ndarray (N,) or float 
         Distance to sensor
-    alt: float
+    alt: ndarray (N,) or float
         Height at which we localize the point 
-    xyz_init: 1darray (3, )
+    xyz_init: ndarray (N,3)
         Initial xyz point from which to begin iterations 
     max_iterations: int
         Maximum number of iterations of Newton-Raphson
@@ -182,7 +182,7 @@ def solve_range_doppler(orbit, t, r, alt, xyz_init, max_iterations=10000, tol=0.
         Tolerance on the step in x, y, z (in meters)
         iterations stop when all steps dx, dy and dz are below tol 
     Returns: 
-        xyz: ndarray
+        xyz: ndarray (N, 3)
            Localized 3D point in geocentric coordinates
 
     Notes
@@ -191,7 +191,7 @@ def solve_range_doppler(orbit, t, r, alt, xyz_init, max_iterations=10000, tol=0.
     where 
         f(xyz) = satV.(xyz - satPos) 
             denotes the dot product between speed and the LOS
-            f(xyz) = 0 means that the point is in the plane ortogonal to speed
+            f(xyz) = 0 means that the point is in the plane orthogonal to speed
         g(xyz) = (xyz - satPos)**2 - rdist**2 
             denotes LOS distance squared minus range squared
             g(xyz) = 0 means LOS distance equals the range

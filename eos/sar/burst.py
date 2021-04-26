@@ -117,7 +117,7 @@ def ta2y(ta, burst_meta):
     return (ta - start_valid)*PRF
 
 
-def burst_projection(burst_metadata, lon, lat, alt, orbit,  apd_correction=True,
+def burst_projection(burst_metadata, lon, lat, alt, orbit, apd_correction=True,
                      bistatic_correction=True, crs='epsg:4326',
                      max_iterations=20, tol=1.2*1e-7, ):
     """
@@ -230,30 +230,38 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction=True,
     x = np.atleast_1d(x)
     y = np.atleast_1d(y)
     alt = np.atleast_1d(alt)
+    
     num_pts = len(x)
+    
     # image coordinates to range and az time
     r = x2r(x, burst_metadata)
     ta = y2ta(y, burst_metadata)
+    
     if bistatic_correction:
         # correct azimuth time
         x_mid = x + burst_metadata['burst_roi'][0] - \
             0.5*burst_metadata['samples_per_burst']
         ta += x_mid/(2*burst_metadata['range_frequency'])
+    
     if apd_correction:
         # evaluate satellite position
         positions = orbit.evaluate(ta)
         # Rough estimation of geometry
         Lsat = np.linalg.norm(positions, axis=1)
+        
         # Earth radius taken at the intersection of the line joining satellite
         # and earth center with the ellipsoid
         ell_axis = const.EARTH_WGS84_AXIS_A_M * np.ones(3)
         ell_axis[2] = const.EARTH_WGS84_AXIS_B_M
         ERadius = Lsat/np.sqrt(np.sum((positions/ell_axis)**2, axis=1))
+        
         # cosine rule
         incidence = np.arccos(
             (Lsat**2 - (ERadius+alt)**2 - r**2) / (2 * (ERadius + alt) * r))
+        
         # correct range
         r -= (alt**2/8.55e7 - alt/3411.0 + 2.41)/np.cos(incidence)
+    
     # initial geocentric point xyz definition
     # from lon, lat, alt to x, y, z
     toXYZ = pyproj.Transformer.from_crs('epsg:4326', 'epsg:4978')
@@ -261,10 +269,13 @@ def burst_localization(burst_metadata, x, y, alt, orbit, apd_correction=True,
     lonc, latc = np.mean(burst_metadata['lon_lat_bbox'], axis=0)
     XYZ = np.array(toXYZ.transform(lonc, latc, 0))
     XYZ = np.repeat(XYZ.reshape(1, 3), repeats=num_pts, axis=0)
+    
     # localize each point
     points3D = backproj.solve_range_doppler(
         orbit, ta, r, alt, XYZ, max_iterations, tol)
+    
     tolonlat = pyproj.Transformer.from_crs(
         'epsg:4978', 'epsg:4326', always_xy=True)
     lon, lat, _ = tolonlat.transform(*points3D.T)
+    
     return lon, lat
