@@ -335,5 +335,3 @@ def get_diff_coeffs(coeffs, domain, der):
     t0, t1 = domain
     return np.polynomial.polynomial.polyder(
         coeffs, m=der, scl=2/(t1 - t0))
-
-    
