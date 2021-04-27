@@ -5,6 +5,7 @@ class Orbit:
     """Orbit object encapsulating the position variation with time,
     as well as the possibility to get the nth derivative (for speed and acceleration for ex)
     """
+
     def __init__(self, state_vectors, degree=11):
         """
         Constructor
