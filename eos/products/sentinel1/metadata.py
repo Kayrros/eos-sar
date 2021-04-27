@@ -1,4 +1,3 @@
-
 def fill_meta(model, bid):
     """
     Parameters

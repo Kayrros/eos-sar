@@ -1,6 +1,6 @@
 """
 Coordinates conversion between image (row/column denoted as `r` and `c`) and
-sar (azimuth time and range denoted as `t` and `g`).
+sar (azimuth time and range denoted as `azt` and `rng`).
 """
 from eos.sar import const
 
@@ -13,6 +13,7 @@ class CoordinateMixin:
         return azt, rng
 
     def to_row_col(self, azt, rng):
-        r = 0  # ...
-        c = 0  # ...
+        r = (azt - self.first_row_time) * self.azimuth_frequency
+        c = (2 * rng / const.LIGHT_SPEED_M_PER_SEC - self.first_col_time) * \
+            self.range_frequency
         return r, c

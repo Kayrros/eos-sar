@@ -10,7 +10,7 @@ class SensorModel(abc.ABC):
     range_frequency: float
 
     @abc.abstractmethod
-    def to_azt_rng(self, row, col):
+    def to_azt_rng(self, r, c):
         pass
 
     @abc.abstractmethod
