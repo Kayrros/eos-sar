@@ -3,6 +3,37 @@ import pyproj
 from eos.sar import model, range_doppler, const, coordinates, orbit
 
 
+def burst_model_from_s1m(s1model, burst, **kwargs):
+    """Create a Sentinel1BurstModel from a s1m.Sentinel1Model
+
+
+    Parameters
+    ----------
+    s1model : s1m.Sentinel1Model
+        Object encapsulating the metadata and processing for one Sentinel1 
+        subswath.
+    burst : int
+        burst id in the s1model subswath, 0 based.
+    **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
+
+    Returns
+    -------
+    bmodel: Sentinel1BurstModel instance.
+
+    """
+    assert (burst >= 0) and burst < len(
+        s1model.burst_times), "burst id out of range"
+    return Sentinel1BurstModel(s1model.range_frequency,
+                               s1model.azimuth_frequency,
+                               s1model.slant_range_time,
+                               s1model.samples_per_burst,
+                               s1model.burst_times[burst],
+                               s1model.burst_rois[burst],
+                               s1model.burst_lon_lat_bboxes[burst],
+                               s1model.state_vectors,
+                               **kwargs)
+
+
 class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
     def __init__(self,
                  range_frequency,
