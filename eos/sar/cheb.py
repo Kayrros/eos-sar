@@ -319,15 +319,17 @@ def evaluate_cheb_interp(t, coeffs, domain):
 
 def get_diff_coeffs(coeffs, domain, der):
     """Compute the derivative coeffs
-    used for speed and acceleration computation
+    used for speed and acceleration computation.
 
     Parameters
     ----------
     coeffs: ndarray
-        Matrix of a_n
-    domain: tuple of float
+        Matrix of a_n.
+    domain: tuple of float.
+    
     der: int 
-        Order of the derivative 
+        Order of the derivative.
+        
     Returns
     -------
     Coefficients for the polynomial of the derivative

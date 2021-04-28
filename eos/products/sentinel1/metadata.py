@@ -23,5 +23,5 @@ def fill_meta(model, bid):
     burst_metadata['lines_per_burst'] = model.lines_per_burst
     burst_metadata['samples_per_burst'] = model.samples_per_burst
     burst_metadata['azimuth_anx_time'] = model.burst_azimuth_anx_times[bid]
-    burst_metadata['lon_lat_bbox'] = model.burst_lon_lat_bboxes[bid]
+    burst_metadata['approx_geom'] = model.burst_lon_lat_bboxes[bid]
     return burst_metadata

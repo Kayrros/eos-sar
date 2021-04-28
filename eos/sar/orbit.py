@@ -32,13 +32,13 @@ class Orbit:
             self.coeffs.append(cheb.get_diff_coeffs(
                 self.coeffs[-1], self.cheb_domain, der=1))
 
-    def evaluate(self, t, order=0):
+    def evaluate(self, azt, order=0):
         """Evaluate the nth order derivative of the position of satellite
-            along the orbit at time t
+            along the orbit at time azt
         Parameters
         ----------
-        t: 1darray (n, )
-           Time on which to evaluate
+        azt: 1darray (n, )
+           Azimuth time on which to evaluate
         order: int
             Order of the derivative, default is 0
             for order = 0, the position of the satellite is returned
@@ -53,4 +53,4 @@ class Orbit:
         else:
             coeff = cheb.get_diff_coeffs(
                 self.coeffs[0], self.cheb_domain, der=order)
-        return cheb.evaluate_cheb_interp(t, coeff, self.cheb_domain)
+        return cheb.evaluate_cheb_interp(azt, coeff, self.cheb_domain)

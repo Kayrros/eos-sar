@@ -1,8 +1,11 @@
-import s1m
 from eos.products import sentinel1
+from eos.sar import range_doppler
 import numpy as np
+import pyproj
+import s1m
 import sys
 sys.path.append('../')
+
 
 xml_path = './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
 s1model = s1m.Sentinel1Model(xml=xml_path)
@@ -17,28 +20,63 @@ cols, rows = Cols.ravel(), Rows.ravel()
 alts = np.zeros_like(cols)
 
 # localize the points
-lon, lat, alt = bmod.localization(cols, rows, alts)
+lon, lat, alt = bmod.localization(rows, cols, alts)
 
 # check if localized points are at alt = 0
 np.testing.assert_allclose(alts, alt, atol=1e-5)
 
 # now project these points back in the burst
-cols_pred, rows_pred, i_pred = bmod.projection(lon, lat, alt)
+rows_pred, cols_pred, i_pred = bmod.projection(lon, lat, alt)
 
 # check if point fall back in the same location
 np.testing.assert_allclose(cols_pred, cols, atol=1e-3)
 np.testing.assert_allclose(rows_pred, rows, atol=1e-3)
 
 # verify projection vs s1m projection
-s1_cols_pred, s1_row_pred, s1_i_pred = s1m.main_projection(s1model, lon, lat, alt, error_when_outside=False,
-                                                           apd_correction=True, bistatic_correction=True, verbose=False)
+s1_cols_pred, s1_row_pred, s1_i_pred = s1m.main_projection(s1model, lon, lat,
+                                                            alt, error_when_outside=False,
+                                                            apd_correction=True,
+                                                            bistatic_correction=True,
+                                                            verbose=False)
 
 # check similarity of x coordinate referenced to first col in raster
 np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                           cols_pred + bmod.burst_roi[0])
+                            cols_pred + bmod.burst_roi[0])
 
 # check similarity of azimuth time
 azt_pred, _ = bmod.to_azt_rng(rows_pred, cols_pred)
 np.testing.assert_allclose(
-    s1_row_pred/s1model.azimuth_frequency + s1model.burst_times[0][1], 
+    s1_row_pred/s1model.azimuth_frequency + s1model.burst_times[0][1],
     azt_pred)
+
+# check ability to query one point
+ptlon, ptlat, ptalt = bmod.localization(rows[0], cols[0], alts[0])
+assert isinstance(
+    ptlon, float), "vectorized localization func failed on scalar input"
+
+# check ability to query one point
+ptrow, ptcol, pti = bmod.projection(lon[0], lat[0], alt[0])
+assert isinstance(
+    ptrow, float), "vectorized projection func failed on scalar input"
+
+# check iterative_projection
+transform = pyproj.Transformer.from_crs(
+            'epsg:4326', 'epsg:4978', always_xy=True)
+gx, gy, gz = transform.transform(lon, lat, alt )
+azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx, gy, gz)
+assert isinstance(
+    azt, np.ndarray), "vectorized iterative projection func failed on array input"
+
+gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, np.zeros_like(alt),
+                                                  (gx + 10, gy + 2, gz + 3)) 
+assert isinstance(
+    gx, np.ndarray), "vectorized iterative localization func failed on array input"
+
+azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
+assert isinstance(
+    azt, float), "vectorized iterative projection func failed on scalar input"
+
+gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, 0,
+                                                  (gx[0] + 10, gy[0] + 2, gz[0] + 3)) 
+assert isinstance(
+    gx, float), "vectorized iterative localization func failed on scalar input"

@@ -18,7 +18,7 @@ def burst_model_from_s1m(s1model, burst, **kwargs):
 
     Returns
     -------
-    bmodel: Sentinel1BurstModel instance.
+    Sentinel1BurstModel instance.
 
     """
     assert (burst >= 0) and burst < len(
@@ -42,7 +42,7 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
                  samples_per_burst,
                  burst_times,
                  burst_roi,
-                 lon_lat_bbox,
+                 approx_geom,
                  state_vectors,
                  degree=11,
                  bistatic_correction=True,
@@ -67,8 +67,9 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
             first/last valid line in the burst.
         burst_roi : (4,) ndarray/tuple (x, y, w, h)
             Coordinates of the burst in the sentinel-1 raster file.
-        lon_lat_bbox : (4,2) ndarray
-            The lon, lat coordinates of the four corners.
+        approx_geom : List of tuples 
+            Each tuple element is a (lon, lat) corner of the approx geom 
+            of the burst
         state_vectors : Iterable of dict
             List of state vectors (time, position, velocity).
         degree : int, optional
@@ -108,7 +109,7 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
         # specific to current burst
         self.burst_times = burst_times
         self.burst_roi = burst_roi
-        self.lon_lat_bbox = lon_lat_bbox
+        self.approx_geom = approx_geom
 
         # processing params
         self.bistatic_correction = bistatic_correction
@@ -119,14 +120,14 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
         self.projection_tolerance = tolerance \
             / np.linalg.norm(state_vectors[0]['velocity'])
 
-    def projection(self, xs, ys, alts, crs='epsg:4326', vert_crs=None):
+    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None):
         """Projects a 3D point into the burst coordinates
 
         Parameters
         ----------
-        xs, ys : ndarray or scalar
+        x, y : ndarray or scalar
             Coordinates in the crs defined by crs parameter. 
-        alts: ndarray or scalar 
+        alt: ndarray or scalar 
             Altitude defined by vert_crs if provided or EARTH_WGS84 ellipsoid.
         crs : string, optional
             CRS in which the point is given
@@ -136,17 +137,17 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
 
         Returns
         -------
-        cols : ndarray or scalar
-            Column coordinate in burst referenced to the first valid column.
         rows : ndarray or scalar
             Row coordinate in burst referenced to the first valid line.
+        cols : ndarray or scalar
+            Column coordinate in burst referenced to the first valid column.
         i : ndarray or scalar
             Incidence angle.
 
         """
-        xs = np.atleast_1d(xs)
-        ys = np.atleast_1d(ys)
-        alts = np.atleast_1d(alts)
+        x = np.atleast_1d(x)
+        y = np.atleast_1d(y)
+        alt = np.atleast_1d(alt)
 
         if vert_crs is None:
             src_crs = crs
@@ -158,18 +159,19 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
             src_crs, 'epsg:4978', always_xy=True)
 
         # convert to geocentric cartesian
-        X, Y, Z = transformer.transform(xs, ys, alts)
+        gx, gy, gz = transformer.transform(x, y, alt)
 
         # project in the slc image
-        tinit = (self.burst_times[1] +
-                 self.burst_times[2])/2 * np.ones_like(xs)
-        azt, rng, i = range_doppler.iterative_projection(self.orbit, X, Y, Z,
-                                                         tinit, self.max_iterations,
-                                                         self.projection_tolerance)
+        azt_init = (self.burst_times[1] +
+                    self.burst_times[2])/2 * np.ones_like(x)
+        azt, rng, i = range_doppler.iterative_projection(self.orbit, gx, gy, gz,
+                                                         azt_init=azt_init,
+                                                         max_iterations=self.max_iterations,
+                                                         tol=self.projection_tolerance)
         # Apply corrections on rng and azt if needed
         if self.apd_correction:
-            alts = alts.squeeze()
-            rng += (alts * alts / 8.55e7 - alts / 3411.0 + 2.41) / np.cos(i)
+            alt = alt.squeeze()
+            rng += (alt * alt / 8.55e7 - alt / 3411.0 + 2.41) / np.cos(i)
 
         # bistatic residual error correction, as described by Schubert et al in
         # Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
@@ -183,21 +185,21 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
                     ) / (2 * self.range_frequency)
 
         # convert to row and col
-        rows, cols = self.to_row_col(azt, rng)
+        row, col = self.to_row_col(azt, rng)
 
-        return cols, rows, i
+        return row, col, i
 
-    def localization(self, cols, rows, alts, crs='epsg:4326', vert_crs=None):
+    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None):
         """
 
         Parameters
         ----------
 
-        cols : ndarray or scalar
+        row : ndarray or scalar
+            row coordinate in burst referenced to the first valid line.        
+        col : ndarray or scalar
             column coordinate in burst referenced to the first valid column.
-        rows : ndarray or scalar
-            row coordinate in burst referenced to the first valid line.
-        alts : ndarray or scalar
+        alt : ndarray or scalar
             Altitude above the EARTH_WGS84 ellipsoid.
         crs : string, optional
             CRS in which the point is returned
@@ -207,57 +209,62 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
 
         Returns
         -------
-        x, y, z: ndarray or scalar
+        x, y, z : ndarray or scalar
             Coordinates of the point in the crs
 
         """
         # make sure we work with numpy arrays
-        cols = np.atleast_1d(cols)
-        rows = np.atleast_1d(rows)
-        alts = np.atleast_1d(alts)
-
-        num_pts = len(cols)
+        row = np.atleast_1d(row)
+        col = np.atleast_1d(col)
+        alt = np.atleast_1d(alt)
 
         # image coordinates to range and az time
-        azt, rng = self.to_azt_rng(rows, cols)
+        azt, rng = self.to_azt_rng(row, col)
 
         # Make corrections on azt and rng if needed
         if self.bistatic_correction:
             # correct azimuth time
-            azt += (cols + self.burst_roi[0] -
+            azt += (col + self.burst_roi[0] -
                     0.5*self.samples_per_burst)/(2*self.range_frequency)
 
         if self.apd_correction:
+
             # evaluate satellite position
             positions = self.orbit.evaluate(azt)
             # Rough estimation of geometry
-            Lsat = np.linalg.norm(positions, axis=1)
+            os = np.linalg.norm(positions, axis=1)
 
             # Earth radius taken at the intersection of the line joining satellite
             # and earth center with the ellipsoid
-            ell_axis = const.EARTH_WGS84_AXIS_A_M * np.ones(3)
-            ell_axis[2] = const.EARTH_WGS84_AXIS_B_M
-            ERadius = Lsat/np.sqrt(np.sum((positions/ell_axis)**2, axis=1))
+            ell_axis = np.array([const.EARTH_WGS84_AXIS_A_M,
+                                 const.EARTH_WGS84_AXIS_A_M,
+                                 const.EARTH_WGS84_AXIS_B_M])
+
+            earth_radius = os/np.sqrt(np.sum((positions/ell_axis)**2, axis=1))
+            op = earth_radius + alt
 
             # cosine rule
-            incidence = np.arccos(
-                (Lsat**2 - (ERadius+alts)**2 - rng**2) / (2 * (ERadius + alts) * rng))
+            incidence = np.arccos((os**2 - op**2 - rng**2) / (2 * op * rng))
 
             # correct range
-            rng -= (alts**2/8.55e7 - alts/3411.0 + 2.41)/np.cos(incidence)
+            rng -= (alt**2/8.55e7 - alt/3411.0 + 2.41)/np.cos(incidence)
 
         # initial geocentric point xyz definition
         # from lon, lat, alt to x, y, z
-        toXYZ = pyproj.Transformer.from_crs(
+        to_gxyz = pyproj.Transformer.from_crs(
             'epsg:4326', 'epsg:4978', always_xy=True)
 
         # point at swath centroid, 0 altitude as init
-        XYZ = np.array(toXYZ.transform(*np.mean(self.lon_lat_bbox, axis=0), 0))
-        XYZ = np.repeat(XYZ.reshape(1, 3), repeats=num_pts, axis=0)
+        lon_c, lat_c = np.mean(self.approx_geom, axis=0)
+        
+        gx_init, gy_init, gz_init = to_gxyz.transform(lon_c * np.ones_like(alt), 
+                                                      lat_c * np.ones_like(alt),
+                                                      alt)
 
         # localize each point
-        points3D = range_doppler.iterative_localization(
-            self.orbit, azt, rng, alts, XYZ, self.max_iterations, self.localization_tolerance)
+        gx, gy, gz = range_doppler.iterative_localization(
+            self.orbit, azt, rng, alt, (gx_init, gy_init, gz_init),
+            max_iterations=self.max_iterations, tol=self.localization_tolerance)
 
         if vert_crs is None:
             dst_crs = crs
@@ -266,6 +273,6 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
                 name='ukn_reference', components=[crs, vert_crs])
         todst = pyproj.Transformer.from_crs(
             'epsg:4978', dst_crs, always_xy=True)
-        x, y, z = todst.transform(*points3D.T)
+        x, y, z = todst.transform(gx, gy, gz)
 
         return x, y, z
