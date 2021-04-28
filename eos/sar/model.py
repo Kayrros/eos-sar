@@ -8,7 +8,7 @@ class SensorModel(abc.ABC):
     """
     azimuth_frequency: float
     range_frequency: float
-
+    approx_geom: list 
     @abc.abstractmethod
     def to_azt_rng(self, row, col):
         pass
