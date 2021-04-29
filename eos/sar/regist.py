@@ -1,6 +1,6 @@
 import numpy as np
 from scipy import ndimage
-import abc 
+import abc
 import multidem
 
 
@@ -65,113 +65,36 @@ def affine_transformation(src, dst):
     return A
 
 
-def dem_points(primary_model, multidem_config,
-               grid_len=None, outfile=None):
-    """Query dem points.
+def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
+               outfile=None):
+    """ Query dem points. 
 
 
     Parameters
     ----------
     primary_model : eos.sar.model.SensorModel
         Sensor model for the primary image.
-    multidem_config : dict
-        Configuration of multidem querys.
-        Keys should be ['source', 'datum', 'interpolation'].
-    grid_len : int, optional
-        Number of points queried from the dem. 
-        If given, a sparse meshgrid of points of grid_len x grid_len is used. 
-        Otherwise, all the dem needs to be downloaded and then all the 
-        dem points will be returned. The default is None.
+    source : str
+        DEM source "SRTM30" (default), "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI" .
+    datum : str
+        "ellipsoidal" (height above WGS84 ellipsoid, default), or 
+        "orthometric" (height above EGM96 geoid).
     outfile : string, optional
         Path to save the dem if passed as argument.
-        Ignored if grid_len given. The default is None.
+        The default is None.
 
     Returns
     -------
     x : ndarray
-        x coordinate.
+        x coordinate (longitude if crs epsg4326).
     y : ndarray
-        y coordinate.
-    alt : ndarray
-        Altitude.
+        y coordinate (latitude if crs epsg4326).
+    raster : ndarray
+        Dem altitude array.
+    transform : affine.Affine
+        Raster transform to crs coordinates
     crs : Any crs type accepted by pyproj
         crs of the returned points.
-
-    """
-    # burst approx bbox
-    lons = [P[0] for P in primary_model.approx_geom]
-    lats = [P[1] for P in primary_model.approx_geom]
-    bounds = (min(lons), min(lats), max(lons), max(lats))
-
-    if grid_len:
-
-        # get grid_len points equidistant between each other and bounds
-        lat_arr = np.linspace(bounds[1], bounds[3], grid_len)
-        lon_arr = np.linspace(bounds[0], bounds[2], grid_len)
-        x, y = np.meshgrid(lon_arr, lat_arr)
-
-        x = x.ravel()
-        y = y.ravel()
-
-        alt = multidem.elevation(x, y, source=multidem_config['source'],
-                                 interpolation=multidem_config['interpolation'],
-                                 datum=multidem_config['datum'])
-        # crs = rasterio_crs("EPSG:4979") if datum == "ellipsoidal" else rasterio_crs("EPSG:4326+5773")
-        # TODO: check https://github.com/pyproj4/pyproj/issues/757
-        crs = 'epsg:4326'
-    else:
-        # query for dem
-        raster, transform, crs = multidem.crop(bounds,
-                                               source=multidem_config['source'],
-                                               datum=multidem_config['datum'])
-        if outfile:
-            # save dem
-            multidem.write_crop_to_file(raster, transform, crs, outfile)
-
-        # get dem points in crs
-        col, row = np.meshgrid(
-            np.arange(raster.shape[1]), np.arange(raster.shape[0]))
-        col = col.ravel()
-        row = row.ravel()
-
-        alt = raster.ravel()
-        # Add 0.5 for pixel is area
-        col = col + 0.5
-        row = row + 0.5
-        # to earth coordinates
-        x, y = transform * (col, row)
-
-    return x, y, alt, crs
-
-
-def orbital_registration(primary_model, secondary_model, multidem_config,
-                         grid_len=None, outfile=None):
-    """Compute registration matrix between primary and secondary model. 
-
-
-    Parameters
-    ----------
-    primary_model : eos.sar.model.SensorModel
-        Sensor model for the primary image.
-    secondary_model : eos.sar.model.SensorModel
-        Sensor model for the secondary image.
-    multidem_config : dict
-        Configuration of multidem querys.
-        Keys should be ['source', 'datum', 'interpolation'].
-    grid_len : int, optional
-        Number of projected points used during the registration.
-        If given, a sparse meshgrid of points of grid_len x grid_len is used. 
-        Otherwise, all the dem needs to be downloaded and then all the 
-        dem points will be projected. The default is None.
-    outfile : string, optional
-        Path to save the dem if passed as argument.
-        Ignored if grid_len given. The default is None.
-
-    Returns
-    -------
-    matrix : ndarray
-        Affine registration matrix from primary_model coordinates
-        to secondary_model coordinates.
 
     Notes
     -----
@@ -179,19 +102,69 @@ def orbital_registration(primary_model, secondary_model, multidem_config,
     is accepted at the moment
 
     """
+    # burst approx bbox
+    lons = [P[0] for P in primary_model.approx_geom]
+    lats = [P[1] for P in primary_model.approx_geom]
+    bounds = (min(lons), min(lats), max(lons), max(lats))
+    # query for dem
+    raster, transform, crs = multidem.crop(bounds,
+                                           source=source,
+                                           datum=datum)
+    if outfile:
+        # save dem
+        multidem.write_crop_to_file(raster, transform, crs, outfile)
 
-    assert multidem_config['datum'] == "ellipsoidal", "multidem seems to only support this now"
-    x, y, alt, crs = dem_points(primary_model, multidem_config, grid_len=grid_len,
-                                outfile=outfile)
+    # get dem points in crs
+    col, row = np.meshgrid(
+        np.arange(raster.shape[1]), np.arange(raster.shape[0]))
+    col = col.ravel()
+    row = row.ravel()
 
-    # project in the two images
+    # Add 0.5 for pixel is area
+    col = col + 0.5
+    row = row + 0.5
+    # to earth coordinates
+    x, y = transform * (col, row)
+
+    return x.reshape(raster.shape), y.reshape(raster.shape), raster, transform, crs
+
+
+def orbital_registration(row_primary, col_primary, secondary_model,
+                         x, y, raster, crs):
+    """Compute registration matrix between primary and secondary model 
+
+
+    Parameters
+    ----------
+    row_primary : ndarray
+        Row projection of the x, y, raster points in the primary burst.
+    col_primary : ndarray
+        Col projection of the x, y, raster points in the primary burst..
+    secondary_model : eos.sar.model.SensorModel
+        Sensor model for the secondary image.
+    x : ndarray
+        x coordinate of 3D point on DEM (longitude if crs epsg4326).
+    y : ndarray
+        y coordinate of 3D point on DEM (latitude if crs epsg4326).
+    raster : ndarray
+        DEM altitude array of 3D point.
+    crs : Any crs type accepted by pyproj
+        crs of the dem points.
+
+    Returns
+    -------
+    matrix : ndarray
+        Affine registration matrix from primary_model coordinates
+        to secondary_model coordinates.
+
+    """
+    # project in the secondary image
     # some points will exceed the burst bounds, however this does not harm registration
-    row_primary, col_primary, _ = primary_model.projection(x, y, alt, crs=crs)
     row_secondary, col_secondary, _ = secondary_model.projection(
-        x, y, alt, crs=crs)
+        x.ravel(), y.ravel(), raster.ravel(), crs=crs)
 
     # fit affine matrix
-    primary_pts = np.column_stack([row_primary, col_primary])
+    primary_pts = np.column_stack([row_primary.ravel(), col_primary.ravel()])
     secondary_pts = np.column_stack([row_secondary, col_secondary])
 
     # affine matrix from primary to secondary burst
@@ -222,36 +195,37 @@ def apply_affine(matrix, src_array, destination_array_shape, order=3):
 
     """
     if src_array.dtype == np.complex64:
-        
+
         h, w = src_array.shape
-        
+
         crop = src_array.copy(order='C')  # ensures contiguous data and C order
         crop = crop.view(dtype=np.float32)  # now data is float
         crop = crop.reshape([h, w, 2])  # now data is float2
-        
+
         crop1 = ndimage.affine_transform(
             input=crop[:, :, 0], matrix=matrix, order=order,
             output_shape=destination_array_shape, cval=np.nan)
-        
+
         crop2 = ndimage.affine_transform(
             input=crop[:, :, 1], matrix=matrix, order=order,
             output_shape=destination_array_shape, cval=np.nan)
-        
+
         h, w = destination_array_shape
-        
+
         resampled = np.zeros((h, w, 2), dtype=np.float32)
         resampled[:, :, 0] = crop1
         resampled[:, :, 1] = crop2
-        
+
         resampled.reshape((h, w*2))
         resampled = resampled.view(dtype=np.complex64).squeeze()
-    
+
     else:
         resampled = ndimage.affine_transform(
             input=src_array, matrix=matrix, order=order,
             output_shape=destination_array_shape, cval=np.nan)
-    
+
     return resampled
+
 
 class ComplexResample(abc.ABC):
     """ComplexResample is an abstract class that defines the expected method of
@@ -259,9 +233,9 @@ class ComplexResample(abc.ABC):
     for each SAR satellite, and for each satellite mode.
     """
     src_shape: tuple
-    dst_shape: tuple 
+    dst_shape: tuple
     matrix: np.ndarray
-        
+
     @abc.abstractmethod
     def deramp(self, src_array):
         # The deramping should work on the regular src grid
@@ -271,12 +245,12 @@ class ComplexResample(abc.ABC):
     @abc.abstractmethod
     def reramp(self, dst_array):
         # The reramping should work on the irregular matrix*dst_grid
-        # and should yield a phase for each point in this grid 
-        pass	
-    
-    def resample(self, src_array, order = 3): 
+        # and should yield a phase for each point in this grid
+        pass
+
+    def resample(self, src_array, order=3):
         """
-        
+
 
         Parameters
         ----------
@@ -293,11 +267,10 @@ class ComplexResample(abc.ABC):
         """
         # deramp
         deramped = self.deramp(src_array)
-        
-        # resample 
+
+        # resample
         mat = self.matrix
-        dst_array = apply_affine(mat, deramped, self.dst_shape, order = order )
-        
+        dst_array = apply_affine(mat, deramped, self.dst_shape, order=order)
+
         # reramp
         return self.reramp(dst_array)
-    
