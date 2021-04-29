@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import ndimage
+import abc 
 import multidem
 
 
@@ -250,4 +251,53 @@ def apply_affine(matrix, src_array, destination_array_shape, order=3):
             input=src_array, matrix=matrix, order=order,
             output_shape=destination_array_shape, cval=np.nan)
     
-    return resampled	
+    return resampled
+
+class ComplexResample(abc.ABC):
+    """ComplexResample is an abstract class that defines the expected method of
+    any complex resampling mechanism. It is expected that this abstract will be implemented
+    for each SAR satellite, and for each satellite mode.
+    """
+    src_shape: tuple
+    dst_shape: tuple 
+    matrix: np.ndarray
+        
+    @abc.abstractmethod
+    def deramp(self, src_array):
+        # The deramping should work on the regular src grid
+        # and estimate a phase for each point in this grid
+        pass
+
+    @abc.abstractmethod
+    def reramp(self, dst_array):
+        # The reramping should work on the irregular matrix*dst_grid
+        # and should yield a phase for each point in this grid 
+        pass	
+    
+    def resample(self, src_array, order = 3): 
+        """
+        
+
+        Parameters
+        ----------
+        src_array : ndarray
+            src image.
+        order : int, optional
+            spline order for resampling. The default is 3.
+
+        Returns
+        -------
+        ndarray
+            Resampled complex image.
+
+        """
+        # deramp
+        deramped = self.deramp(src_array)
+        
+        # resample 
+        mat = self.matrix
+        dst_array = apply_affine(mat, deramped, self.dst_shape, order = order )
+        
+        # reramp
+        return self.reramp(dst_array)
+    
