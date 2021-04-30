@@ -61,7 +61,7 @@ Suppose we have:
         secondary_s1m = s1m.Sentinel1Model(xml_paths[1])
 
         # burst id in subswath
-        # here, by "chance", the 3rd burst is the same geographical location in both products
+        # here, by "chance", the 4th burst is the same geographical location in both products
         burst_id = 3 
 
         # Now extract the needed metadata
