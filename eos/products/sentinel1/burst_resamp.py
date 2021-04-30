@@ -1,36 +1,47 @@
 import numpy as np
 from eos.sar import regist, orbit
 
-
-def find_nearest_index(l, x):
-    """Find the index of the item closest to a point in a list of floats.
+def burst_resample_from_meta(burst_meta, dst_shape, matrix, **kwargs):
+    """Create a Sentinel1BurstResample instance from a Sentinel1Model instance and 
+    additional parameters. 
 
 
     Parameters
     ----------
-    l : list of floats
-        List where we need to search for closest parameter.
-    x : float
-        Target point value.
+    burst_meta : dict
+        Metadata of the burst to be resampled. 
+    dst_shape : tuple
+        (h, w) shape of the destination burst.
+    matrix : ndarray
+        Affine registration matrix.
+    **kwargs : 
+        Additional key word arguments to 
+        pass to the constructor of Sentinel1BurstResample.
 
     Returns
     -------
-    best_index : int
-        Index in the list where the best match 
-        (min absolute deviation) was found.
+    Sentinel1BurstResample
+        Instance that can be used to resample the complex burst array.
 
     """
-    best_index = 0
-    best_distance = np.inf
-    for i, v in enumerate(l):
-        d = np.abs(v - x)
-        if d < best_distance:
-            best_index = i
-            best_distance = d
-    return best_index
+    return Sentinel1BurstResample(burst_meta['burst_roi'], dst_shape, matrix,
+                           burst_meta['lines_per_burst'],
+                           burst_meta['samples_per_burst'],
+                           burst_meta['azimuth_frequency'],
+                           burst_meta['range_frequency'],
+                           burst_meta['slant_range_time'],
+                           burst_meta['burst_times'],
+                           burst_meta['az_fm_times'],
+                           burst_meta['az_fm_info'],
+                           burst_meta['dc_estimate_time'],
+                           burst_meta['dc_estimate_t0'],
+                           burst_meta['dc_estimate_poly'],
+                           burst_meta['steering_rate'],
+                           burst_meta['wave_length'],
+                           burst_meta['state_vectors'],
+                           **kwargs)
 
-
-class S1BurstResample(regist.ComplexResample):
+class Sentinel1BurstResample(regist.ComplexResample):
     '''
     Resample a complex Sentinel1 burst. 
     For more info: 
@@ -356,45 +367,29 @@ def vrepeat(arr, h):
     """
     return np.repeat(arr.reshape(1, -1), repeats=h, axis=0)
 
-
-def s1resample_from_s1m(model, burst, dst_shape, matrix, **kwargs):
-    """Create a S1BurstResample instance from a Sentinel1Model instance and 
-    additional parameters. 
+def find_nearest_index(l, x):
+    """Find the index of the item closest to a point in a list of floats.
 
 
     Parameters
     ----------
-    model : s1m.Sentinel1Model
-        Model of the burst to be resampled. 
-    burst : int
-        Id of the burst in the s1m model.
-    dst_shape : tuple
-        (h, w) shape of the destination burst.
-    matrix : ndarray
-        Affine registration matrix.
-    **kwargs : 
-        Additional key word arguments to 
-        pass to the constructor of S1BurstResample.
+    l : list of floats
+        List where we need to search for closest parameter.
+    x : float
+        Target point value.
 
     Returns
     -------
-    S1BurstResample
-        Instance that can be used to resample the complex burst array.
+    best_index : int
+        Index in the list where the best match 
+        (min absolute deviation) was found.
 
     """
-    return S1BurstResample(model.burst_rois[burst], dst_shape, matrix,
-                           model.lines_per_burst,
-                           model.samples_per_burst,
-                           model.azimuth_frequency,
-                           model.range_frequency,
-                           model.slant_range_time,
-                           model.burst_times[burst],
-                           model.az_fm_times,
-                           model.az_fm_info,
-                           model.dc_estimate_time,
-                           model.dc_estimate_t0,
-                           model.dc_estimate_poly,
-                           model.steering_rate,
-                           model.wave_length,
-                           model.state_vectors,
-                           **kwargs)
+    best_index = 0
+    best_distance = np.inf
+    for i, v in enumerate(l):
+        d = np.abs(v - x)
+        if d < best_distance:
+            best_index = i
+            best_distance = d
+    return best_index
