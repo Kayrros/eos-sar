@@ -67,7 +67,7 @@ def affine_transformation(src, dst):
 
 def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
                outfile=None):
-    """ Query dem points. 
+    """Query dem points. 
 
 
     Parameters
@@ -98,10 +98,11 @@ def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
 
     Notes
     -----
-    Due to multidem current implementation, only  multidem_config['datum'] == "ellipsoidal"
+    Due to multidem current implementation, only datum == "ellipsoidal"
     is accepted at the moment
 
     """
+    assert datum == "ellipsoidal", "Multidem only supports crs for ellipsoidal datum"
     # burst approx bbox
     lons = [P[0] for P in primary_model.approx_geom]
     lats = [P[1] for P in primary_model.approx_geom]
@@ -131,7 +132,7 @@ def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
 
 def orbital_registration(row_primary, col_primary, secondary_model,
                          x, y, raster, crs):
-    """Compute registration matrix between primary and secondary model 
+    """Compute registration matrix between primary and secondary model.
 
 
     Parameters
@@ -173,16 +174,16 @@ def orbital_registration(row_primary, col_primary, secondary_model,
     return matrix
 
 
-def apply_affine(matrix, src_array, destination_array_shape, order=3):
-    """Resamples an image with the provided matrix using the spline interpolation
+def apply_affine(src_array, matrix, destination_array_shape, order=3):
+    """Resamples an image with the provided matrix using the spline interpolation.
 
 
     Parameters
     ----------
-    matrix : 3x3 ndarray
-        Inverse transform matrix from destination to source frame.
     src_array : ndarray
         Image to be resampled, single band, complex64 support available.
+    matrix : 3x3 ndarray
+        Inverse transform matrix from destination to source frame.
     destination_array_shape : tuple
         (h, w) of destination image frame.
     order : int, optional
@@ -198,23 +199,23 @@ def apply_affine(matrix, src_array, destination_array_shape, order=3):
 
         h, w = src_array.shape
 
-        crop = src_array.copy(order='C')  # ensures contiguous data and C order
-        crop = crop.view(dtype=np.float32)  # now data is float
-        crop = crop.reshape([h, w, 2])  # now data is float2
+        img = src_array.copy(order='C')  # ensures contiguous data and C order
+        img = img.view(dtype=np.float32)  # now data is float
+        img = img.reshape([h, w, 2])  # now data is float2
 
-        crop1 = ndimage.affine_transform(
-            input=crop[:, :, 0], matrix=matrix, order=order,
+        real = ndimage.affine_transform(
+            input=img[:, :, 0], matrix=matrix, order=order,
             output_shape=destination_array_shape, cval=np.nan)
 
-        crop2 = ndimage.affine_transform(
-            input=crop[:, :, 1], matrix=matrix, order=order,
+        imag = ndimage.affine_transform(
+            input=img[:, :, 1], matrix=matrix, order=order,
             output_shape=destination_array_shape, cval=np.nan)
 
         h, w = destination_array_shape
 
         resampled = np.zeros((h, w, 2), dtype=np.float32)
-        resampled[:, :, 0] = crop1
-        resampled[:, :, 1] = crop2
+        resampled[:, :, 0] = real
+        resampled[:, :, 1] = imag
 
         resampled.reshape((h, w*2))
         resampled = resampled.view(dtype=np.complex64).squeeze()
@@ -269,8 +270,8 @@ class ComplexResample(abc.ABC):
         deramped = self.deramp(src_array)
 
         # resample
-        mat = self.matrix
-        dst_array = apply_affine(mat, deramped, self.dst_shape, order=order)
+        dst_array = apply_affine(
+            deramped, self.matrix, self.dst_shape, order=order)
 
         # reramp
         return self.reramp(dst_array)
