@@ -1,10 +1,11 @@
-from eos.products import sentinel1
-from eos.sar import range_doppler
 import numpy as np
 import pyproj
 import s1m
+
 import sys
 sys.path.append('../')
+from eos.products import sentinel1
+from eos.sar import range_doppler
 
 
 xml_path = './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
@@ -33,15 +34,17 @@ np.testing.assert_allclose(cols_pred, cols, atol=1e-3)
 np.testing.assert_allclose(rows_pred, rows, atol=1e-3)
 
 # verify projection vs s1m projection
-s1_cols_pred, s1_row_pred, s1_i_pred = s1m.main_projection(s1model, lon, lat,
-                                                            alt, error_when_outside=False,
-                                                            apd_correction=True,
-                                                            bistatic_correction=True,
-                                                            verbose=False)
+s1_cols_pred, s1_row_pred, s1_i_pred = s1model.projection(lon, lat, alt, 
+                                                          deburst = True, 
+                                                          flip = False, 
+                                                          error_when_outside=False,
+                                                          apd_correction=True,
+                                                          bistatic_correction=True)
 
 # check similarity of x coordinate referenced to first col in raster
+# Since projection algo changed, we allow a big tolerance
 np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                            cols_pred + bmod.burst_roi[0])
+                            cols_pred + bmod.burst_roi[0], atol = 1e-2)
 
 # check similarity of azimuth time
 azt_pred, _ = bmod.to_azt_rng(rows_pred, cols_pred)
