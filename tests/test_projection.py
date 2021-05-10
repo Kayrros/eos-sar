@@ -11,10 +11,11 @@ from eos.sar import range_doppler
 
 xml_path = './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
 s1model = s1m.Sentinel1Model(xml=xml_path)
-bmod = sentinel1.burst_model.burst_model_from_s1m(
-    s1model, burst=1, apd_correction=True,
-    bistatic_correction=True)
-
+burst_meta = sentinel1.metadata.fill_meta(s1model, bid=1)
+# create a Sentinel1BurstModel
+bmod = sentinel1.burst_model.burst_model_from_burst_meta(burst_meta, 
+                                                        bistatic_correction=True,
+                                                        apd_correction=True)
 # create a grid of points
 x, y, w, h = bmod.burst_roi
 Cols, Rows = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
