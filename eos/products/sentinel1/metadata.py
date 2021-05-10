@@ -1,5 +1,9 @@
+"""Fill needed metadata of a burst."""
+
+
 def fill_meta(model, bid):
-    """
+    """Fill burst metadata from Sentinel1Model instance.
+
     Parameters
     ----------
     model : Sentinel1Model instance

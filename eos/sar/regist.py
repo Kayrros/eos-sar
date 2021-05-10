@@ -1,3 +1,4 @@
+"""Generic registration functions."""
 import numpy as np
 from scipy import ndimage
 import abc
@@ -6,7 +7,6 @@ import multidem
 
 def affine_transformation(src, dst):
     """Estimate a 2D affine transform from a list of point correspondences.
-
 
     Parameters
     ----------
@@ -28,10 +28,10 @@ def affine_transformation(src, dst):
     edition).
 
     """
-
     # check that there are at least 3 points
     if len(src) < 3:
-        print("ERROR: estimation.affine_transformation needs 3 correspondences")
+        print("ERROR: estimation.affine_transformation\
+              needs 3 correspondences")
         return np.eye(3)
 
     # translate the input points so that the centroid is at the origin.
@@ -67,17 +67,16 @@ def affine_transformation(src, dst):
 
 def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
                outfile=None):
-    """Query dem points. 
-
+    """Query dem points.
 
     Parameters
     ----------
     primary_model : eos.sar.model.SensorModel
         Sensor model for the primary image.
     source : str
-        DEM source "SRTM30" (default), "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI" .
+        DEM source "SRTM30" (default), "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI"
     datum : str
-        "ellipsoidal" (height above WGS84 ellipsoid, default), or 
+        "ellipsoidal" (height above WGS84 ellipsoid, default), or
         "orthometric" (height above EGM96 geoid).
     outfile : string, optional
         Path to save the dem if passed as argument.
@@ -102,7 +101,8 @@ def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
     is accepted at the moment
 
     """
-    assert datum == "ellipsoidal", "Multidem only supports crs for ellipsoidal datum"
+    assert datum == "ellipsoidal", "Multidem\
+        only supports crs for ellipsoidal datum"
     # burst approx bbox
     lons = [P[0] for P in primary_model.approx_geom]
     lats = [P[1] for P in primary_model.approx_geom]
@@ -126,14 +126,15 @@ def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
     row = row + 0.5
     # to earth coordinates
     x, y = transform * (col, row)
-
-    return x.reshape(raster.shape), y.reshape(raster.shape), raster, transform, crs
+    # reshape
+    x = x.reshape(raster.shape)
+    y = y.reshape(raster.shape)
+    return x, y, raster, transform, crs
 
 
 def orbital_registration(row_primary, col_primary, secondary_model,
                          x, y, raster, crs):
     """Compute registration matrix between primary and secondary model.
-
 
     Parameters
     ----------
@@ -160,7 +161,8 @@ def orbital_registration(row_primary, col_primary, secondary_model,
 
     """
     # project in the secondary image
-    # some points will exceed the burst bounds, however this does not harm registration
+    # some points will exceed the burst bounds,
+    # however this does not harm registration
     row_secondary, col_secondary, _ = secondary_model.projection(
         x.ravel(), y.ravel(), raster.ravel(), crs=crs)
 
@@ -175,8 +177,8 @@ def orbital_registration(row_primary, col_primary, secondary_model,
 
 
 def apply_affine(src_array, matrix, destination_array_shape, order=3):
-    """Resamples an image with the provided matrix using the spline interpolation.
-
+    """Resample an image with the provided matrix \
+        using the spline interpolation.
 
     Parameters
     ----------
@@ -229,10 +231,11 @@ def apply_affine(src_array, matrix, destination_array_shape, order=3):
 
 
 class ComplexResample(abc.ABC):
-    """ComplexResample is an abstract class that defines the expected method of
-    any complex resampling mechanism. It is expected that this abstract will be implemented
-    for each SAR satellite, and for each satellite mode.
-    """
+    """ComplexResample is an abstract class that defines the expected method\
+        of any complex resampling mechanism. It is expected that this abstract\
+        will be implemented for each SAR satellite,\
+        and for each satellite mode."""
+
     src_shape: tuple
     dst_shape: tuple
     matrix: np.ndarray
@@ -250,8 +253,7 @@ class ComplexResample(abc.ABC):
         pass
 
     def resample(self, src_array, order=3):
-        """
-
+        """.
 
         Parameters
         ----------
@@ -264,7 +266,6 @@ class ComplexResample(abc.ABC):
         -------
         ndarray
             Resampled complex image.
-
         """
         # deramp
         deramped = self.deramp(src_array)

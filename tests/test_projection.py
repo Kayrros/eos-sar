@@ -8,14 +8,15 @@ from eos.products import sentinel1
 from eos.sar import range_doppler
 
 
-
-xml_path = './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
+xml_path =\
+  './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
 s1model = s1m.Sentinel1Model(xml=xml_path)
 burst_meta = sentinel1.metadata.fill_meta(s1model, bid=1)
 # create a Sentinel1BurstModel
-bmod = sentinel1.burst_model.burst_model_from_burst_meta(burst_meta, 
-                                                        bistatic_correction=True,
-                                                        apd_correction=True)
+bmod = sentinel1.burst_model.burst_model_from_burst_meta(
+                                            burst_meta,
+                                            bistatic_correction=True,
+                                            apd_correction=True)
 # create a grid of points
 x, y, w, h = bmod.burst_roi
 Cols, Rows = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
@@ -36,19 +37,20 @@ np.testing.assert_allclose(cols_pred, cols, atol=1e-3)
 np.testing.assert_allclose(rows_pred, rows, atol=1e-3)
 
 # verify projection vs s1m projection
-s1_cols_pred, s1_row_pred, s1_i_pred = s1m.main_projection(s1model, lon, lat,
-                                                            alt, error_when_outside=False,
-                                                            deburst = True, 
-                                                            flip = False, 
-                                                            apd_correction=True,
-                                                            bistatic_correction=True,
-                                                            verbose=False)
+s1_cols_pred, s1_row_pred, s1_i_pred = s1m.main_projection(
+                                            s1model, lon, lat,
+                                            alt, error_when_outside=False,
+                                            deburst=True,
+                                            flip=False,
+                                            apd_correction=True,
+                                            bistatic_correction=True,
+                                            verbose=False)
 
 # check similarity of x coordinate referenced to first col in raster
-# atol is set to a big value when testing against s1m master branch 
+# atol is set to a big value when testing against s1m master branch
 # because the orbit interpolation and projection is done differently
 np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                            cols_pred + bmod.burst_roi[0], atol = 1e-2)
+                           cols_pred + bmod.burst_roi[0], atol=1e-2)
 
 
 # check similarity of azimuth time
@@ -70,21 +72,25 @@ assert isinstance(
 # check iterative_projection
 transform = pyproj.Transformer.from_crs(
             'epsg:4326', 'epsg:4978', always_xy=True)
-gx, gy, gz = transform.transform(lon, lat, alt )
+gx, gy, gz = transform.transform(lon, lat, alt)
 azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx, gy, gz)
 assert isinstance(
-    azt, np.ndarray), "vectorized iterative projection func failed on array input"
+ azt, np.ndarray), "vectorized iterative projection func failed on array input"
 
-gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, np.zeros_like(alt),
-                                                  (gx + 10, gy + 2, gz + 3)) 
-assert isinstance(
-    gx, np.ndarray), "vectorized iterative localization func failed on array input"
+gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng,
+                                                  np.zeros_like(alt),
+                                                  (gx + 10, gy + 2, gz + 3))
+assert isinstance(gx, np.ndarray), \
+    "vectorized iterative localization func failed on array input"
 
-azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
-assert isinstance(
-    azt, float), "vectorized iterative projection func failed on scalar input"
+azt, rng, i = range_doppler.iterative_projection(bmod.orbit,
+                                                 gx[0], gy[0], gz[0])
+assert isinstance(azt, float),\
+    "vectorized iterative projection func failed on scalar input"
+
+init_gxyz = (gx[0] + 10, gy[0] + 2, gz[0] + 3)
 
 gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, 0,
-                                                  (gx[0] + 10, gy[0] + 2, gz[0] + 3)) 
+                                                  init_gxyz)
 assert isinstance(
     gx, float), "vectorized iterative localization func failed on scalar input"

@@ -1,11 +1,11 @@
+"""IO for the burst array."""
 import rasterio
 
 # read the burst arrays
 
 
 def read_burst(tiff_path, burst_roi):
-    '''
-    
+    """Read burst.
 
     Parameters
     ----------
@@ -19,7 +19,7 @@ def read_burst(tiff_path, burst_roi):
     burst_array : ndarray
         burst np.complex64 image.
 
-    '''
+    """
     x, y, w, h = burst_roi
     with rasterio.open(tiff_path) as db:
         burst_array = db.read(1, window=(

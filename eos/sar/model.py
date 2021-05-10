@@ -1,14 +1,17 @@
+"""Base class for all Sensor Models."""
+
 import abc
 
 
 class SensorModel(abc.ABC):
-    """SenSorModel is an abstract class that defines the expected method of
-    any eos sensor model. It is expected that this abstract will be implemented
-    for each SAR satellite.
-    """
+    """SensorModel is an abstract class that defines the expected method of\
+    any eos sensor model. It is expected that this abstract will be \
+    implemented for each SAR satellite."""
+
     azimuth_frequency: float
     range_frequency: float
-    approx_geom: list 
+    approx_geom: list
+
     @abc.abstractmethod
     def to_azt_rng(self, row, col):
         pass

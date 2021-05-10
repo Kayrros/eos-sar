@@ -1,3 +1,5 @@
+"""Constants module."""
+
 # light speed in m/s
 LIGHT_SPEED_M_PER_SEC = 299792458
 
