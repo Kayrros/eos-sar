@@ -1,6 +1,6 @@
 """Generic registration functions."""
 import numpy as np
-from scipy import ndimage
+import cv2
 import abc
 import multidem
 
@@ -176,9 +176,8 @@ def orbital_registration(row_primary, col_primary, secondary_model,
     return matrix
 
 
-def apply_affine(src_array, matrix, destination_array_shape, order=3):
-    """Resample an image with the provided matrix \
-        using the spline interpolation.
+def apply_affine(src_array, matrix, destination_array_shape):
+    """Resamples an image with the provided matrix using Lanczos interpolation.
 
     Parameters
     ----------
@@ -188,8 +187,6 @@ def apply_affine(src_array, matrix, destination_array_shape, order=3):
         Inverse transform matrix from destination to source frame.
     destination_array_shape : tuple
         (h, w) of destination image frame.
-    order : int, optional
-        order of the spline interpolation used. The default is 3.
 
     Returns
     -------
@@ -197,35 +194,32 @@ def apply_affine(src_array, matrix, destination_array_shape, order=3):
         Resampled image.
 
     """
+    # parameters for warpAffine
+    dsize = destination_array_shape[::-1]
+    flags = cv2.INTER_LANCZOS4 | cv2.WARP_INVERSE_MAP
+    M = np.zeros((2, 3))
+    # swap x and y for opencv
+    M[0, 0] = matrix[1, 1]
+    M[0, 1] = matrix[1, 0]
+    M[0, 2] = matrix[1, 2]
+    M[1, 0] = matrix[0, 1]
+    M[1, 1] = matrix[0, 0]
+    M[1, 2] = matrix[0, 2]
+
     if src_array.dtype == np.complex64:
-
         h, w = src_array.shape
-
         img = src_array.copy(order='C')  # ensures contiguous data and C order
         img = img.view(dtype=np.float32)  # now data is float
         img = img.reshape([h, w, 2])  # now data is float2
 
-        real = ndimage.affine_transform(
-            input=img[:, :, 0], matrix=matrix, order=order,
-            output_shape=destination_array_shape, cval=np.nan)
-
-        imag = ndimage.affine_transform(
-            input=img[:, :, 1], matrix=matrix, order=order,
-            output_shape=destination_array_shape, cval=np.nan)
+        resampled = cv2.warpAffine(img, M, dsize, flags=flags, borderValue=np.nan)
 
         h, w = destination_array_shape
-
-        resampled = np.zeros((h, w, 2), dtype=np.float32)
-        resampled[:, :, 0] = real
-        resampled[:, :, 1] = imag
-
         resampled.reshape((h, w*2))
         resampled = resampled.view(dtype=np.complex64).squeeze()
 
     else:
-        resampled = ndimage.affine_transform(
-            input=src_array, matrix=matrix, order=order,
-            output_shape=destination_array_shape, cval=np.nan)
+        resampled = cv2.warpAffine(src_array, M, dsize, flags=flags, borderValue=np.nan)
 
     return resampled
 
@@ -252,15 +246,13 @@ class ComplexResample(abc.ABC):
         # and should yield a phase for each point in this grid
         pass
 
-    def resample(self, src_array, order=3):
+    def resample(self, src_array):
         """.
 
         Parameters
         ----------
         src_array : ndarray
             src image.
-        order : int, optional
-            spline order for resampling. The default is 3.
 
         Returns
         -------
@@ -271,8 +263,7 @@ class ComplexResample(abc.ABC):
         deramped = self.deramp(src_array)
 
         # resample
-        dst_array = apply_affine(
-            deramped, self.matrix, self.dst_shape, order=order)
+        dst_array = apply_affine(deramped, self.matrix, self.dst_shape)
 
         # reramp
         return self.reramp(dst_array)
