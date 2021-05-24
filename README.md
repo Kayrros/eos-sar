@@ -9,10 +9,11 @@ Currently, algorithms specific to **Sentinel1** bursts have been implemented.
 This allows the user to project a 3D point into the burst, and vice-versa. 
 
 For localization:
-
-    # create a Sentinel1Model
-    s1model = s1m.Sentinel1Model(xml=xml_path)
-    burst_meta = eos.products.sentinel1.metadata.fill_meta(s1model, burst_id)
+    # read the content of the xml 
+    with open(xml_path) as f: 
+        xml_content = f.read()
+    # extract the burst metadata
+    burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content, burst_id)
     # create a Sentinel1BurstModel
     bmod = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(burst_meta, 
                                                                         degree=11,
@@ -56,17 +57,19 @@ Suppose we have:
                         's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
                     ]
 
-        # let's build s1m.Sentinel1Model instances 
-        primary_s1m = s1m.Sentinel1Model(xml_paths[0])
-        secondary_s1m = s1m.Sentinel1Model(xml_paths[1])
+        # read the xmls as strings
+        xml_content = []
+        for xml_p in xml_paths:
+            with open(xml_p) as f: 
+                xml_content.append(f.read())
 
         # burst id in subswath
         # here, by "chance", the 4th burst is the same geographical location in both products
         burst_id = 3 
 
         # Now extract the needed metadata
-        primary_burst_meta = eos.products.sentinel1.metadata.fill_meta(primary_s1m, bid = burst_id)
-        secondary_burst_meta = eos.products.sentinel1.metadata.fill_meta(secondary_s1m, bid = burst_id)
+        primary_burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content[0], bid = burst_id)
+        secondary_burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content[1], bid = burst_id)
 
         # Now instantiate burst_model instances for projection/localization
         primary_burst_model = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(primary_burst_meta)
@@ -80,11 +83,16 @@ Suppose we have:
                                                                 datum = 'ellipsoidal', 
                                                                 outfile = os.path.join(output_folder, 'dem.tif')
                                                                 )
+        # you can mask some pixels to speed up the projection
+        mask = np.random.binomial(n=1, p=0.1, size=x.shape).astype(bool)
+        x = x[mask]
+        y = y[mask]
+        raster = raster[mask]
         # project in primary 
         row_primary, col_primary, _ = primary_burst_model.projection(x.ravel(), y.ravel(), raster.ravel(), crs = crs)
 
         # project in secondary and estimate registration
-        A = eos.sar.regist.orbital_registration( row_primary, col_primary,
+        A = eos.sar.regist.orbital_registration(row_primary, col_primary,
                                                 secondary_burst_model, x, y, raster, crs
                                                 ) 
         # Now read the secondary array 

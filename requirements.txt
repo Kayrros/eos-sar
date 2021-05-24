@@ -1,4 +1,7 @@
 numpy
-s1m
+datetime
+python-dateutil
+xmltodict
 pyproj
 opencv-python-headless
+multidem
