@@ -1,4 +1,5 @@
-"""Implementation of Newhall, Numerical representation of planetary ephemerides.
+"""Implementation of Newhall, Numerical \
+representation of planetary ephemerides.
 
 It's the JPL way of representing and interpolating orbits using Chebyshev
 polynomials. Same notations are used. Additional notations are:
@@ -12,7 +13,7 @@ import numpy as np
 
 
 def chebpoly(order):
-    """Compute the coefficients of a Chebyshev polynomial of a given order
+    """Compute the coefficients of a Chebyshev polynomial of a given order.
 
     Parameters
     ----------
@@ -33,8 +34,8 @@ def chebpoly(order):
 
 
 def chebderpoly(order):
-    """Compute the coefficients of the derivative of
-    a Chebyshev polynomial of a given order
+    """Compute the coefficients of the derivative of a Chebyshev \
+        polynomial of a given order.
 
     Parameters
     ----------
@@ -57,7 +58,7 @@ chebderpolys = [chebderpoly(i) for i in range(18)]
 
 
 def matrix_T(N, samples):
-    """Compute the matrix T
+    """Compute the matrix T.
 
     Parameters
     ----------
@@ -82,8 +83,8 @@ def matrix_T(N, samples):
 
 
 def matrix_W(K):
-    """Compute the weight matrix to give lesser weight to velocity during the
-    least square resolution
+    """Compute the weight matrix to give lesser weight to velocity during the\
+    least square resolution.
 
     Parameters
     ----------
@@ -104,7 +105,7 @@ def matrix_W(K):
 
 
 def matrix_S(N):
-    """S is the upper right block of C1
+    """S is the upper right block of C1.
 
     Parameters
     ----------
@@ -127,7 +128,7 @@ def matrix_S(N):
 
 
 def matrix_C1(T, W, S):
-    """Compute the matrix C1
+    """Compute the matrix C1.
 
     Parameters
     ----------
@@ -144,7 +145,7 @@ def matrix_C1(T, W, S):
 
 
 def matrix_C2(T, W, K):
-    """Compute the matrix C2
+    """Compute the matrix C2.
 
     Parameters
     ----------
@@ -169,7 +170,7 @@ def matrix_C2(T, W, K):
 
 
 def matrix_f(state_vectors):
-    """Compute the matrix f
+    """Compute the matrix f.
 
     Parameters
     ----------
@@ -204,7 +205,7 @@ def matrix_f(state_vectors):
 
 
 def matrix_A(C, f, N):
-    """Compute the matrix of coefficients a_n
+    """Compute the matrix of coefficients a_n.
 
     Parameters
     ----------
@@ -226,7 +227,7 @@ def matrix_A(C, f, N):
 
 
 def poly_B(A, N):
-    """Create the interpolation polynomial
+    """Create the interpolation polynomial.
 
     Parameters
     ----------
@@ -256,7 +257,7 @@ def poly_B(A, N):
 
 
 def build_cheb_interp(state_vectors, N):
-    """
+    """.
 
     Parameters
     ----------
@@ -296,7 +297,7 @@ def build_cheb_interp(state_vectors, N):
 
 
 def evaluate_cheb_interp(t, coeffs, domain):
-    """Evaluate the interpolation on positions
+    """Evaluate the interpolation on positions.
 
     Parameters
     ----------
@@ -307,7 +308,8 @@ def evaluate_cheb_interp(t, coeffs, domain):
 
     Returns
     -------
-
+    ndarray:
+        Evaluated chebychev polynomial
     """
     t0, t1 = domain
 
@@ -317,19 +319,19 @@ def evaluate_cheb_interp(t, coeffs, domain):
         tensor=True
     ).T
 
+
 def get_diff_coeffs(coeffs, domain, der):
-    """Compute the derivative coeffs
-    used for speed and acceleration computation.
+    """Compute the derivative coeffs used\
+        for speed and acceleration computation.
 
     Parameters
     ----------
     coeffs: ndarray
         Matrix of a_n.
     domain: tuple of float.
-    
-    der: int 
+    der: int
         Order of the derivative.
-        
+
     Returns
     -------
     Coefficients for the polynomial of the derivative

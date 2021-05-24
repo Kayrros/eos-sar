@@ -1,7 +1,6 @@
-"""
-Coordinates conversion between image (row/column denoted as `row` and `col`) and
-sar (azimuth time and range denoted as `azt` and `rng`).
-"""
+"""Coordinates conversion between image (row/column denoted as `row` \
+    and `col`) and sar (azimuth time and range denoted as `azt` and `rng`)."""
+
 from eos.sar import const
 
 
