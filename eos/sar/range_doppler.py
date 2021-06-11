@@ -1,32 +1,34 @@
+"""Range Doppler physical sensor model for projection and localization."""
+
 import numpy as np
 from eos.sar import const
 
 
-def iterative_projection(orbit, gx, gy, gz, azt_init=None, max_iterations=20, tol=1.2*1e-7):
+def iterative_projection(orbit, gx, gy, gz, azt_init=None,
+                         max_iterations=20, tol=1.2*1e-7):
     """Solves the point of closest approach using the Newton-Raphson algorithm.
-    
+
     Parameters
     ----------
-    orbit: fitted Orbit instance 
-    gx, gy, gz: Iterable  
+    orbit: fitted Orbit instance
+    gx, gy, gz: Iterable
         Geocentric coordinates
     azt_init: Iterable
            Initial guess for the azimuth time, same len as x
     max_iterations: int
             Maximum number of iterations for reaching the solution
-    tol: float 
-            Tolerance in seconds of azimuth time precision on the orbit 
+    tol: float
+            Tolerance in seconds of azimuth time precision on the orbit
             below which the iterations stop
     Returns
     ------
-        azt: ndarray 
-            time of closest approach 
-        rng: ndarray 
+        azt: ndarray
+            time of closest approach
+        rng: ndarray
             distance to sensor
-        i: ndarray 
+        i: ndarray
             incidence angle
     """
-
     points = np.column_stack((gx, gy, gz))
     if azt_init is None:
         # determine which state vectors to use
@@ -55,22 +57,23 @@ def iterative_projection(orbit, gx, gy, gz, azt_init=None, max_iterations=20, to
     os = np.linalg.norm(closest_positions, axis=1)
     rng = np.linalg.norm(closest_positions - points, axis=1)
     i = np.arccos((os**2 - op**2 - rng**2) / (2 * op * rng))
-    
+
     # support for scalar input
-    if len(azt_curr) == 1: 
+    if len(azt_curr) == 1:
         return azt_curr[0], rng[0], i[0]
-    else: 
-        return azt_curr, rng, i
+
+    return azt_curr, rng, i
 
 
 def get_E_dE(azt, orbit, M):
-    """
+    """Get the function that needs to be 0 and its derivative.
+
     Parameters
     ----------
     azt : ndarray (N, )
         Azimuth times along the orbit (N, ) np.ndarray.
-    orbit : Orbit instance 
-    M : ndarray (N, 3 ) 
+    orbit : Orbit instance
+    M : ndarray (N, 3 )
         Points in geocentric coordinates.
 
     Returns
@@ -82,8 +85,9 @@ def get_E_dE(azt, orbit, M):
 
     Notes
     -----
-    In this function is computed E = V(t).(M - Orbit(t)) the scalar product of the speed
-    with the LOS vector and dE/dt  = acc(t).(M - Orbit(t))  - ||V(t)||^2.
+    In this function is computed E = V(t).(M - Orbit(t)) the scalar product of
+    the speed with the LOS vector and
+    dE/dt  = acc(t).(M - Orbit(t))  - ||V(t)||^2.
     Formula is taken from [0]
 
     References
@@ -111,26 +115,28 @@ def get_E_dE(azt, orbit, M):
 # localization functions
 
 
-def iterative_localization(orbit, azt, rng, alt, gxyz_init, max_iterations=10000, tol=0.01):
-    """Solves the Range-Doppler equations for a set of points using the Newton-Raphson method
+def iterative_localization(orbit, azt, rng, alt, gxyz_init,
+                           max_iterations=10000, tol=0.01):
+    """Solves the Range-Doppler equations for a set of points using \
+        the Newton-Raphson method.
 
     Parameters
     ----------
     orbit: fitted Orbit instance
-    azt: ndarray (N,) or float 
-        Time of closest approach 
-    rng: ndarray (N,) or float 
+    azt: ndarray (N,) or float
+        Time of closest approach
+    rng: ndarray (N,) or float
         Distance to sensor
     alt: ndarray (N,) or float
-        Height at which we localize the point 
-    gxyz_init: tuple (gx (N,), gy (N,), gz(N,) ) 
-        Initial point from which to begin iterations 
+        Height at which we localize the point
+    gxyz_init: tuple (gx (N,), gy (N,), gz(N,))
+        Initial point from which to begin iterations
     max_iterations: int
         Maximum number of iterations of Newton-Raphson
     tol: float
         Tolerance on the step in gx, gy, gz (in meters)
-        iterations stop when all steps dgx, dgy and dgz are below tol 
-    Returns: 
+        iterations stop when all steps dgx, dgy and dgz are below tol
+    Returns:
         gx, gy, gz: ndarray (N,)
            Localized 3D point in geocentric coordinates
 
@@ -138,19 +144,19 @@ def iterative_localization(orbit, azt, rng, alt, gxyz_init, max_iterations=10000
     -----
     Denote P = (gx, gy, gz) the 3D point in geocentric coordinates
     F(P) = (f(P), g(P), h(P))
-    where 
-        f(P) = satV.(P - satPos) 
+    where
+        f(P) = satV.(P - satPos)
             denotes the dot product between speed and the LOS
             f(P) = 0 means that the point is in the plane orthogonal to speed
-        g(P) = (P - satPos)**2 - rdist**2 
+        g(P) = (P - satPos)**2 - rdist**2
             denotes LOS distance squared minus range squared
             g(P) = 0 means LOS distance equals the range
-        h(P) = (gx^2 + gy^2)/(a+h)^2 + (gz^2)/(b+h)^2 - 1 
-            denotes the ellipsoid above the earth with height h  
+        h(P) = (gx^2 + gy^2)/(a+h)^2 + (gz^2)/(b+h)^2 - 1
+            denotes the ellipsoid above the earth with height h
             h(P) = 0 means that the point is on the ellipsoid (at height h)
     To find the 3D position of the point
-    We need to find the root where F(P) = 0 
-    Linearization with Taylor expansion:  
+    We need to find the root where F(P) = 0
+    Linearization with Taylor expansion:
          Find the P that solve -F(P) = delta*(P-P0)
          where delta is the derivative matrix
 
@@ -170,8 +176,8 @@ def iterative_localization(orbit, azt, rng, alt, gxyz_init, max_iterations=10000
     # init
     ell_axis = np.array([const.EARTH_WGS84_AXIS_A_M,
                          const.EARTH_WGS84_AXIS_A_M,
-                         const.EARTH_WGS84_AXIS_B_M]).reshape(1,3)
-    ell_axis = ell_axis + np.reshape(alt, (N, 1)) # (N, 3)
+                         const.EARTH_WGS84_AXIS_B_M]).reshape(1, 3)
+    ell_axis = ell_axis + np.reshape(alt, (N, 1))  # (N, 3)
     # mask on points on which to iterate
     index = np.ones((N,), dtype=bool)
     step = np.ones((N, 3))
@@ -188,13 +194,14 @@ def iterative_localization(orbit, azt, rng, alt, gxyz_init, max_iterations=10000
 
 
 def get_step(P, satPos, satV, rng, ell_axis):
-    """Computes the Newton-Raphson step of the Range-Doppler localization
-    algorithm on an array of points 
+    """Compute the Newton-Raphson step of the Range-Doppler localization\
+    algorithm on an array of points.
 
     Parameters
     ----------
     P : ndarray (N, 3)
-        Geocentric coordinates of points. Current solution of the Range-Doppler equations 
+        Geocentric coordinates of points. Current solution of
+        the Range-Doppler equations
     satPos : ndarray (N, 3)
         Satellite position for each point.
     satV : ndarray (N, 3)
@@ -202,13 +209,14 @@ def get_step(P, satPos, satV, rng, ell_axis):
     rng : ndarray (N, )
         the range of each point.
     ell_axis : ndarray (N, 3)
-        Earth ellipsoid axis in the x, y, z direction, incremented by the altitude of each point
+        Earth ellipsoid axis in the x, y, z direction,
+        incremented by the altitude of each point
 
     Returns
     -------
     step : ndarray (N, 3)
-        Step to take in geocentric coordinates to move towards the optimal solution.
-
+        Step to take in geocentric coordinates to move
+        towards the optimal solution.
     """
     N = len(P)
     F = np.zeros((N, 3))

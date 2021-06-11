@@ -1,14 +1,16 @@
+"""Encapsulation of ephemerides position and speed interpolation."""
+
 from eos.sar import cheb
 
 
 class Orbit:
-    """Orbit object encapsulating the position variation with time,
-    as well as the possibility to get the nth derivative (for speed and acceleration for ex)
-    """
+    """Orbit object encapsulating the position variation with time, \
+    as well as the possibility to get the nth derivative (for speed \
+    and acceleration for ex)."""
 
     def __init__(self, state_vectors, degree=11):
-        """
-        Constructor
+        """Instantiate orbit object.
+
         Parameters
         ----------
         state_vectors: list of dict
@@ -21,9 +23,7 @@ class Orbit:
         self.fit()
 
     def fit(self):
-        """
-        Fit the orbit representation on the samples
-        """
+        """Fit the orbit representation on the samples."""
         self.coeffs = []
         coeffs, self.cheb_domain = cheb.build_cheb_interp(self.sv, self.degree)
         self.coeffs.append(coeffs)
@@ -33,8 +33,9 @@ class Orbit:
                 self.coeffs[-1], self.cheb_domain, der=1))
 
     def evaluate(self, azt, order=0):
-        """Evaluate the nth order derivative of the position of satellite
-            along the orbit at time azt
+        """Evaluate the nth order derivative of the position of satellite\
+            along the orbit at time azt.
+
         Parameters
         ----------
         azt: 1darray (n, )

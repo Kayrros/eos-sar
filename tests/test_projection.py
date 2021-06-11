@@ -1,6 +1,5 @@
 import numpy as np
 import pyproj
-import s1m
 
 import sys
 sys.path.append('../')
@@ -8,12 +7,16 @@ from eos.products import sentinel1
 from eos.sar import range_doppler
 
 
-xml_path = './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
-s1model = s1m.Sentinel1Model(xml=xml_path)
-bmod = sentinel1.burst_model.burst_model_from_s1m(
-    s1model, burst=1, apd_correction=True,
-    bistatic_correction=True)
-
+xml_path =\
+  './data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
+with open(xml_path) as f:
+    xml_content = f.read()
+burst_meta = sentinel1.metadata.fill_meta(xml_content, bid=1)
+# create a Sentinel1BurstModel
+bmod = sentinel1.burst_model.burst_model_from_burst_meta(
+                                            burst_meta,
+                                            bistatic_correction=True,
+                                            apd_correction=True)
 # create a grid of points
 x, y, w, h = bmod.burst_roi
 Cols, Rows = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
@@ -33,25 +36,6 @@ rows_pred, cols_pred, i_pred = bmod.projection(lon, lat, alt)
 np.testing.assert_allclose(cols_pred, cols, atol=1e-3)
 np.testing.assert_allclose(rows_pred, rows, atol=1e-3)
 
-# verify projection vs s1m projection
-s1_cols_pred, s1_row_pred, s1_i_pred = s1model.projection(lon, lat, alt, 
-                                                          deburst = True, 
-                                                          flip = False, 
-                                                          error_when_outside=False,
-                                                          apd_correction=True,
-                                                          bistatic_correction=True)
-
-# check similarity of x coordinate referenced to first col in raster
-# Since projection algo changed, we allow a big tolerance
-np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                            cols_pred + bmod.burst_roi[0], atol = 1e-2)
-
-# check similarity of azimuth time
-azt_pred, _ = bmod.to_azt_rng(rows_pred, cols_pred)
-np.testing.assert_allclose(
-    s1_row_pred/s1model.azimuth_frequency + s1model.burst_times[0][1],
-    azt_pred)
-
 # check ability to query one point
 ptlon, ptlat, ptalt = bmod.localization(rows[0], cols[0], alts[0])
 assert isinstance(
@@ -65,21 +49,25 @@ assert isinstance(
 # check iterative_projection
 transform = pyproj.Transformer.from_crs(
             'epsg:4326', 'epsg:4978', always_xy=True)
-gx, gy, gz = transform.transform(lon, lat, alt )
+gx, gy, gz = transform.transform(lon, lat, alt)
 azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx, gy, gz)
 assert isinstance(
-    azt, np.ndarray), "vectorized iterative projection func failed on array input"
+ azt, np.ndarray), "vectorized iterative projection func failed on array input"
 
-gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, np.zeros_like(alt),
-                                                  (gx + 10, gy + 2, gz + 3)) 
-assert isinstance(
-    gx, np.ndarray), "vectorized iterative localization func failed on array input"
+gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng,
+                                                  np.zeros_like(alt),
+                                                  (gx + 10, gy + 2, gz + 3))
+assert isinstance(gx, np.ndarray), \
+    "vectorized iterative localization func failed on array input"
 
-azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
-assert isinstance(
-    azt, float), "vectorized iterative projection func failed on scalar input"
+azt, rng, i = range_doppler.iterative_projection(bmod.orbit,
+                                                 gx[0], gy[0], gz[0])
+assert isinstance(azt, float),\
+    "vectorized iterative projection func failed on scalar input"
+
+init_gxyz = (gx[0] + 10, gy[0] + 2, gz[0] + 3)
 
 gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, 0,
-                                                  (gx[0] + 10, gy[0] + 2, gz[0] + 3)) 
+                                                  init_gxyz)
 assert isinstance(
     gx, float), "vectorized iterative localization func failed on scalar input"

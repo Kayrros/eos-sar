@@ -1,19 +1,17 @@
+"""Sentinel1 burst model for projection/localization."""
 import numpy as np
 import pyproj
 from eos.sar import model, range_doppler, const, coordinates, orbit
 
 
-def burst_model_from_s1m(s1model, burst, **kwargs):
-    """Create a Sentinel1BurstModel from a s1m.Sentinel1Model
-
+def burst_model_from_burst_meta(burst_meta, **kwargs):
+    """Create a Sentinel1BurstModel from a burst meta dict.
 
     Parameters
     ----------
-    s1model : s1m.Sentinel1Model
-        Object encapsulating the metadata and processing for one Sentinel1 
-        subswath.
-    burst : int
-        burst id in the s1model subswath, 0 based.
+    burst_meta : dict
+        Dict containing all metadata of the burst and sentinel1 product needed
+        for processing
     **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
 
     Returns
@@ -21,20 +19,20 @@ def burst_model_from_s1m(s1model, burst, **kwargs):
     Sentinel1BurstModel instance.
 
     """
-    assert (burst >= 0) and burst < len(
-        s1model.burst_times), "burst id out of range"
-    return Sentinel1BurstModel(s1model.range_frequency,
-                               s1model.azimuth_frequency,
-                               s1model.slant_range_time,
-                               s1model.samples_per_burst,
-                               s1model.burst_times[burst],
-                               s1model.burst_rois[burst],
-                               s1model.burst_lon_lat_bboxes[burst],
-                               s1model.state_vectors,
+    return Sentinel1BurstModel(burst_meta['range_frequency'],
+                               burst_meta['azimuth_frequency'],
+                               burst_meta['slant_range_time'],
+                               burst_meta['samples_per_burst'],
+                               burst_meta['burst_times'],
+                               burst_meta['burst_roi'],
+                               burst_meta['approx_geom'],
+                               burst_meta['state_vectors'],
                                **kwargs)
 
 
 class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
+    """Enables operations like projection and localization."""
+
     def __init__(self,
                  range_frequency,
                  azimuth_frequency,
@@ -49,8 +47,9 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
                  apd_correction=True,
                  max_iterations=20,
                  tolerance=0.001):
-        """Sentinel1BurstModel used to perform projection and localization
-        in a Sentinel1 burst
+        """Sentinel1BurstModel used to perform projection and localization\
+        in a Sentinel1 burst.
+
         Parameters
         ----------
         range_frequency : float
@@ -63,12 +62,12 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
             Number of columns per burst in the sentinel1 raster.
         burst_times : (3,) ndarray/tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
-            start/end_valid denote the azimuth time of the 
+            start/end_valid denote the azimuth time of the
             first/last valid line in the burst.
         burst_roi : (4,) ndarray/tuple (x, y, w, h)
             Coordinates of the burst in the sentinel-1 raster file.
-        approx_geom : List of tuples 
-            Each tuple element is a (lon, lat) corner of the approx geom 
+        approx_geom : List of tuples
+            Each tuple element is a (lon, lat) corner of the approx geom
             of the burst
         state_vectors : Iterable of dict
             List of state vectors (time, position, velocity).
@@ -79,22 +78,21 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
         apd_correction : Boolean, optional
             Apply atmospheric correction on the range. The default is True.
         max_iterations : int, optional
-            Maximum iterations of the iterative projection and localization 
+            Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
         tolerance : float, optional
-            Tolerance on the geocentric position used as a stopping criterion. 
-            For localization, tolerance is taken on 3D point position, 
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
             iterations stop when the step in x, y, z is less than tolerance.
-            For projection, the tolerance is considered on the satellite position 
-            of closest approach. Converted to azimuth time tolerance using the speed. 
-            The default is 0.001.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
 
         Returns
         -------
         None.
 
         """
-
         # set these for the CoordinateMixin
         self.first_row_time = burst_times[1]  # start valid
         self.first_col_time = slant_range_time + burst_roi[0] / range_frequency
@@ -121,19 +119,19 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
             / np.linalg.norm(state_vectors[0]['velocity'])
 
     def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None):
-        """Projects a 3D point into the burst coordinates
+        """Projects a 3D point into the burst coordinates.
 
         Parameters
         ----------
         x, y : ndarray or scalar
-            Coordinates in the crs defined by crs parameter. 
-        alt: ndarray or scalar 
+            Coordinates in the crs defined by crs parameter.
+        alt: ndarray or scalar
             Altitude defined by vert_crs if provided or EARTH_WGS84 ellipsoid.
         crs : string, optional
             CRS in which the point is given
                     Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-        vert_crs: string, optional 
-            Vertical crs 
+        vert_crs: string, optional
+            Vertical crs
 
         Returns
         -------
@@ -164,10 +162,11 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
         # project in the slc image
         azt_init = (self.burst_times[1] +
                     self.burst_times[2])/2 * np.ones_like(x)
-        azt, rng, i = range_doppler.iterative_projection(self.orbit, gx, gy, gz,
-                                                         azt_init=azt_init,
-                                                         max_iterations=self.max_iterations,
-                                                         tol=self.projection_tolerance)
+        azt, rng, i = range_doppler.iterative_projection(
+                                    self.orbit, gx, gy,
+                                    gz, azt_init=azt_init,
+                                    max_iterations=self.max_iterations,
+                                    tol=self.projection_tolerance)
         # Apply corrections on rng and azt if needed
         if self.apd_correction:
             alt = alt.squeeze()
@@ -190,13 +189,12 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
         return row, col, i
 
     def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None):
-        """
+        """Localize a point in the image at a certain altitude.
 
         Parameters
         ----------
-
         row : ndarray or scalar
-            row coordinate in burst referenced to the first valid line.        
+            row coordinate in burst referenced to the first valid line.
         col : ndarray or scalar
             column coordinate in burst referenced to the first valid column.
         alt : ndarray or scalar
@@ -204,14 +202,13 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
         crs : string, optional
             CRS in which the point is returned
                     Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-        vert_crs: string, optional 
-            Vertical crs in which the point is returned 
+        vert_crs: string, optional
+            Vertical crs in which the point is returned
 
         Returns
         -------
         x, y, z : ndarray or scalar
             Coordinates of the point in the crs
-
         """
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)
@@ -234,8 +231,8 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
             # Rough estimation of geometry
             os = np.linalg.norm(positions, axis=1)
 
-            # Earth radius taken at the intersection of the line joining satellite
-            # and earth center with the ellipsoid
+            # Earth radius taken at the intersection of the line joining
+            # satellite and earth center with the ellipsoid
             ell_axis = np.array([const.EARTH_WGS84_AXIS_A_M,
                                  const.EARTH_WGS84_AXIS_A_M,
                                  const.EARTH_WGS84_AXIS_B_M])
@@ -256,15 +253,17 @@ class Sentinel1BurstModel(coordinates.CoordinateMixin, model.SensorModel):
 
         # point at swath centroid, 0 altitude as init
         lon_c, lat_c = np.mean(self.approx_geom, axis=0)
-        
-        gx_init, gy_init, gz_init = to_gxyz.transform(lon_c * np.ones_like(alt), 
-                                                      lat_c * np.ones_like(alt),
-                                                      alt)
+
+        gx_init, gy_init, gz_init = to_gxyz.transform(
+                                        lon_c * np.ones_like(alt),
+                                        lat_c * np.ones_like(alt),
+                                        alt)
 
         # localize each point
         gx, gy, gz = range_doppler.iterative_localization(
             self.orbit, azt, rng, alt, (gx_init, gy_init, gz_init),
-            max_iterations=self.max_iterations, tol=self.localization_tolerance)
+            max_iterations=self.max_iterations,
+            tol=self.localization_tolerance)
 
         if vert_crs is None:
             dst_crs = crs
