@@ -103,6 +103,14 @@ def _compute_burst_id(o, i, b):
     # the time at which the orbit crossed the ascending node
     delta_b = (t_b - orbit_anx_time).total_seconds()
 
+    # if we completed an orbit during the acquisition, we need to adjust the orbit numbers
+    # this is only required because of the relative_orbit_number
+    # NOTE: this was not specified in the ESA documentation
+    if delta_b > T_orb:
+        delta_b -= T_orb
+        relative_orbit_number = relative_orbit_number % 175 + 1
+        absolute_orbit_number += 1
+
     # add the time taken to arrive to the current orbit
     delta_t_b_rel = delta_b + (relative_orbit_number - 1) * T_orb
     delta_t_b_abs = delta_b + (absolute_orbit_number - 1) * T_orb
