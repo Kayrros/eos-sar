@@ -127,4 +127,9 @@ def fill_meta(xml, bid):
     for x in dc_estimate:
         o['dc_estimate_poly'].append(
             list(map(float, x[dc_polynomial_name]['#text'].split())))
+
+    # subswath of the burst
+    swath = i['adsHeader']['swath']
+    o['swath'] = swath
+
     return o
