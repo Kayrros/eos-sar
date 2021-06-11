@@ -13,7 +13,7 @@ For localization:
     with open(xml_path) as f: 
         xml_content = f.read()
     # extract the burst metadata
-    burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content, burst_id)
+    burst_meta = eos.products.sentinel1.metadata.extract_bursts_metadata(xml_content, [burst_id])[0]
     # create a Sentinel1BurstModel
     bmod = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(burst_meta, 
                                                                         degree=11,
@@ -68,8 +68,8 @@ Suppose we have:
         burst_id = 3 
 
         # Now extract the needed metadata
-        primary_burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content[0], bid = burst_id)
-        secondary_burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content[1], bid = burst_id)
+        primary_burst_meta = eos.products.sentinel1.metadata.extract_bursts_metadata(xml_content[0], [burst_id])[0]
+        secondary_burst_meta = eos.products.sentinel1.metadata.extract_bursts_metadata(xml_content[1], [burst_id])[0]
 
         # Now instantiate burst_model instances for projection/localization
         primary_burst_model = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(primary_burst_meta)
