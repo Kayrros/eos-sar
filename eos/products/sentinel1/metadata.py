@@ -1,4 +1,5 @@
 """Fill needed metadata of a burst."""
+import math
 import dateutil.parser
 import datetime
 import xmltodict
@@ -28,6 +29,88 @@ def corners_of_geolocation_grid_points_list(l, only_burst_id):
     c = max(last_line, key=lambda k: int(k['pixel']))
     d = min(last_line, key=lambda k: int(k['pixel']))
     return a, b, c, d
+
+
+def _compute_burst_id(o, i, b):
+    """Compute the absolute/relative burst id and adds theses entries to the
+       provided dictionary.
+    The absolute burst id (+ subswath) provides a unique identifier for a
+    Sentinel 1 burst, while the relative burst id (+ subswath) provides an
+    identifier that is the same for each burst looking at similar footprints.
+
+    Parameters
+    ----------
+    o: dict
+       Metadata computed for the current burst.
+    i: dict
+       Data from the xml annotation file.
+    b: dict
+       Data of the current burst directly extracted from the xml annotation file.
+
+    Raises
+    ------
+    ValueError
+        In case mission_id in the provided dict is not S1A/S1B.
+    ValueError
+        In case the swath in the provided dict is not IW1/IW2/IW3.
+
+    Returns
+    -------
+    None.
+    """
+    # compute the orbit numbers
+    absolute_orbit_number = int(i['adsHeader']['absoluteOrbitNumber'])
+    mission_id = i['adsHeader']['missionId']
+    if mission_id == 'S1A':
+        relative_orbit_number = (absolute_orbit_number - 73) % 175 + 1
+    elif mission_id == 'S1B':
+        relative_orbit_number = (absolute_orbit_number - 27) % 175 + 1
+    else:
+        raise ValueError(f'Invalid mission_id {mission_id}')
+
+    # time at which the ascending node was crossed for the current orbit
+    orbit_anx_time = i['imageAnnotation']['imageInformation']['ascendingNodeTime']
+    orbit_anx_time = datetime.datetime.fromisoformat(orbit_anx_time)
+
+    # time taken to go over one orbit
+    # repeat cycle is 12 days, with 175 orbits per cycle
+    T_orb = 12*24*3600/175
+
+    # T_beam is sensing time between two bursts
+    # this value was obtained by subtracting the sensing time of two consecutive bursts
+    # and tweaking to fit the ground-truth burst id data
+    T_beam = 2.75827302
+
+    # T_pre is a time offset to account for the fact that the
+    # first burst of each swaths crosses the ascending node
+    # at different times (and might not at t=0)
+    if o['swath'] == 'IW1':
+        T_pre = 0.8
+    elif o['swath'] == 'IW2':
+        T_pre = 1
+    elif o['swath'] == 'IW3':
+        T_pre = 2
+    else:
+        raise ValueError(f"Invalid subswath {o['swath']}")
+
+    # compute the mid-burst sensing time
+    t_start = datetime.datetime.fromisoformat(b['azimuthTime'])
+    N = o['lines_per_burst']
+    PRF = o['azimuth_frequency']
+    t_b = t_start + datetime.timedelta(seconds=(N - 1) / (2 * PRF))
+
+    # compute the difference between the mid-burst time and
+    # the time at which the orbit crossed the ascending node
+    delta_b = (t_b - orbit_anx_time).total_seconds()
+
+    # add the time taken to arrive to the current orbit
+    delta_t_b_rel = delta_b + (relative_orbit_number - 1) * T_orb
+    delta_t_b_abs = delta_b + (absolute_orbit_number - 1) * T_orb
+
+    # subtract the preamble and divide by the beam cycle time
+    # to obtain the burst ids
+    o['relative_burst_id'] = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam)
+    o['absolute_burst_id'] = 1 + math.floor((delta_t_b_abs - T_pre) / T_beam)
 
 
 def fill_meta(xml, bid):
@@ -132,4 +215,7 @@ def fill_meta(xml, bid):
     swath = i['adsHeader']['swath']
     o['swath'] = swath
 
+    _compute_burst_id(o, i, b)
+
     return o
+
