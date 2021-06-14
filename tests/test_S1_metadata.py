@@ -6,12 +6,14 @@ def test_S1_metadata():
    xml = './tests/data/S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650.SAFE/annotation/s1a-iw1-slc-vh-20210216t151207-20210216t151232-036617-044d40-001.xml'
    xml_content = open(xml).read()
 
-   b = sentinel1.metadata.extract_bursts_metadata(xml_content, [0])[0]
+   metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
+
+   b = metadatas[0]
    assert b['swath'] == 'IW1'
    assert b['relative_burst_id'] == 309576
    assert b['absolute_burst_id'] == 78648801
 
-   b = sentinel1.metadata.fill_meta(xml_content, 8)
+   b = metadatas[8]
    assert b['swath'] == 'IW1'
    assert b['relative_burst_id'] == 309584
    assert b['absolute_burst_id'] == 78648809

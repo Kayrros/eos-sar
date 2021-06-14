@@ -9,8 +9,7 @@ def test_projection():
       './tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
     with open(xml_path) as f:
         xml_content = f.read()
-    burst_meta = sentinel1.metadata.extract_bursts_metadata(xml_content,
-                                                            burst_ids=[1])[0]
+    burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, 1)
     # create a Sentinel1BurstModel
     bmod = sentinel1.burst_model.burst_model_from_burst_meta(
                                                 burst_meta,

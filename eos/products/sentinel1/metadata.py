@@ -122,8 +122,7 @@ def _compute_burst_id(o, i, b):
 
 
 def extract_common_metadata(xml):
-    """Extract common metadata for all the swath. 
-    
+    """Extract common metadata for all the swath.
 
     Parameters
     ----------
@@ -200,8 +199,7 @@ def extract_common_metadata(xml):
 
 
 def extract_bursts_metadata(xml, burst_ids=None):
-    """Extract metadata for a list of bursts.  
-    
+    """Extract metadata for a list of bursts.
 
     Parameters
     ----------
@@ -215,7 +213,6 @@ def extract_bursts_metadata(xml, burst_ids=None):
     -------
     b_dicts: List of dicts
         The metadata of the bursts.
-
     """
     o_, i = extract_common_metadata(xml)
 
@@ -263,3 +260,21 @@ def extract_bursts_metadata(xml, burst_ids=None):
 
         _compute_burst_id(b_dicts[-1], i, b)
     return b_dicts
+
+def extract_burst_metadata(xml, burst_id):
+    """Extract metadata for a single burst.
+
+    Parameters
+    ----------
+    xml : str
+        Content of the xml annotation file..
+    burst_id : Integer
+        Id of the burst to process.
+
+    Returns
+    -------
+    b_dicts: dicts
+        The metadata of the burst.
+    """
+    return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
+
