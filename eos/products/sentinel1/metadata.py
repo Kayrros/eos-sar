@@ -1,8 +1,11 @@
 """Fill needed metadata of a burst."""
+import os
+import io
 import math
 import dateutil.parser
 import datetime
 import xmltodict
+from lxml import etree
 import numpy as np
 from eos.sar import const
 
@@ -163,6 +166,8 @@ def extract_common_metadata(xml):
             'position': [float(s['position'][k]) for k in ['x', 'y', 'z']],
             'velocity': [float(s['velocity'][k]) for k in ['x', 'y', 'z']]
         })
+    # we assume the lowest quality here, even though some products might be generated with more accurate orbit data
+    o['state_vectors_origin'] = 'orbpre'
 
     # deramping parameters
     o['steering_rate'] = np.radians(
@@ -285,4 +290,74 @@ def extract_burst_metadata(xml, burst_id):
         The metadata of the burst.
     """
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
+
+def apply_new_statevectors_to_burst(xml_content, burst, orbtype):
+    apply_new_statevectors_to_bursts(xml_content, [burst], orbtype)
+
+def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
+    all_start = min([burst['state_vectors'][0]['time'] for burst in bursts])
+    all_end = max([burst['state_vectors'][-1]['time'] for burst in bursts])
+
+    newsvs = [[] for _ in bursts]
+
+    if type(xml_content) == str:
+        xml_content = io.BytesIO(xml_content.encode('utf-8'))
+
+    context = etree.iterparse(xml_content, events=('end',), tag='OSV')
+    for _, element in context:
+        date = string_to_timestamp(element.findtext('UTC')[4:])
+
+        if date < all_start - 10:
+            continue
+        if date > all_end + 10:
+            break
+
+        for i, b in enumerate(bursts):
+            old_sv_start = b['state_vectors'][0]['time']
+            old_sv_end = b['state_vectors'][-1]['time']
+
+            if date < old_sv_start - 10:
+                continue
+            if date > old_sv_end + 10:
+                continue
+
+            newsvs[i].append({
+                'time': date,
+                'position': [float(element.findtext(k)) for k in ['X', 'Y', 'Z']],
+                'velocity': [float(element.findtext(k)) for k in ['VX', 'VY', 'VZ']]
+            })
+
+    for i, b in enumerate(bursts):
+        b['state_vectors'] = newsvs[i]
+        b['state_vectors_origin'] = orbtype
+
+def _parse_start_end_date_from_orbit_file(s):
+    """
+    Extract start and end dates for an orbit file filename.
+
+    Args:
+      s (str): filename string, formatted as \
+      S1A_OPER_AUX_POEORB_OPOD_20161102T122427_V20161012T225943_20161014T005943.EOF
+
+    Return:
+      start, end (str): two dates as string (20161012T225943 and 20161014T005943 in the example)
+    """
+    start = s.split('_')[6][1:]
+    end = s.split('_')[7].split('.')[0]
+    return start, end
+
+def select_orbit_file_from_filelist(files, date, missionid):
+    missionid = missionid.lower()
+
+    for file in files:
+        filename = os.path.basename(file)
+
+        if filename[:len(missionid)].lower() != missionid:
+            continue
+
+        s, e = _parse_start_end_date_from_orbit_file(filename)
+        if s < date and e > date:
+            return file
+
+    raise FileNotFoundError(f'could not find an orbit file for {date}/{missionid}')
 
