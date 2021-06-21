@@ -11,7 +11,7 @@ def test_projection():
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
     # create a Sentinel1BurstModel
-    bmod = sentinel1.burst_model.burst_model_from_burst_meta(
+    bmod = sentinel1.proj_model.burst_model_from_burst_meta(
                                                 burst_meta,
                                                 bistatic_correction=True,
                                                 apd_correction=True)

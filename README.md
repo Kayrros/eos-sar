@@ -15,7 +15,8 @@ For localization:
     # extract the burst metadata
     burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content, burst_id)
     # create a Sentinel1BurstModel
-    bmod = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(burst_meta,
+
+    bmod = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, 
                                                                         degree=11,
                                                                         bistatic_correction=True,
                                                                         apd_correction=True,
@@ -72,8 +73,8 @@ Suppose we have:
         secondary_burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content[1], burst_id)
 
         # Now instantiate burst_model instances for projection/localization
-        primary_burst_model = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(primary_burst_meta)
-        secondary_burst_model = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(secondary_burst_meta)
+        primary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(primary_burst_meta)
+        secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(secondary_burst_meta)
 
         # Now estimate the registration matrix 
 

@@ -5,7 +5,6 @@ have s1m installed on your system."""
 import numpy as np
 import s1m
 from eos.products import sentinel1
-from eos.sar import range_doppler
 
 
 def test_projection_vs_s1m():
@@ -15,7 +14,7 @@ def test_projection_vs_s1m():
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
     # create a Sentinel1BurstModel
-    bmod = sentinel1.burst_model.burst_model_from_burst_meta(
+    bmod = sentinel1.proj_model.burst_model_from_burst_meta(
                                                 burst_meta,
                                                 bistatic_correction=True,
                                                 apd_correction=True)
