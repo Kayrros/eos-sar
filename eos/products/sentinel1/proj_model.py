@@ -424,9 +424,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         # set these for the CoordinateMixin
         first_row_time = bursts_times[0][1]  # start valid
        
-        x_min = min(roi[0] for roi in bursts_rois) 
-        first_col_time = slant_range_time + x_min / range_frequency
-        
+        self.x_min = min(roi[0] for roi in bursts_rois) 
+        first_col_time = slant_range_time + self.x_min / range_frequency
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
         
@@ -445,6 +444,13 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  max_iterations,
                  tolerance)
         
+        # setting image size 
+        self.y_min = bursts_rois[0][1]
+        x_max = max(roi[0] + roi[2] - 1 for roi in bursts_rois)
+        self.w = (x_max - self.x_min + 1) 
+        self.h = (bursts_times[-1][2] - first_row_time) \
+                * self.azimuth_frequency
+                
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times 
         self.bursts_rois = bursts_rois
@@ -453,5 +459,34 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2])/2
         
 
+def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
+    """
+    Generate Sentinel1SwathModel instance from list of bursts metadata.
 
-    
+    Parameters
+    ----------
+    bursts_metadata : list of dicts 
+        each dict contains attribute metadata relative to the bursts of the 
+        swath.
+    **kwargs : keyword arguments
+        one of degree, bistatic_correction, apd_correction, max_iterations,
+        tolerance. Processing parameters for the projection and localization. 
+
+    Returns
+    -------
+    Sentinel1SwathModel
+        Model for projection and localization inside the swath.
+
+    """
+    bursts_times = [b['burst_times'] for b in bursts_metadata] 
+    bursts_rois = [b['burst_roi'] for b in bursts_metadata]
+    bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]  
+    return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'], 
+                                bursts_metadata[0]['azimuth_frequency'], 
+                                bursts_metadata[0]['slant_range_time'], 
+                                bursts_metadata[0]['samples_per_burst'], 
+                                bursts_times, 
+                                bursts_rois, 
+                                bursts_approx_geom, 
+                                bursts_metadata[0]['state_vectors'], 
+                                **kwargs)
