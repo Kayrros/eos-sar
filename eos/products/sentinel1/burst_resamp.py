@@ -1,8 +1,6 @@
 """Resamples a complex Sentinel1 burst."""
 import numpy as np
-import math
 from eos.sar import regist, orbit
-
 
 def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix, **kwargs):
     """Create a Sentinel1BurstResample instance from a Sentinel1Model\
@@ -272,47 +270,23 @@ class Sentinel1BurstResample(regist.ComplexResample):
         """
         return rg_dpt_dop_rate * self.krot / \
             (rg_dpt_dop_rate - self.krot)
-    
-    def __assert_valid_roi(self, parent_shape, child_roi): 
-        """assert that child roi is within the boundarys of the parent roi. 
-            otherwise, modify it to satisfy the condition.
-            Child roi is returned."""
-        h_p, w_p = parent_shape
-        col_c, row_c, w_c, h_c = child_roi
-        col_min = max(col_c, 0) 
-        col_max = min(col_c + w_c , w_p) 
-        row_min = max(0, row_c) 
-        row_max = min(row_c + h_c , h_p)
-        return col_min, row_min, col_max - col_min, row_max - row_min
-        
-    def __transform_roi(self, dst_roi_burst, margin=0): 
-        """Transform roi from dst burst to src burst. Add a margin in px."""
-        col_dst, row_dst, w_dst, h_dst = dst_roi_burst
-        col_max = col_dst + w_dst - 1
-        row_max = row_dst + h_dst - 1 
-        bound_points = np.array([[row_dst, col_dst, 1], 
-                                 [row_dst, col_max, 1], 
-                                 [row_max, col_max, 1], 
-                                 [row_max, col_dst, 1]]).T
-        row_src, col_src = self.burst_matrix.dot(bound_points)[:2]
-        row_min = math.floor(min(row_src)) - margin
-        h_src = math.ceil(max(row_src)) + margin - row_min + 1
-        col_min = math.floor(min(col_src)) - margin
-        w_src = math.ceil(max(col_src)) + margin - col_min + 1
-        return col_min, row_min, w_src, h_src 
-        
-    def set_inside_burst(self, dst_roi_in_burst): 
-        """Modify the resampling region in the burst."""
-        # assert dst_roi_in_burst within burst
-        dst_roi_in_burst = self.__assert_valid_roi(self.dst_burst_shape
-                                                   , dst_roi_in_burst)
-        
-        # transform roi 
-        src_roi_in_burst = self.__transform_roi(dst_roi_in_burst, margin=5)
-        w_src_burst, h_src_burst = self.src_burst_roi[2:]
-        src_roi_in_burst = self.__assert_valid_roi((h_src_burst, w_src_burst), 
-                                                   src_roi_in_burst)
-        
+            
+    def set_inside_burst(self, dst_roi_in_burst, src_roi_in_burst): 
+        """
+        Set the resampling region source and destination within the bursts. 
+
+        Parameters
+        ----------
+        dst_roi_in_burst : tuple
+            (col, row, w, h) dst roi in dst burst coordinates.
+        src_roi_in_burst : tuple
+            (col, row, w, h) src roi in src burst coordinates..
+
+        Returns
+        -------
+        None.
+
+        """
         # change self.matrix 
         col_src, row_src = src_roi_in_burst[:2]
         col_dst, row_dst = dst_roi_in_burst[:2]
