@@ -1,7 +1,7 @@
 """Sentinel1 models for projection/localization."""
 import numpy as np
 import pyproj
-from eos.sar import model, range_doppler, const, coordinates, orbit
+from eos.sar import model, range_doppler, const, coordinates, orbit, roi
 
 
 def burst_model_from_burst_meta(burst_meta, **kwargs):
@@ -424,8 +424,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         # set these for the CoordinateMixin
         first_row_time = bursts_times[0][1]  # start valid
        
-        self.x_min = min(roi[0] for roi in bursts_rois) 
-        first_col_time = slant_range_time + self.x_min / range_frequency
+        self.col_min = min(roi_[0] for roi_ in bursts_rois) 
+        first_col_time = slant_range_time + self.col_min / range_frequency
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
         
@@ -445,20 +445,138 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  tolerance)
         
         # setting image size 
-        self.y_min = bursts_rois[0][1]
-        x_max = max(roi[0] + roi[2] - 1 for roi in bursts_rois)
-        self.w = (x_max - self.x_min + 1) 
-        self.h = (bursts_times[-1][2] - first_row_time) \
-                * self.azimuth_frequency
+        self.row_min = bursts_rois[0][1]
+        col_max = max(roi_[0] + roi_[2] - 1 for roi_ in bursts_rois)
+        self.w = (col_max - self.col_min + 1) 
+        self.h = int(np.round((bursts_times[-1][2] - first_row_time) \
+                * self.azimuth_frequency))
                 
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times 
         self.bursts_rois = bursts_rois
-        
+        self.compute_overlaps()
         # reset the initial azimuth guess at the center of swath
         self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2])/2
         
+    
+    def compute_overlaps(self):
+        """
+        Compute the number of lines that overlap (cover the same ground feature)
+        between the end of a burst and the start of another, based on the azimuth time.
+        Do this for all bursts and store results in self.overlaps.      
 
+        Returns
+        -------
+        None.
+
+        """
+        n_bursts = len(self.bursts_times)
+        # n_bursts - 1 overlaps
+        self.overlaps = np.zeros(n_bursts - 1, dtype=int)
+        for i in range(n_bursts - 1): 
+            # ith overlap between i and i+1 burst
+            current_burst_end = self.bursts_times[i][2]
+            next_burst_start = self.bursts_times[i + 1][1]
+            self.overlaps[i] = int(np.round((current_burst_end - \
+                                next_burst_start)*self.azimuth_frequency))
+            
+    def overlap_roi(self, overlap_id):
+        """
+        Computes the overlap region of a given id between two bursts. The overlap
+        is given as a roi w.r.t. the burst "origin".
+
+        Parameters
+        ----------
+        overlap_id : int
+            id of the overlap [0, n_bursts -1].
+
+        Returns
+        -------
+        overlap_prev_roi : tuple
+            (row, col, w, h) roi inside the previous burst.
+        overlap_next_roi : tuple
+            (row, col, w, h) roi inside the next burst.
+
+        """
+        assert overlap_id >=0 and overlap_id < len(self.overlaps),\
+                            "overlap id out of bound"
+        ovl = self.overlaps[overlap_id]
+        # previous burst 
+        _, _, w, h = self.bursts_rois[overlap_id]
+        overlap_prev_roi = 0, h - ovl, w, ovl 
+        # next burst 
+        _, _, w, h = self.bursts_rois[overlap_id + 1]
+        overlap_next_roi = 0, 0, w, ovl 
+        return overlap_prev_roi, overlap_next_roi
+    
+    def burst_roi_without_ovl(self, burst_id): 
+        """
+        Compute the burst roi without overlap w.r.t. the burst "origin".
+
+        Parameters
+        ----------
+        burst_id : int
+            id of the burst.
+
+        Returns
+        -------
+        burst_roi_without_ovl : tuple
+            (row, col, w, h) roi of the burst adjusted for debursting. the roi
+            is computed w.r.t. the burst origin. 
+
+        """
+        assert burst_id >=0 and burst_id < len(self.bursts_rois),\
+                            "burst id out of bound"
+        _, _, w, h = self.bursts_rois[burst_id]
+        ovl_prev = self.overlaps[burst_id - 1] if burst_id else 0 
+        ovl_next = self.overlaps[burst_id] if burst_id < len(self.overlaps) else 0 
+        remove_lines_at_top = ovl_prev//2 
+        remove_lines_at_bottom = ovl_next - ovl_next//2
+        burst_roi_without_ovl = 0, remove_lines_at_top, w,\
+                            h - remove_lines_at_top - remove_lines_at_bottom
+        return burst_roi_without_ovl
+        
+    def get_read_write_rois(self, roi_in_swath=None): 
+        
+        if roi_in_swath is None: 
+            roi_in_swath = 0, 0, self.w, self.h
+       
+        roi_in_swath = roi.make_valid_roi((self.h, self.w), roi_in_swath)
+        
+        col, row, w, h = roi_in_swath
+        
+        
+        col += self.col_min  # x is now relative to the tiff img
+        previous_bursts_h = 0  # current y in the input image fully debursted
+        previous_roi_h = 0  # current y in the output crop
+        
+        burst_ids = []
+        rois_read = []
+        rois_write = []
+        
+        for burst_id in range(len(self.bursts_rois)):
+            # burst roi without overlap relative to tiff img
+            bcol, brow, bw, bh = roi.translate_roi(self.burst_roi_without_ovl(burst_id),
+                                                   self.bursts_rois[burst_id][0], 
+                                                   self.bursts_rois[burst_id][1])  
+            # loop until we find first burst intersecting roi
+            if previous_bursts_h + bh > row + previous_roi_h:
+                col_min = max(col, bcol)
+                col_max = min(col + w, bcol + bw)
+                debursted_to_tif = brow - previous_bursts_h
+                row_min = row + previous_roi_h + debursted_to_tif
+                row_max = min(row + h, previous_bursts_h + bh) + debursted_to_tif
+                col_size = col_max - col_min
+                row_size = row_max - row_min
+                burst_ids.append(burst_id)
+                rois_read.append( (col_min, row_min, col_size, row_size) ) 
+                rois_write.append( (col_min - col, previous_roi_h, col_size, row_size)) 
+                previous_roi_h += row_size                  
+            previous_bursts_h += bh
+            if previous_bursts_h >= row + h:
+                break
+        return burst_ids, rois_read, rois_write
+    
 def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     """
     Generate Sentinel1SwathModel instance from list of bursts metadata.
