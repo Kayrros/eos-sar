@@ -29,12 +29,13 @@ def burst_model_from_burst_meta(burst_meta, **kwargs):
                                burst_meta['state_vectors'],
                                **kwargs)
 
+
 class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
     """Enables operations like projection and localization."""
 
     def __init__(self,
-                 first_row_time, 
-                 first_col_time, 
+                 first_row_time,
+                 first_col_time,
                  approx_geom,
                  range_frequency,
                  azimuth_frequency,
@@ -104,15 +105,14 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.projection_tolerance = tolerance \
             / np.linalg.norm(state_vectors[0]['velocity'])
 
-
         # set these for the CoordinateMixin
-        self.first_row_time = first_row_time 
+        self.first_row_time = first_row_time
         self.first_col_time = first_col_time
-        
+
         # set some params necessary for processing
         self.azt_init = first_row_time
         self.approx_geom = approx_geom
-        
+
     def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None):
         """Projects a 3D point into the image coordinates.
 
@@ -155,12 +155,12 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         gx, gy, gz = transformer.transform(x, y, alt)
 
         azt_init = self.azt_init * np.ones_like(x)
-        
+
         azt, rng, i = range_doppler.iterative_projection(
-                                    self.orbit, gx, gy,
-                                    gz, azt_init=azt_init,
-                                    max_iterations=self.max_iterations,
-                                    tol=self.projection_tolerance)
+            self.orbit, gx, gy,
+            gz, azt_init=azt_init,
+            max_iterations=self.max_iterations,
+            tol=self.projection_tolerance)
         # Apply corrections on rng and azt if needed
         if self.apd_correction:
             alt = alt.squeeze()
@@ -171,9 +171,9 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         # Results. Remote Sens. 7, 9431-9449 (2015)
         if self.bistatic_correction:
             # slant range (col coordinate)
-            azt -=  0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
-                    self.slant_range_time -
-                    0.5*self.samples_per_burst/self.range_frequency)
+            azt -= 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
+                          self.slant_range_time -
+                          0.5*self.samples_per_burst/self.range_frequency)
 
         # convert to row and col
         row, col = self.to_row_col(azt, rng)
@@ -214,8 +214,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         if self.bistatic_correction:
             # correct azimuth time
             azt += 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
-                    self.slant_range_time -
-                    0.5*self.samples_per_burst/self.range_frequency)
+                          self.slant_range_time -
+                          0.5*self.samples_per_burst/self.range_frequency)
 
         if self.apd_correction:
 
@@ -248,9 +248,9 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         lon_c, lat_c = np.mean(self.approx_geom, axis=0)
 
         gx_init, gy_init, gz_init = to_gxyz.transform(
-                                        lon_c * np.ones_like(alt),
-                                        lat_c * np.ones_like(alt),
-                                        alt)
+            lon_c * np.ones_like(alt),
+            lat_c * np.ones_like(alt),
+            alt)
 
         # localize each point
         gx, gy, gz = range_doppler.iterative_localization(
@@ -268,6 +268,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         x, y, z = todst.transform(gx, gy, gz)
 
         return x, y, z
+
 
 class Sentinel1BurstModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at the burst."""
@@ -337,26 +338,27 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
         approx_geom = approx_geom
-        super().__init__(first_row_time, 
-         first_col_time, 
-         approx_geom,
-         range_frequency,
-         azimuth_frequency,
-         slant_range_time,
-         samples_per_burst,
-         state_vectors,
-         degree,
-         bistatic_correction,
-         apd_correction,
-         max_iterations,
-         tolerance)
-        
+        super().__init__(first_row_time,
+                         first_col_time,
+                         approx_geom,
+                         range_frequency,
+                         azimuth_frequency,
+                         slant_range_time,
+                         samples_per_burst,
+                         state_vectors,
+                         degree,
+                         bistatic_correction,
+                         apd_correction,
+                         max_iterations,
+                         tolerance)
+
         # specific to current burst
         self.burst_times = burst_times
         self.burst_roi = burst_roi
-        
+
         # reset the initial azimuth guess at the center of burst
         self.azt_init = (self.burst_times[1] + self.burst_times[2])/2
+
 
 class Sentinel1SwathModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at a swath."""
@@ -423,42 +425,61 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         """
         # set these for the CoordinateMixin
         first_row_time = bursts_times[0][1]  # start valid
-       
-        self.col_min = min(roi_[0] for roi_ in bursts_rois) 
+
+        self.col_min = min(roi_[0] for roi_ in bursts_rois)
         first_col_time = slant_range_time + self.col_min / range_frequency
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
-        
+
         # call the base class constructor
-        super().__init__(first_row_time, 
-                 first_col_time, 
-                 approx_geom,
-                 range_frequency,
-                 azimuth_frequency,
-                 slant_range_time,
-                 samples_per_burst,
-                 state_vectors,
-                 degree,
-                 bistatic_correction,
-                 apd_correction,
-                 max_iterations,
-                 tolerance)
-        
-        # setting image size 
+        super().__init__(first_row_time,
+                         first_col_time,
+                         approx_geom,
+                         range_frequency,
+                         azimuth_frequency,
+                         slant_range_time,
+                         samples_per_burst,
+                         state_vectors,
+                         degree,
+                         bistatic_correction,
+                         apd_correction,
+                         max_iterations,
+                         tolerance)
+
+        # setting image size
         self.row_min = bursts_rois[0][1]
         col_max = max(roi_[0] + roi_[2] - 1 for roi_ in bursts_rois)
-        self.w = (col_max - self.col_min + 1) 
-        self.h = int(np.round((bursts_times[-1][2] - first_row_time) \
-                * self.azimuth_frequency))
-                
+        self.w = (col_max - self.col_min + 1)
+        self.h = int(np.round((bursts_times[-1][2] - first_row_time)
+                              * self.azimuth_frequency))
+
         # additional burst params, will surely be needed for coord conversion
-        self.bursts_times = bursts_times 
+        self.bursts_times = bursts_times
         self.bursts_rois = bursts_rois
-        self.compute_overlaps()
         # reset the initial azimuth guess at the center of swath
         self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2])/2
-        
-    
+
+    def burst_orig_in_swath(self, burst_id):
+        """
+        Computes the coordinates of the origin of the burst in the swath frame.
+
+        Parameters
+        ----------
+        burst_id : int
+            Id of the burst.
+
+        Returns
+        -------
+        orig : tuple 
+            (col, row) coordinates of the burst origin in the swath.
+
+        """
+        col = self.bursts_rois[burst_id][0] - self.col_min
+        azt = self.bursts_times[burst_id][1]
+        row, _ = self.to_row_col(azt, 0)
+        orig = (col,  int(np.round(row)))
+        return orig
+
     def compute_overlaps(self):
         """
         Compute the number of lines that overlap (cover the same ground feature)
@@ -473,13 +494,13 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         n_bursts = len(self.bursts_times)
         # n_bursts - 1 overlaps
         self.overlaps = np.zeros(n_bursts - 1, dtype=int)
-        for i in range(n_bursts - 1): 
+        for i in range(n_bursts - 1):
             # ith overlap between i and i+1 burst
             current_burst_end = self.bursts_times[i][2]
             next_burst_start = self.bursts_times[i + 1][1]
-            self.overlaps[i] = int(np.round((current_burst_end - \
-                                next_burst_start)*self.azimuth_frequency))
-            
+            self.overlaps[i] = int(np.round((current_burst_end -
+                                             next_burst_start)*self.azimuth_frequency))
+
     def overlap_roi(self, overlap_id):
         """
         Computes the overlap region of a given id between two bursts. The overlap
@@ -498,18 +519,20 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             (row, col, w, h) roi inside the next burst.
 
         """
-        assert overlap_id >=0 and overlap_id < len(self.overlaps),\
-                            "overlap id out of bound"
+        if not hasattr(self, 'overlaps'):
+            self.compute_overlaps()
+        assert overlap_id >= 0 and overlap_id < len(self.overlaps),\
+            "overlap id out of bound"
         ovl = self.overlaps[overlap_id]
-        # previous burst 
+        # previous burst
         _, _, w, h = self.bursts_rois[overlap_id]
-        overlap_prev_roi = 0, h - ovl, w, ovl 
-        # next burst 
+        overlap_prev_roi = 0, h - ovl, w, ovl
+        # next burst
         _, _, w, h = self.bursts_rois[overlap_id + 1]
-        overlap_next_roi = 0, 0, w, ovl 
+        overlap_next_roi = 0, 0, w, ovl
         return overlap_prev_roi, overlap_next_roi
-    
-    def burst_roi_without_ovl(self, burst_id): 
+
+    def burst_roi_without_ovl(self, burst_id):
         """
         Compute the burst roi without overlap w.r.t. the burst "origin".
 
@@ -525,58 +548,90 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             is computed w.r.t. the burst origin. 
 
         """
-        assert burst_id >=0 and burst_id < len(self.bursts_rois),\
-                            "burst id out of bound"
+        if not hasattr(self, 'overlaps'):
+            self.compute_overlaps()
+
+        assert burst_id >= 0 and burst_id < len(self.bursts_rois),\
+            "burst id out of bound"
         _, _, w, h = self.bursts_rois[burst_id]
-        ovl_prev = self.overlaps[burst_id - 1] if burst_id else 0 
-        ovl_next = self.overlaps[burst_id] if burst_id < len(self.overlaps) else 0 
-        remove_lines_at_top = ovl_prev//2 
+        ovl_prev = self.overlaps[burst_id - 1] if burst_id else 0
+        ovl_next = self.overlaps[burst_id] if burst_id < len(
+            self.overlaps) else 0
+        remove_lines_at_top = ovl_prev//2
         remove_lines_at_bottom = ovl_next - ovl_next//2
         burst_roi_without_ovl = 0, remove_lines_at_top, w,\
-                            h - remove_lines_at_top - remove_lines_at_bottom
+            h - remove_lines_at_top - remove_lines_at_bottom
         return burst_roi_without_ovl
-        
-    def get_read_write_rois(self, roi_in_swath=None): 
-        
-        if roi_in_swath is None: 
+
+    def get_read_write_rois(self, roi_in_swath=None):
+        """
+        Compute the region to read from each burst if given a roi contained in 
+        a swath. The writing roi is also returned, with the corresponding burst
+        ids. 
+
+        Parameters
+        ----------
+        roi_in_swath : tuple, optional
+            (col, row, w, h) in swath coordinates. Region defined inside the swath.
+            If not given, the whole swath is taken. The default is None.
+
+        Returns
+        -------
+        burst_ids : list of int
+            Ids of the bursts intersected by the roi.
+        rois_read : list of tuples
+            Each tuple (col, row, w, h) corresponds to the region to be read from 
+            the tiff file.
+        rois_write : list of tuples
+            Each tuple (col, row, w, h) corresponds to the region where the output
+            data should be written in the output image.
+        out_shape: tuple
+            (h, w) Output image shape
+
+        """
+        if roi_in_swath is None:
             roi_in_swath = 0, 0, self.w, self.h
-       
+
         roi_in_swath = roi.make_valid_roi((self.h, self.w), roi_in_swath)
-        
+
         col, row, w, h = roi_in_swath
-        
-        
+        out_shape = (h, w)
+
         col += self.col_min  # x is now relative to the tiff img
         previous_bursts_h = 0  # current y in the input image fully debursted
         previous_roi_h = 0  # current y in the output crop
-        
+
         burst_ids = []
         rois_read = []
         rois_write = []
-        
+
         for burst_id in range(len(self.bursts_rois)):
             # burst roi without overlap relative to tiff img
             bcol, brow, bw, bh = roi.translate_roi(self.burst_roi_without_ovl(burst_id),
-                                                   self.bursts_rois[burst_id][0], 
-                                                   self.bursts_rois[burst_id][1])  
+                                                   self.bursts_rois[burst_id][0],
+                                                   self.bursts_rois[burst_id][1])
             # loop until we find first burst intersecting roi
             if previous_bursts_h + bh > row + previous_roi_h:
                 col_min = max(col, bcol)
                 col_max = min(col + w, bcol + bw)
                 debursted_to_tif = brow - previous_bursts_h
                 row_min = row + previous_roi_h + debursted_to_tif
-                row_max = min(row + h, previous_bursts_h + bh) + debursted_to_tif
+                row_max = min(row + h, previous_bursts_h + bh) + \
+                    debursted_to_tif
                 col_size = col_max - col_min
                 row_size = row_max - row_min
                 burst_ids.append(burst_id)
-                rois_read.append( (col_min, row_min, col_size, row_size) ) 
-                rois_write.append( (col_min - col, previous_roi_h, col_size, row_size)) 
-                previous_roi_h += row_size                  
+                rois_read.append((col_min, row_min, col_size, row_size))
+                rois_write.append(
+                    (col_min - col, previous_roi_h, col_size, row_size))
+                previous_roi_h += row_size
             previous_bursts_h += bh
             if previous_bursts_h >= row + h:
                 break
-        return burst_ids, rois_read, rois_write
-    
+
+        return burst_ids, rois_read, rois_write, out_shape
+
+
 def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     """
     Generate Sentinel1SwathModel instance from list of bursts metadata.
@@ -596,15 +651,15 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
         Model for projection and localization inside the swath.
 
     """
-    bursts_times = [b['burst_times'] for b in bursts_metadata] 
+    bursts_times = [b['burst_times'] for b in bursts_metadata]
     bursts_rois = [b['burst_roi'] for b in bursts_metadata]
-    bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]  
-    return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'], 
-                                bursts_metadata[0]['azimuth_frequency'], 
-                                bursts_metadata[0]['slant_range_time'], 
-                                bursts_metadata[0]['samples_per_burst'], 
-                                bursts_times, 
-                                bursts_rois, 
-                                bursts_approx_geom, 
-                                bursts_metadata[0]['state_vectors'], 
-                                **kwargs)
+    bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]
+    return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'],
+                               bursts_metadata[0]['azimuth_frequency'],
+                               bursts_metadata[0]['slant_range_time'],
+                               bursts_metadata[0]['samples_per_burst'],
+                               bursts_times,
+                               bursts_rois,
+                               bursts_approx_geom,
+                               bursts_metadata[0]['state_vectors'],
+                               **kwargs)
