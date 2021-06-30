@@ -28,6 +28,14 @@ debursted_swath = eos.products.sentinel1.deburst.deburst_in_primary_swath(
 
 # If you wish to deburst a "crop" defined by a roi in the swath coordinates
 roi_in_swath = (500, 750, 1000, 3000)
+# otherwise set it to None, the whole swath will be debursted 
+# uncomment here to test !
+# roi_in_swath = None
+
 # deburst
 debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
     primary_swath_model, tiff_path, roi_in_swath)
+
+# burst_ids are the burst ids covered by the roi ( O based in the swath)
+# rois_read are the regions that were read from the tiff 
+# rois_write are the rois where the read patches were written in the crop
