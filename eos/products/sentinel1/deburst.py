@@ -50,16 +50,23 @@ def deburst_in_primary_swath(primary_swath_model, input_tiff_path, roi_in_swath=
     debursted_crop : ndarray
         Debursted crop containing a mosaic of arrays extracted from the different 
         bursts in the swath.
-
+    burst_ids : list of int
+            Ids of the bursts intersected by the roi.
+    rois_read : list of tuples
+        Each tuple (col, row, w, h) corresponds to the region to be read from 
+        the tiff file.
+    rois_write : list of tuples
+        Each tuple (col, row, w, h) corresponds to the region where the output
+        data should be written in the output image.
     """
-    burst_ids, read_rois, write_rois, out_shape = primary_swath_model.get_read_write_rois(
+    burst_ids, rois_read, rois_write, out_shape = primary_swath_model.get_read_write_rois(
         roi_in_swath)
-    burst_arrays = io.read_windows(input_tiff_path, read_rois)
-    debursted_crop = stitch_arrays(burst_arrays, write_rois, out_shape)
-    return debursted_crop, burst_ids, read_rois, write_rois, out_shape
+    burst_arrays = io.read_windows(input_tiff_path, rois_read)
+    debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
+    return debursted_crop, burst_ids, rois_read, rois_write
 
 
-def secondary_rois_and_resamplers(primary_swath_model, read_rois, burst_ids,
+def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
                                    secondary_swath_model, secondary_bursts_meta,
                                    matrix):
     """
@@ -71,11 +78,11 @@ def secondary_rois_and_resamplers(primary_swath_model, read_rois, burst_ids,
     ----------
     primary_swath_model : Sentinel1SwathModel
         Model for the swath of the primary acquisition.
-    read_rois : list of tuples
+    rois_read : list of tuples
         Each tuple (col, row, w, h) is a location to be read from the primary 
         tiff within the burst of corresponding id.
     burst_ids : list of int
-        Ids of bursts associated with read_rois.
+        Ids of bursts associated with rois_read.
     secondary_swath_model : Sentinel1SwathModel
         Model for the swath of the secondary acquisition.
     secondary_bursts_meta : List of dict
@@ -87,14 +94,14 @@ def secondary_rois_and_resamplers(primary_swath_model, read_rois, burst_ids,
 
     Returns
     -------
-    Secondary_read_rois: list of tuples
+    Secondary_rois_read: list of tuples
         Each tuple (col, row, w, h) is a location to be read from the secondary image.
     Resamplers: list of Sentinel1BurstResample
         Each resampler is associated with the corresponding roi in Secondary_read_roi
 
     """
     Resamplers = []
-    Secondary_read_rois = []
+    Secondary_rois_read = []
 
     for j in range(len(burst_ids)):
 
@@ -108,7 +115,7 @@ def secondary_rois_and_resamplers(primary_swath_model, read_rois, burst_ids,
 
         # get the roi w.r.t. burst origin
         col_dst, row_dst, w_dst, h_dst = primary_swath_model.bursts_rois[burst_ids[j]]
-        dst_roi_in_burst = roi.translate_roi(read_rois[j], -col_dst, -row_dst)
+        dst_roi_in_burst = roi.translate_roi(rois_read[j], -col_dst, -row_dst)
 
         # warp the roi
         col_src, row_src, w_src, h_src = secondary_swath_model.bursts_rois[burst_ids[j]]
@@ -127,13 +134,13 @@ def secondary_rois_and_resamplers(primary_swath_model, read_rois, burst_ids,
         Resamplers.append(resampler)
 
         # Secondary read rois
-        Secondary_read_rois.append(roi.translate_roi(
+        Secondary_rois_read.append(roi.translate_roi(
             src_roi_in_burst, col_src, row_src))
         
-    return Secondary_read_rois, Resamplers
+    return Secondary_rois_read, Resamplers
 
-def read_resample_and_deburst(secondary_tiff_path, Secondary_read_rois, 
-                              Resamplers, write_rois, out_shape): 
+def read_resample_and_deburst(secondary_tiff_path, Secondary_rois_read, 
+                              Resamplers, rois_write, out_shape): 
     """
     Read rois from secondary, resample the complex images with deramping/reramping, 
     and deburst into a final stitched image. 
@@ -142,11 +149,11 @@ def read_resample_and_deburst(secondary_tiff_path, Secondary_read_rois,
     ----------
     secondary_tiff_path : str
         Path of the secondary tiff file of the swath.
-    Secondary_read_rois : list of tuples
+    Secondary_rois_read : list of tuples
         Each tuple (col, row, w, h) is a location to read from in the secondary tiff.
     Resamplers : list of Sentinel1BurstResample
         Each resampler is associated with the corresponding roi in Secondary_read_roi.
-    write_rois : list of tuples
+    rois_write : list of tuples
         Each tuple (col, row, w, h) is a location to write at in the output image.
     out_shape : tuple
         (h, w) output image shape.
@@ -158,7 +165,7 @@ def read_resample_and_deburst(secondary_tiff_path, Secondary_read_rois,
 
     """    
     
-    burst_arrays = io.read_windows(secondary_tiff_path, Secondary_read_rois)
+    burst_arrays = io.read_windows(secondary_tiff_path, Secondary_rois_read)
     burst_arrays = [resamp.resample(arr) for arr,resamp in zip(burst_arrays, Resamplers)]
-    secondary_debursted_crop = stitch_arrays(burst_arrays, write_rois, out_shape)
+    secondary_debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
     return secondary_debursted_crop
