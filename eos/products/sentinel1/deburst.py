@@ -169,3 +169,37 @@ def read_resample_and_deburst(secondary_tiff_path, Secondary_rois_read,
     burst_arrays = [resamp.resample(arr) for arr,resamp in zip(burst_arrays, Resamplers)]
     secondary_debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
     return secondary_debursted_crop
+
+def get_bursts_intersection(num_bursts1, burst_rel_id1, num_bursts2, burst_rel_id2): 
+    """
+    Compute the burst id intersection of two swaths containing multiple bursts. 
+
+    Parameters
+    ----------
+    num_bursts1 : int
+        Number of bursts in the first swath.
+    burst_rel_id1 : int
+        Relative spatial id of the first burst in the first swath.
+    num_bursts2 : int
+        Number of bursts in the second swath.
+    burst_rel_id2 : int
+        Relative spatial id of the first burst in the second swath.
+
+    Returns
+    -------
+    Iterable
+        Each element is a burst id in the first swath in the intersection.
+    TYPE
+        Each element is a burst id in the second swath in the intersection.
+
+    """
+    
+    rel_min = max(burst_rel_id1, burst_rel_id2)
+    rel_max = min(burst_rel_id1 + num_bursts1 - 1, burst_rel_id2 + num_bursts2 - 1)
+    if rel_min > rel_max:
+        print('no intersection')
+        return [], []
+    else: 
+        list_rel_ids = np.arange(rel_min, rel_max + 1)
+        return list_rel_ids - burst_rel_id1, list_rel_ids - burst_rel_id2
+        
