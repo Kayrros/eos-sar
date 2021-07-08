@@ -23,7 +23,7 @@ setuptools.setup(
     include_package_data=True,
     entry_points='',
     extras_require={
-        'test': ['pytest']
+        'test': ['pytest', 's1m']
     },
     classifiers=[]
 )
