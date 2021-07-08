@@ -13,9 +13,9 @@ For localization:
     with open(xml_path) as f: 
         xml_content = f.read()
     # extract the burst metadata
-    burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content, burst_id)
+    burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content, burst_id)
     # create a Sentinel1BurstModel
-    bmod = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(burst_meta, 
+    bmod = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(burst_meta,
                                                                         degree=11,
                                                                         bistatic_correction=True,
                                                                         apd_correction=True,
@@ -29,7 +29,7 @@ For localization:
 
     # localize the points
     lon, lat, alt = bmod.localization(rows, cols, alts)
-    
+
 Then for projection
 
     # now project these points back in the burst
@@ -41,8 +41,8 @@ eos also provides the necessary tools to perform the estimation of the registrat
 from a digital elevation model and a physical sensor model. 
 
 Suppose we have: 
-*  `xml_folder`: The folder containing the sentinel1 xml metadata.
-* `tiff_folder`: The folder containing the tiff sentinel1 images. 
+* `xml_folder`: The folder containing the sentinel1 xml metadata.
+* `tiff_folder`: The folder containing the tiff sentinel1 images.
 * `output_folder`: The folder where we wish to save the outputs ( here only the dem is saved). 
 
 
@@ -60,7 +60,7 @@ Suppose we have:
         # read the xmls as strings
         xml_content = []
         for xml_p in xml_paths:
-            with open(xml_p) as f: 
+            with open(xml_p) as f:
                 xml_content.append(f.read())
 
         # burst id in subswath
@@ -68,8 +68,8 @@ Suppose we have:
         burst_id = 3 
 
         # Now extract the needed metadata
-        primary_burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content[0], bid = burst_id)
-        secondary_burst_meta = eos.products.sentinel1.metadata.fill_meta(xml_content[1], bid = burst_id)
+        primary_burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content[0], burst_id)
+        secondary_burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content[1], burst_id)
 
         # Now instantiate burst_model instances for projection/localization
         primary_burst_model = eos.products.sentinel1.burst_model.burst_model_from_burst_meta(primary_burst_meta)
@@ -94,7 +94,7 @@ Suppose we have:
         # project in secondary and estimate registration
         A = eos.sar.regist.orbital_registration(row_primary, col_primary,
                                                 secondary_burst_model, x, y, raster, crs
-                                                ) 
+                                                )
         # Now read the secondary array 
         secondary_burst_array =  eos.products.sentinel1.io.read_burst(tiff_paths[1], secondary_burst_meta['burst_roi'])
 
