@@ -8,21 +8,12 @@ stages:
 variables:
   PIP_EXTRA_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
 
-test:unit:
+test:
   stage: test
   before_script:
     - pip install -e ".[test]"
   script:
-    - pytest tests/unit
-  allow_failure: true
-
-test:integration:
-  stage: test
-  before_script:
-    - pip install -e ".[test]"
-  script:
-    - pytest tests/integration
-  allow_failure: true
+    - pytest .
 
 deploy:
   stage: deploy
