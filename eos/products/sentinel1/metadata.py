@@ -206,30 +206,34 @@ def extract_bursts_metadata(xml, burst_ids=None):
     xml : str
         Content of the xml annotation file..
     burst_ids : Iterable, optional
-        Ids of the bursts to process. If None (not given), the metadata of all 
+        Ids of the bursts to process. If None (not given), the metadata of all
         the bursts in the swath will be returned. The default is None.
 
     Returns
     -------
-    b_dicts: List of dicts
+    bursts: List of dicts
         The metadata of the bursts.
     """
-    o_, i = extract_common_metadata(xml)
+    o, i = extract_common_metadata(xml)
 
-    bursts = i['swathTiming']['burstList']['burst']
+    dictbursts = i['swathTiming']['burstList']['burst']
 
     if burst_ids:
-        assert min(burst_ids) > -1 and max(burst_ids) < len(bursts),\
+        assert min(burst_ids) >= 0 and max(burst_ids) < len(dictbursts),\
             "burst ids out of range"
     else:
-        burst_ids = [*range(len(bursts))]
+        burst_ids = range(len(dictbursts))
 
-    b_dicts = []
     # longitude, latitude bounding box: select the four corners of the gcp grid
     gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
+
+    bursts = []
     for bid in burst_ids:
-        b_dicts.append(o_.copy())
-        b = bursts[bid]
+        b = dictbursts[bid]
+
+        # the metadata of the burst contains also the common metadata of the swath
+        burst = o.copy()
+
         # region of interest (roi) within the burst: x, y, w, h
         first_valid_x = map(int, b['firstValidSample']['#text'].split())
         last_valid_x = map(int, b['lastValidSample']['#text'].split())
@@ -243,23 +247,27 @@ def extract_bursts_metadata(xml, burst_ids=None):
 
         # time interval corresponding to the valid burst domain
         start = string_to_timestamp(b['azimuthTime'])
-        start_valid = start + y / o_['azimuth_frequency']
-        end_valid = start_valid + h / o_['azimuth_frequency']
-        b_dicts[-1]['burst_times'] = (start, start_valid, end_valid)
+        start_valid = start + y / o['azimuth_frequency']
+        end_valid = start_valid + h / o['azimuth_frequency']
+        burst['burst_times'] = (start, start_valid, end_valid)
 
         # make the burst roi coordinates relative the the full tiff image
-        y += bid * o_['lines_per_burst']
-        b_dicts[-1]['burst_roi'] = (x, y, w, h)
+        y += bid * o['lines_per_burst']
+        burst['burst_roi'] = (x, y, w, h)
 
-        b_dicts[-1]['azimuth_anx_time'] = float(b['azimuthAnxTime'])
+        burst['azimuth_anx_time'] = float(b['azimuthAnxTime'])
 
         corners = corners_of_geolocation_grid_points_list(
             gcp, only_burst_id=bid)
-        b_dicts[-1]['approx_geom'] = [(float(c['longitude']),
+        burst['approx_geom'] = [(float(c['longitude']),
                                        float(c['latitude'])) for c in corners]
 
-        _compute_burst_id(b_dicts[-1], i, b)
-    return b_dicts
+        # compute the burst id
+        _compute_burst_id(burst, i, b)
+
+        bursts.append(burst)
+
+    return bursts
 
 def extract_burst_metadata(xml, burst_id):
     """Extract metadata for a single burst.
@@ -267,7 +275,7 @@ def extract_burst_metadata(xml, burst_id):
     Parameters
     ----------
     xml : str
-        Content of the xml annotation file..
+        Content of the xml annotation file.
     burst_id : Integer
         Id of the burst to process.
 
