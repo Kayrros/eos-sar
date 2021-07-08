@@ -2,6 +2,7 @@ numpy
 datetime
 python-dateutil
 xmltodict
+lxml
 pyproj
 opencv-python-headless
 multidem
