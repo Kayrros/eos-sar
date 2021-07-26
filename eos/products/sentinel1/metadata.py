@@ -350,6 +350,8 @@ def extract_bursts_metadata(xml, burst_ids=None):
         # compute the burst id
         _compute_burst_id(burst, i, b, dictbursts[0])
 
+        burst['bsid'] = f'{burst["relative_burst_id"]}_{burst["swath"]}'
+
         bursts.append(burst)
 
     return bursts
