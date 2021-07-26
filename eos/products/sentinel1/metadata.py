@@ -86,7 +86,7 @@ def _compute_burst_id(o, i, b, first_burst):
     if o['swath'] == 'IW1':
         T_pre = 0.8
     elif o['swath'] == 'IW2':
-        T_pre = 1
+        T_pre = 0.95
     elif o['swath'] == 'IW3':
         T_pre = 2
     else:

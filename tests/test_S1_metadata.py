@@ -1,4 +1,5 @@
 import glob
+import numpy as np
 from eos.products import sentinel1
 
 def test_S1_metadata():
@@ -33,4 +34,16 @@ def test_reference_burstids():
             true_relative = int(true_b['burstId']['#text'])
             assert b['absolute_burst_id'] == true_absolute
             assert b['relative_burst_id'] == true_relative
+
+def test_bid_hard_cases():
+    # test that the bids are consecutive
+    for xml in glob.glob('./tests/data/bid-hard-cases/*.xml'):
+        print(xml)
+        xml_content = open(xml).read()
+        metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
+
+        absolute_bids = [b['absolute_burst_id'] for b in metadatas]
+        relative_bids = [b['relative_burst_id'] for b in metadatas]
+        assert (np.diff(absolute_bids) == 1).all()
+        assert (np.diff(relative_bids) == 1).all()
 
