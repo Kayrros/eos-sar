@@ -84,11 +84,13 @@ def _compute_burst_id(o, i, b, first_burst):
     # first burst of each swaths crosses the ascending node
     # at different times (and might not at t=0)
     if o['swath'] == 'IW1':
-        T_pre = 0.8
+        T_pre = 0.9
     elif o['swath'] == 'IW2':
-        T_pre = 0.95
+        # > 0.9260
+        T_pre = 1.2
     elif o['swath'] == 'IW3':
-        T_pre = 2
+        # > 1.89
+        T_pre = 2.5
     else:
         raise ValueError(f"Invalid subswath {o['swath']}")
 

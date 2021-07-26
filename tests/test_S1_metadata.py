@@ -1,4 +1,5 @@
 import glob
+import pytest
 import numpy as np
 from eos.products import sentinel1
 
@@ -20,30 +21,33 @@ def test_S1_metadata():
     assert b['relative_burst_id'] == 309584
     assert b['absolute_burst_id'] == 78648809
 
-def test_reference_burstids():
+
+xmls_with_reference_bid = glob.glob('./tests/data/samples_ipf_39/*/*/*.xml')
+
+@pytest.mark.parametrize("xml", xmls_with_reference_bid)
+def test_reference_burstids(xml):
     import xmltodict
-    for xml in glob.glob('./tests/data/samples_ipf_39/*/*/*.xml'):
-        print(xml)
-        xml_content = open(xml).read()
-        metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
+    xml_content = open(xml).read()
+    metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
 
-        parsed = xmltodict.parse(xml_content)['product']['swathTiming']['burstList']['burst']
-        for i, b in enumerate(metadatas):
-            true_b = parsed[i]
-            true_absolute = int(true_b['burstId']['@absolute'])
-            true_relative = int(true_b['burstId']['#text'])
-            assert b['absolute_burst_id'] == true_absolute
-            assert b['relative_burst_id'] == true_relative
+    parsed = xmltodict.parse(xml_content)['product']['swathTiming']['burstList']['burst']
+    for i, b in enumerate(metadatas):
+        true_b = parsed[i]
+        true_absolute = int(true_b['burstId']['@absolute'])
+        true_relative = int(true_b['burstId']['#text'])
+        assert b['absolute_burst_id'] == true_absolute
+        assert b['relative_burst_id'] == true_relative
 
-def test_bid_hard_cases():
-    # test that the bids are consecutive
-    for xml in glob.glob('./tests/data/bid-hard-cases/*.xml'):
-        print(xml)
-        xml_content = open(xml).read()
-        metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
 
-        absolute_bids = [b['absolute_burst_id'] for b in metadatas]
-        relative_bids = [b['relative_burst_id'] for b in metadatas]
-        assert (np.diff(absolute_bids) == 1).all()
-        assert (np.diff(relative_bids) == 1).all()
+bid_hard_cases = glob.glob('./tests/data/bid-hard-cases/*.xml')
+
+@pytest.mark.parametrize("xml", bid_hard_cases)
+def test_bid_hard_case(xml):
+    xml_content = open(xml).read()
+    metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
+
+    absolute_bids = [b['absolute_burst_id'] for b in metadatas]
+    relative_bids = [b['relative_burst_id'] for b in metadatas]
+    assert (np.diff(absolute_bids) == 1).all()
+    assert (np.diff(relative_bids) == 1).all()
 
