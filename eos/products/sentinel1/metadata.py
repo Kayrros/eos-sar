@@ -87,10 +87,11 @@ def _compute_burst_id(o, i, b, first_burst):
         T_pre = 0.9
     elif o['swath'] == 'IW2':
         # > 0.9260
-        T_pre = 1.2
+        T_pre = 1.5
     elif o['swath'] == 'IW3':
         # > 1.89
-        T_pre = 2.5
+        # < 2.55
+        T_pre = 2.53
     else:
         raise ValueError(f"Invalid subswath {o['swath']}")
 
