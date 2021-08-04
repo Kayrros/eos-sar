@@ -34,7 +34,7 @@ def corners_of_geolocation_grid_points_list(l, only_burst_id):
     return a, b, c, d
 
 
-def _compute_burst_id(o, i, b):
+def _compute_burst_id(o, i, b, first_burst):
     """Compute the absolute/relative burst id and adds theses entries to the
        provided dictionary.
     The absolute burst id (+ subswath) provides a unique identifier for a
@@ -71,13 +71,9 @@ def _compute_burst_id(o, i, b):
     else:
         raise ValueError(f'Invalid mission_id {mission_id}')
 
-    # time at which the ascending node was crossed for the current orbit
-    orbit_anx_time = i['imageAnnotation']['imageInformation']['ascendingNodeTime']
-    orbit_anx_time = datetime.datetime.fromisoformat(orbit_anx_time)
-
     # time taken to go over one orbit
     # repeat cycle is 12 days, with 175 orbits per cycle
-    T_orb = 12*24*3600/175
+    T_orb = 12 * 24 * 3600 / 175
 
     # T_beam is sensing time between two bursts
     # this value was obtained by subtracting the sensing time of two consecutive bursts
@@ -88,41 +84,128 @@ def _compute_burst_id(o, i, b):
     # first burst of each swaths crosses the ascending node
     # at different times (and might not at t=0)
     if o['swath'] == 'IW1':
-        T_pre = 0.8
+        T_pre = 0.9
     elif o['swath'] == 'IW2':
-        T_pre = 1
+        # > 0.9260
+        T_pre = 1.5
     elif o['swath'] == 'IW3':
-        T_pre = 2
+        # > 1.89
+        # < 2.55
+        T_pre = 2.53
     else:
         raise ValueError(f"Invalid subswath {o['swath']}")
 
     # compute the mid-burst sensing time
-    t_start = datetime.datetime.fromisoformat(b['azimuthTime'])
     N = o['lines_per_burst']
     PRF = o['azimuth_frequency']
-    t_b = t_start + datetime.timedelta(seconds=(N - 1) / (2 * PRF))
+    # difference between the mid-burst time and the time at which the orbit crossed the ascending node
+    t_anx = float(b['azimuthAnxTime'])
+    # time at the middle of the burst
+    delta_b = t_anx + (N - 1) / (2 * PRF)
+    # subtract a short delay to align the swaths
+    delta_b -= T_pre
 
-    # compute the difference between the mid-burst time and
-    # the time at which the orbit crossed the ascending node
-    delta_b = (t_b - orbit_anx_time).total_seconds()
+    # in the following, we have 3 slices (= 3 products), 3 bursts per slice
+    # the second slice crosses the equator, somewhere inside the second burst
+    # ================
+    # |p3 b3         |
+    # |              |
+    # |              |
+    # |--------------|
+    # |p3 b2         |
+    # |              |
+    # |              |
+    # |--------------|
+    # |p3 b1         |
+    # |              |
+    # |              |
+    # ================
+    # |p2 b3         |
+    # |              |
+    # |              |
+    # |--------------|
+    # |p2 b2         | orbit=2 above
+    # //////////////// equator          <- t=tANX+T_orb
+    # |              | orbit=1 below
+    # |--------------|
+    # |p2 b1         |
+    # |              |
+    # |              |
+    # ================
+    # |p1 b3         |
+    # |              |
+    # |              |
+    # |--------------|
+    # |p1 b2         |
+    # |              |
+    # |              |
+    # |--------------|
+    # |p1 b1         |
+    # |              |
+    # |              |
+    # ================
+    # ...
+    #                  orbit=1 above
+    # //////////////// equator          <- t=tANX
+    #                  orbit=0 below
 
-    # if we completed an orbit during the acquisition, we need to adjust the orbit numbers
-    # this is only required because of the relative_orbit_number
-    # NOTE: this was not specified in the ESA documentation
-    if delta_b > T_orb:
+    # looking at the xmls, we have the following:
+    # - the orbit number is updated only at the beginning of the product
+    #       orbit number for product 0 is 1
+    #       orbit number for product 1 is 1
+    #       orbit number for product 2 is 2
+    # - ascendingNodeTime is only updated at the beginning of the first slice
+    #       all products have ascendingNodeTime=tANX
+    #       in the burst metadata, azimuthAnxTime is computed from ascendingNodeTime
+    #           this means that for p2-b2 and beyond, their time-since-anx will be greater than the orbit duration
+    #           even though the orbit number of bursts of p3 is already incremented
+    # this means that we have to take extra care and retrieve the correct orbit number or ANX time for each case
+
+    # the longitude at the start of the first orbit is 4.5° at the equator
+    orbit1_lon = 4.5
+    # the angle difference between two consecutive orbits
+    angle_per_orbit = 360 / 175 * 12
+    # approximative longitude of the current burst (it's ok if it is a few degrees of)
+    current_lon = np.mean([c[0] for c in o['approx_geom']])
+    # expected longitude for a given orbit number
+    lon_at_anx = lambda orbit: (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
+    # since the longitude difference between the swaths is +/-1° the longitude of swath 2,
+    # we don't have to correct it since the margin of error will be around 10°
+    expected_lon = lon_at_anx(relative_orbit_number)
+
+    # the current orbit is wrong if
+    # 1. we are close to the next ANX
+    # 2. the orbit number was not yet incremented (= expected_lon is way off)
+    close_to_next_anx = abs(t_anx - T_orb) < 50
+    orbit_looks_off = abs(current_lon - expected_lon) > angle_per_orbit / 2
+
+    # if the ANX of the first burst is larger than the orbit time, then we crossed the equator
+    # two cases can happen:
+    # 1. the orbit number was already updated, then we need to reset ANX
+    #    this happens when the product is fully after the equator
+    # 2. the orbit number is the old one, then we don't have to do anything
+    #    this happens when the product is crossing the equator
+    # - to avoid mis-reseting the ANX, we detect case 2. by checking whether
+    #   we are close to the ANX and if the longitude is coherent with the current orbit
+    #   the old orbit will predict a longitude off by ~25° (= angle_per_orbit)
+    # - then we can check case 1. by checking whether the first burst of the product
+    #   was already after the next anx
+    # this strategy avoid having to rely on precise timings (with timings from other swaths to consider)
+    fanx = float(first_burst['azimuthAnxTime'])
+    if not (close_to_next_anx and orbit_looks_off) and fanx > T_orb:
         delta_b -= T_orb
-        relative_orbit_number = relative_orbit_number % 175 + 1
-        absolute_orbit_number += 1
+
+    # NOTE: if we completed an orbit during the acquisition, we would need to adjust the orbit numbers
+    #       this is only required because of the relative_orbit_number
+    #       however, the start of orbit 1 is above the sea so we can ignore this case for now
 
     # add the time taken to arrive to the current orbit
     delta_t_b_rel = delta_b + (relative_orbit_number - 1) * T_orb
     delta_t_b_abs = delta_b + (absolute_orbit_number - 1) * T_orb
 
-    # subtract the preamble and divide by the beam cycle time
-    # to obtain the burst ids
-    o['relative_burst_id'] = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam)
-    o['absolute_burst_id'] = 1 + math.floor((delta_t_b_abs - T_pre) / T_beam)
-
+    # subtract the preamble and divide by the beam cycle time to obtain the burst ids
+    o['relative_burst_id'] = 1 + math.floor(delta_t_b_rel / T_beam)
+    o['absolute_burst_id'] = 1 + math.floor(delta_t_b_abs / T_beam)
 
 def extract_common_metadata(xml):
     """Extract common metadata for all the swath.
@@ -268,7 +351,9 @@ def extract_bursts_metadata(xml, burst_ids=None):
                                        float(c['latitude'])) for c in corners]
 
         # compute the burst id
-        _compute_burst_id(burst, i, b)
+        _compute_burst_id(burst, i, b, dictbursts[0])
+
+        burst['bsid'] = f'{burst["relative_burst_id"]}_{burst["swath"]}'
 
         bursts.append(burst)
 
