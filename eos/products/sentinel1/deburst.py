@@ -31,7 +31,7 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
     return out_img
 
 
-def deburst_in_primary_swath(primary_swath_model, input_tiff_path, roi_in_swath=None):
+def deburst_in_primary_swath(primary_swath_model, image_reader, roi_in_swath=None):
     """
     Compute debursted crop inside the swath/of the whole swath of a primary image. 
 
@@ -40,8 +40,8 @@ def deburst_in_primary_swath(primary_swath_model, input_tiff_path, roi_in_swath=
     primary_swath_model : Sentinel1SwathModel
         SwathModel of the image. It is supposed to be the primary frame in the 
         context of interferometry, since no resampling is performed. 
-    input_tiff_path : str
-        Path to the input tiff.
+    image_reader : rasterio.DatasetReader
+            opened image
     roi_in_swath : tuple
         (col, row, w, h) Region to deburst inside a swath in swath coordinates.
         If None, the whole swath is taken. The default is None. 
@@ -61,7 +61,7 @@ def deburst_in_primary_swath(primary_swath_model, input_tiff_path, roi_in_swath=
     """
     burst_ids, rois_read, rois_write, out_shape = primary_swath_model.get_read_write_rois(
         roi_in_swath)
-    burst_arrays = io.read_windows(input_tiff_path, rois_read)
+    burst_arrays = io.read_windows(image_reader, rois_read)
     debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
     return debursted_crop, burst_ids, rois_read, rois_write
 
@@ -100,8 +100,8 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
         Each resampler is associated with the corresponding roi in Secondary_read_roi
 
     """
-    Resamplers = []
-    Secondary_rois_read = []
+    resamplers = []
+    secondary_rois_read = []
 
     for j in range(len(burst_ids)):
 
@@ -131,27 +131,27 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
         # set to resample within the burst
         resampler.set_inside_burst(dst_roi_in_burst, src_roi_in_burst)
 
-        Resamplers.append(resampler)
+        resamplers.append(resampler)
 
         # Secondary read rois
-        Secondary_rois_read.append(roi.translate_roi(
+        secondary_rois_read.append(roi.translate_roi(
             src_roi_in_burst, col_src, row_src))
         
-    return Secondary_rois_read, Resamplers
+    return secondary_rois_read, resamplers
 
-def read_resample_and_deburst(secondary_tiff_path, Secondary_rois_read, 
-                              Resamplers, rois_write, out_shape): 
+def read_resample_and_deburst(secondary_image_reader, secondary_rois_read, 
+                              resamplers, rois_write, out_shape): 
     """
     Read rois from secondary, resample the complex images with deramping/reramping, 
     and deburst into a final stitched image. 
 
     Parameters
     ----------
-    secondary_tiff_path : str
-        Path of the secondary tiff file of the swath.
-    Secondary_rois_read : list of tuples
+    secondary_image_reader : rasterio.DatasetReader
+        Opened secondary image
+    secondary_rois_read : list of tuples
         Each tuple (col, row, w, h) is a location to read from in the secondary tiff.
-    Resamplers : list of Sentinel1BurstResample
+    resamplers : list of Sentinel1BurstResample
         Each resampler is associated with the corresponding roi in Secondary_read_roi.
     rois_write : list of tuples
         Each tuple (col, row, w, h) is a location to write at in the output image.
@@ -165,8 +165,8 @@ def read_resample_and_deburst(secondary_tiff_path, Secondary_rois_read,
 
     """    
     
-    burst_arrays = io.read_windows(secondary_tiff_path, Secondary_rois_read)
-    burst_arrays = [resamp.resample(arr) for arr,resamp in zip(burst_arrays, Resamplers)]
+    burst_arrays = io.read_windows(secondary_image_reader, secondary_rois_read)
+    burst_arrays = [resamp.resample(arr) for arr,resamp in zip(burst_arrays, resamplers)]
     secondary_debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
     return secondary_debursted_crop
 
