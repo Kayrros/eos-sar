@@ -181,7 +181,7 @@ def get_bursts_intersection(num_bursts1, burst_rel_id1, num_bursts2, burst_rel_i
     burst_rel_id1 : int
         Relative spatial id of the first burst in the first swath.
     num_bursts2 : int
-        Number of bursts in the second swath.
+        Number of bursts in the second swath. 
     burst_rel_id2 : int
         Relative spatial id of the first burst in the second swath.
 
@@ -189,9 +189,14 @@ def get_bursts_intersection(num_bursts1, burst_rel_id1, num_bursts2, burst_rel_i
     -------
     Iterable
         Each element is a burst id in the first swath in the intersection.
-    TYPE
+    Iterable
         Each element is a burst id in the second swath in the intersection.
-
+        
+    Notes
+    -----
+     If the metadata of the bursts are stored in a list of dict burst_metas, 
+     num_bursts can be retrieved as len(burst_metas)
+     burst_rel_id can be retrieved as burst_metas[0]['relative_burst_id']
     """
     
     rel_min = max(burst_rel_id1, burst_rel_id2)
