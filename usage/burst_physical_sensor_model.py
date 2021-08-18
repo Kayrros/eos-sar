@@ -7,20 +7,14 @@ remote_test = True
 
 if remote_test: 
     xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
-    # prepare oio config 
-    prof_name = 'oio'
-    en_url = 'https://s3.kayrros.org'
 else: 
     xml_folder = '../tests/data'
-    # just set oio vars to None in this case
-    prof_name = en_url = None
+
 basename = 's1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'    
 xml_path = os.path.join(xml_folder, basename)
 
 # read xml
-xml_content = eos.sar.io.read_xml_file(
-    xml_path, profile_name=prof_name,
-    endpoint_url=en_url)
+xml_content = eos.sar.io.read_xml_file( xml_path)
 
 burst_id = 1
 

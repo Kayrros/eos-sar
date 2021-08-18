@@ -8,18 +8,11 @@ remote_test = True
 if remote_test: 
     
     xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
-
-    tiff_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/measurement'
-    # prepare oio config 
-    prof_name = 'oio'
-    en_url = 'https://s3.kayrros.org'
-    
+    tiff_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/measurement'    
 else: 
     
     xml_folder = '/home/rakiki/CMLA/Time_series/data/annotation'
     tiff_folder = '/home/rakiki/CMLA/Time_series/data/measurement'
-    # just set oio vars to None in this case
-    prof_name = en_url = None
 
 xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
                      's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
@@ -32,16 +25,12 @@ xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames ]
 
 tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
 
-image_readers = [eos.sar.io.open_image(p, profile_name=prof_name, 
-                                       endpoint_url=en_url)
-                 for p in tiff_paths]
+image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
 
 # read the xmls as strings
 xml_content = []
 for xml_path in xml_paths: 
-        xml_content.append( eos.sar.io.read_xml_file(
-                                xml_path, profile_name=prof_name,
-                                endpoint_url=en_url))
+        xml_content.append(eos.sar.io.read_xml_file(xml_path))
 
 # burst id in subswath
 # here, by "chance", the 3rd burst is the same geographical location in both products
