@@ -21,8 +21,8 @@ def test_projection_vs_s1m():
 
     # create a grid of points
     x, y, w, h = bmod.burst_roi
-    Cols, Rows = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
-    cols, rows = Cols.ravel(), Rows.ravel()
+    cols_grid, rows_grid = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
+    cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 
     # localize the points
