@@ -4,105 +4,20 @@ This package provides access to some generic sar processing algorithms.
 
 Currently, algorithms specific to **Sentinel1** bursts have been implemented. 
 
-## Physical sensor model 
+Check the usage folder for some examples. 
 
-This allows the user to project a 3D point into the burst, and vice-versa. 
+In order to run the examples in the usage folder, you need to set the follwing 
+environment variables: 
 
-For localization:
-    # read the content of the xml 
-    with open(xml_path) as f: 
-        xml_content = f.read()
-    # extract the burst metadata
-    burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content, burst_id)
-    # create a Sentinel1BurstModel
+* AWS_ACCESS_KEY_ID = "YOUR CREDENTIALS"
+* AWS_SECRET_ACCESS_KEY = "YOUR CREDENTIALS"
+* AWS_DEFAULT_REGION = kayrros
+* AWS_S3_ENDPOINT = s3.kayrros.org
 
-    bmod = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, 
-                                                                        degree=11,
-                                                                        bistatic_correction=True,
-                                                                        apd_correction=True,
-                                                                        max_iterations=20,
-                                                                        tolerance=0.001)
-    # create a grid of points
-    x, y, w, h = bmod.burst_roi
-    Cols, Rows = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
-    cols, rows = Cols.ravel(), Rows.ravel()
-    alts = np.zeros_like(cols)
+Each file in the usage folder demonstrates a different application: 
 
-    # localize the points
-    lon, lat, alt = bmod.localization(rows, cols, alts)
-
-Then for projection
-
-    # now project these points back in the burst
-    rows_pred, cols_pred, i_pred = bmod.projection(lon, lat, alt)
-
-## Burst registration
-
-eos also provides the necessary tools to perform the estimation of the registration matrix 
-from a digital elevation model and a physical sensor model. 
-
-Suppose we have: 
-* `xml_folder`: The folder containing the sentinel1 xml metadata.
-* `tiff_folder`: The folder containing the tiff sentinel1 images.
-* `output_folder`: The folder where we wish to save the outputs ( here only the dem is saved). 
-
-
-
-        # list of our xmls 
-        xml_paths = [os.path.join(xml_folder, p) for p in 
-                        ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
-                        's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
-                    ]
-        tiff_paths = [os.path.join(tiff_folder, p) for p in 
-                        ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff',
-                        's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
-                    ]
-
-        # read the xmls as strings
-        xml_content = []
-        for xml_p in xml_paths:
-            with open(xml_p) as f:
-                xml_content.append(f.read())
-
-        # burst id in subswath
-        # here, by "chance", the 4th burst is the same geographical location in both products
-        burst_id = 3 
-
-        # Now extract the needed metadata
-        primary_burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content[0], burst_id)
-        secondary_burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(xml_content[1], burst_id)
-
-        # Now instantiate burst_model instances for projection/localization
-        primary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(primary_burst_meta)
-        secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(secondary_burst_meta)
-
-        # Now estimate the registration matrix 
-
-        # get dem points
-        x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_burst_model,
-                                                                source = 'SRTM30', 
-                                                                datum = 'ellipsoidal', 
-                                                                outfile = os.path.join(output_folder, 'dem.tif')
-                                                                )
-        # you can mask some pixels to speed up the projection
-        mask = np.random.binomial(n=1, p=0.1, size=x.shape).astype(bool)
-        x = x[mask]
-        y = y[mask]
-        raster = raster[mask]
-        # project in primary 
-        row_primary, col_primary, _ = primary_burst_model.projection(x.ravel(), y.ravel(), raster.ravel(), crs = crs)
-
-        # project in secondary and estimate registration
-        A = eos.sar.regist.orbital_registration(row_primary, col_primary,
-                                                secondary_burst_model, x, y, raster, crs
-                                                )
-        # Now read the secondary array 
-        secondary_burst_array =  eos.products.sentinel1.io.read_burst(tiff_paths[1], secondary_burst_meta['burst_roi'])
-
-        # resample the complex secondary burst
-        _, _, w, h = primary_burst_meta['burst_roi']
-        resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(secondary_burst_meta, dst_shape=(h, w),
-                                                    matrix = A, degree=11)
-        resampled_secondary_array = resampler.resample(secondary_burst_array)
-
-Thus we have successfully resampled a complex secondary burst onto the primary burst frame. 
+* burst_physical_sensor_model.py: Shows the usage of the physical sensor model for projection and localization in a Sentinel-1 burst. 
+* burst_registration.py: Shows the registration of a secondary image burst onto a primary image burst. 
+* burst_registration_inside.py: Shows the registration of a crop inside a secondary image burst onto a corresponding crop inside a primary image burst. 
+* single_image_debursting.py: Shows the debursting of a single primary image. It is possible to define a region of interest (a crop) inside the swath, and only this region will be read and debursted. 
+* secondary_image_debursting.py: Shows the debursting of a secondary image after it has been resampled burst by burst onto a primary image. This processing can also be restricted on a region of interest(a crop). 
