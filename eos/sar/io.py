@@ -1,8 +1,11 @@
+import os
+import re
+import warnings
 import rasterio
 import botocore
 import boto3
 from urllib.parse import urlparse
-import re
+import numpy as np
 
 def open_image(path, profile_name=None, endpoint_url=None,
                requester_pays=False):
@@ -29,12 +32,23 @@ def open_image(path, profile_name=None, endpoint_url=None,
         opened image.
 
     """
-    try:
+    # try to use the given profile_name
+    if profile_name:
         session = rasterio.session.AWSSession(profile_name=profile_name,
                                               requester_pays=requester_pays)
-    except botocore.exceptions.ProfileNotFound:
-        warnings.warn('No S3 profile {} found'.format(profile_name))
-        session = None
+
+    # if the profile is not given, rely on environment variables
+    elif 'AWS_ACCESS_KEY_ID' in os.environ:
+        session = rasterio.session.AWSSession(
+                aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                region_name=os.environ["AWS_DEFAULT_REGION"],
+                requester_pays=requester_pays)
+        endpoint_url = endpoint_url or os.environ["AWS_S3_ENDPOINT"]
+
+    # last chance
+    else:
+        session = rasterio.session.AWSSession(requester_pays=requester_pays)
 
     env = rasterio.Env(session=session)
     if endpoint_url:
@@ -73,8 +87,10 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
 
     """
     if xml_path.startswith('s3://'):
-       
-        try:
+        s3_client = None
+
+        # try to use the given profile_name
+        if profile_name:
             session = boto3.session.Session(profile_name=profile_name)
             if endpoint_url and not endpoint_url.startswith('https://'):
                 if endpoint_url.startswith('http://'):
@@ -83,9 +99,20 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
             s3_client = session.client('s3',
                                        endpoint_url=endpoint_url,
                                        region_name=session.region_name)
-        except botocore.exceptions.ProfileNotFound:
-            warnings.warn('No S3 profile %s found' % profile_name)
+
+        # if the profile is not given, rely on environment variables
+        elif 'AWS_ACCESS_KEY_ID' in os.environ:
+            s3_client = boto3.client('s3',
+                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                    endpoint_url="https://" + (endpoint_url or os.environ["AWS_S3_ENDPOINT"]),
+                    region_name=os.environ["AWS_DEFAULT_REGION"],
+            )
+
+        # last chance
+        else:
             s3_client = boto3.client('s3')
+
         parsed_url = urlparse(xml_path)
         bucket = parsed_url.netloc
         key = parsed_url.path.lstrip('/')
@@ -116,7 +143,7 @@ def read_window(image_reader, roi):
     """
     x, y, w, h = roi
     return image_reader.read(1, window=(
-            (y, y+h), (x, x+w))).astype('complex64')
+            (y, y+h), (x, x+w))).astype(np.complex64)
 
 
 def read_windows(image_reader, rois):
@@ -136,6 +163,6 @@ def read_windows(image_reader, rois):
 
     """
     arrays = []
-    for roi in rois: 
+    for roi in rois:
         arrays.append(read_window(image_reader, roi))
     return arrays
