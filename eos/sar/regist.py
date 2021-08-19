@@ -230,7 +230,6 @@ class ComplexResample(abc.ABC):
         will be implemented for each SAR satellite,\
         and for each satellite mode."""
 
-    src_shape: tuple
     dst_shape: tuple
     matrix: np.ndarray
 
@@ -267,3 +266,34 @@ class ComplexResample(abc.ABC):
 
         # reramp
         return self.reramp(dst_array)
+
+def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
+    """
+    Adapts a resampling matrix to new origins at the source and the destination. 
+
+    Parameters
+    ----------
+    row_src : float
+        row at the new source origin w.r.t the old origin.
+    col_src : float
+        col at the new source origin w.r.t the old origin.
+    row_dst : float
+        row at the new destination origin w.r.t the old origin.
+    col_dst : float
+        col at the new destination origin w.r.t the old origin.
+    A : (3,3) ndarray
+        Inverse resampling matrix A.dst_coords = src_coords at the old origins.
+
+    Returns
+    -------
+    (3,3) ndarray
+        Adapted affine matrix
+
+    """
+    T_dst_inv = np.eye(3)
+    T_dst_inv[0,2] = row_dst
+    T_dst_inv[1,2] = col_dst
+    T_src = np.eye(3)
+    T_src[0,2] = - row_src
+    T_src[1,2] = - col_src 
+    return T_src.dot(A.dot(T_dst_inv))
