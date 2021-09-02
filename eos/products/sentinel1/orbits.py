@@ -107,6 +107,20 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
 
 
 def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, force_type=None):
+    '''Retrieve the orbit statevectors of the given bursts using the bucket s3://s1-orbits.
+
+    Args
+        client_s3: a boto3.client instance with kayrros OIO credentials
+        product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
+        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
+        force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
+
+    Returns
+        str: the type of orbit found ('orbres' or 'orbpre')
+
+    Raises
+        FileNotFoundError: if no orbit file is found for the product_info
+    '''
     if isinstance(product_info, tuple):
         # ('20210216T151206', 'S1A')
         date, missionid = product_info
