@@ -5,3 +5,4 @@ from eos.products.sentinel1 import deburst
 from eos.products.sentinel1 import orbits
 from eos.products.sentinel1 import doppler_info
 from eos.products.sentinel1 import regist
+from eos.products.sentinel1 import calibration

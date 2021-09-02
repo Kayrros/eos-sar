@@ -8,3 +8,5 @@ opencv-python-headless
 multidem
 shapely
 scipy
+cython
+s1c

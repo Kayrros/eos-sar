@@ -1,13 +1,14 @@
 import setuptools
 from setuptools import find_packages
 
+from Cython.Build import cythonize
+import numpy as np
 
 with open('README.md', 'r') as f:
     long_description = f.read()
 
 with open('requirements.txt') as f:
     required = f.read().splitlines()
-
 
 setuptools.setup(
     name='kayrros-eos-sar',
@@ -19,6 +20,10 @@ setuptools.setup(
     packages=find_packages(),
     package_dir={'': '.'},
     package_data={},
+
+    ext_modules=cythonize('eos/products/sentinel1/_calibration.pyx'),
+    include_dirs=[np.get_include()],
+
     install_requires=required,
     include_package_data=True,
     entry_points='',
