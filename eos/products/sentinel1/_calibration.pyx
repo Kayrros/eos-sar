@@ -15,9 +15,6 @@ def bilinear_interpolation(tuple window, np.int32_t[::1] lines, np.int32_t[::1] 
     assert list(cols) == list(sorted(cols))
     assert list(lines) == list(sorted(lines))
 
-    print('cols/lines:', len(cols), len(lines))
-    print('window:', window)
-    print('values:', values.shape)
     cdef int w
     cdef int h
 

@@ -38,6 +38,10 @@ class Calibrator:
     Example
     >>> calibrator_noise = calibration.Calibrator(cal_xml, noise_xml)
     >>> calibrator_noise.calibrate_inplace(myarray, window, "beta")
+
+    Note
+        s1tbx (8.0.5) does not clip to 0 and instead keep the original value of the pixel.
+        Expect some small differences between eos and SNAP because of this. Any other difference should be reported!
     '''
 
     def __init__(self, calibration_xml_content, noise_xml_content=None):
