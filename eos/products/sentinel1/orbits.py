@@ -26,6 +26,7 @@ def _parse_start_end_date_from_orbit_file(s):
 
 
 def select_orbit_file_from_filelist(files, date, missionid):
+    date = string_to_timestamp(date)
     missionid = missionid.lower()
 
     for file in files:
@@ -35,7 +36,15 @@ def select_orbit_file_from_filelist(files, date, missionid):
             continue
 
         s, e = _parse_start_end_date_from_orbit_file(filename)
-        if s < date and e > date:
+        s = string_to_timestamp(s)
+        e = string_to_timestamp(e)
+
+        # time buffer of 10 state vectors with 10 seconds per state vector before the date
+        buffer_pre = 10 * 10
+        # time buffer of 20 state vectors with 10 seconds per state vector after the date, since the date often indicates the beginning of the product
+        buffer_post = 10 * 10
+
+        if s + buffer_pre < date and e - buffer_post > date:
             return file
 
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
@@ -102,6 +111,8 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
             })
 
     for i, b in enumerate(bursts):
+        # make sure we fetched enough state_vectors
+        assert len(b['state_vectors']) <= len(newsvs[i])
         b['state_vectors'] = newsvs[i]
         b['state_vectors_origin'] = orbtype
 
