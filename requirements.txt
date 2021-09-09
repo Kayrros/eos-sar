@@ -10,3 +10,4 @@ shapely
 scipy
 cython
 s1c
+scipy
