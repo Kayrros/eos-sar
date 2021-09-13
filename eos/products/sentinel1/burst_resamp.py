@@ -270,7 +270,7 @@ class Sentinel1BurstResample(regist.ComplexResample):
         """
         return rg_dpt_dop_rate * self.krot / \
             (rg_dpt_dop_rate - self.krot)
-            
+
     def set_inside_burst(self, dst_roi_in_burst, src_roi_in_burst): 
         """
         Set the resampling region source and destination within the bursts. 
@@ -336,19 +336,18 @@ class Sentinel1BurstResample(regist.ComplexResample):
         dop_rate = self.get_dop_rate(rg_dpt_dop_rate)
         del rg_dpt_dop_rate
 
-        # repeat vertically h times
-        dop_centroid = vrepeat(dop_centroid, h=h)
-        ref_time = vrepeat(ref_time, h=h)
-        dop_rate = vrepeat(dop_rate, h=h)
+        # reshape the 1D vectors for broadcasting
+        dop_centroid = dop_centroid[None, :]
+        ref_time = ref_time[None, :]
+        dop_rate = dop_rate[None, :]
+        eta = eta[:, None]
 
         # Compute Deramping func
-        eta = hrepeat(eta, w=w)
         deta = eta - ref_time
         del eta, ref_time
-        phi = -np.pi * dop_rate * deta ** 2 -\
-            2 * np.pi * dop_centroid * deta
+        phi = (-np.pi * dop_rate * deta - 2 * np.pi * dop_centroid) * deta
 
-        deramping_func = np.exp(1j * phi).astype(np.complex64)
+        deramping_func = np.exp(1j * phi, dtype=np.complex64)
 
         return src_array * deramping_func
 
@@ -382,11 +381,11 @@ class Sentinel1BurstResample(regist.ComplexResample):
         # irregular grid at src
         row_src, col_src = self.matrix.dot(dst_points)[:2]
         del dst_points
-        
+
         # reference row_src and col_src w.r.t. the burst origin
         row_src += self.src_roi_in_burst[1]
         col_src += self.src_roi_in_burst[0]
-        
+
         eta, slrt = self.to_eta_slrt(row_src, col_src)
         del row_src, col_src
 
@@ -404,19 +403,9 @@ class Sentinel1BurstResample(regist.ComplexResample):
         phi = np.pi * dop_rate * deta ** 2 +\
             2 * np.pi * dop_centroid * deta
 
-        reramping_func = np.exp(1j * phi).astype(np.complex64)
+        reramping_func = np.exp(1j * phi, dtype=np.complex64)
 
         return dst_array * reramping_func.reshape(self.dst_shape)
-
-
-def hrepeat(arr, w):
-    """Flip a 1D array vertically and repeat horizontally w times."""
-    return np.repeat(arr.reshape(-1, 1), repeats=w, axis=1)
-
-
-def vrepeat(arr, h):
-    """Flip a 1D array horizontally, and repeat vertically h times."""
-    return np.repeat(arr.reshape(1, -1), repeats=h, axis=0)
 
 
 def find_nearest_index(l, x):
