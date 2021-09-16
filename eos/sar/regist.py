@@ -65,14 +65,14 @@ def affine_transformation(src, dst):
     return A
 
 
-def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
+def dem_points(geometry, source="SRTM30", datum="ellipsoidal",
                outfile=None):
     """Query dem points.
 
     Parameters
     ----------
-    primary_model : eos.sar.model.SensorModel
-        Sensor model for the primary image.
+    geometry : list of tuple (lon,lat)
+        Geometry of the primary image, one point per corner of the image
     source : str
         DEM source "SRTM30" (default), "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI"
     datum : str
@@ -103,9 +103,9 @@ def dem_points(primary_model, source="SRTM30", datum="ellipsoidal",
     """
     assert datum == "ellipsoidal", "Multidem\
         only supports crs for ellipsoidal datum"
-    # burst approx bbox
-    lons = [P[0] for P in primary_model.approx_geom]
-    lats = [P[1] for P in primary_model.approx_geom]
+    # geometry of the query
+    lons = [P[0] for P in geometry]
+    lats = [P[1] for P in geometry]
     bounds = (min(lons), min(lats), max(lons), max(lats))
     # query for dem
     raster, transform, crs = multidem.crop(bounds,

@@ -64,7 +64,7 @@ class Test_Resample_Stitch:
     def mat_estim(self, prim_mod, sec_mod):
 
         # get dem points
-        x, y, raster, transform, crs = eos.sar.regist.dem_points(prim_mod,
+        x, y, raster, transform, crs = eos.sar.regist.dem_points(prim_mod.approx_geom,
                                                                   source='SRTM30',
                                                                   datum='ellipsoidal'
                                                                   )

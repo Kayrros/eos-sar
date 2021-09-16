@@ -55,7 +55,7 @@ secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst
 # Now estimate the registration matrix
 
 # get dem points
-x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_burst_model,
+x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_burst_model.approx_geom,
                                                          source='SRTM30',
                                                          datum='ellipsoidal'
                                                          )

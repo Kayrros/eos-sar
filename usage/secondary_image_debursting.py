@@ -71,7 +71,7 @@ secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
 
 # Now estimate the registration matrix
 # get dem points
-x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_swath_model,
+x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_swath_model.approx_geom,
                                                          source='SRTM30',
                                                          datum='ellipsoidal',
                                                          )
