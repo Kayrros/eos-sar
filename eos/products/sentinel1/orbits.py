@@ -78,8 +78,11 @@ def apply_new_statevectors_to_burst(xml_content, burst, orbtype):
 
 
 def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
-    all_start = min([burst['state_vectors'][0]['time'] for burst in bursts])
-    all_end = max([burst['state_vectors'][-1]['time'] for burst in bursts])
+    # compute the approximative middle time of the burst/product
+    # we will extract all orbit data over a window of 3 minutes centered around this middle
+    start = min([burst['state_vectors'][0]['time'] for burst in bursts])
+    end = max([burst['state_vectors'][-1]['time'] for burst in bursts])
+    mid = (start + end) / 2
 
     newsvs = [[] for _ in bursts]
 
@@ -90,20 +93,12 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
     for _, element in context:
         date = string_to_timestamp(element.findtext('UTC')[4:])
 
-        if date < all_start - 10:
+        if date < mid - 90:
             continue
-        if date > all_end + 10:
+        if date > mid + 90:
             break
 
         for i, b in enumerate(bursts):
-            old_sv_start = b['state_vectors'][0]['time']
-            old_sv_end = b['state_vectors'][-1]['time']
-
-            if date < old_sv_start - 10:
-                continue
-            if date > old_sv_end + 10:
-                continue
-
             newsvs[i].append({
                 'time': date,
                 'position': [float(element.findtext(k)) for k in ['X', 'Y', 'Z']],
@@ -112,7 +107,7 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
 
     for i, b in enumerate(bursts):
         # make sure we fetched enough state_vectors
-        assert len(b['state_vectors']) <= len(newsvs[i])
+        assert len(newsvs[i]) >= 15
         b['state_vectors'] = newsvs[i]
         b['state_vectors_origin'] = orbtype
 
