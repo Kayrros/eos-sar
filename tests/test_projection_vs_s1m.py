@@ -20,7 +20,7 @@ def test_projection_vs_s1m():
                                                 apd_correction=True)
 
     # create a grid of points
-    x, y, w, h = bmod.burst_roi
+    x, y, w, h = bmod.burst_roi.to_roi()
     cols_grid, rows_grid = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
@@ -49,7 +49,7 @@ def test_projection_vs_s1m():
     # atol is set to a big value when testing against s1m master branch
     # because the orbit interpolation and projection is done differently
     np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                               cols_pred + bmod.burst_roi[0], atol=1e-2)
+                               cols_pred + bmod.burst_roi.col, atol=1e-2)
 
 
     # check similarity of azimuth time

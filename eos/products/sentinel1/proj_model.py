@@ -354,7 +354,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
 
         # specific to current burst
         self.burst_times = burst_times
-        self.burst_roi = burst_roi
+        self.burst_roi = roi.Roi.from_roi_tuple(burst_roi)
 
         # reset the initial azimuth guess at the center of burst
         self.azt_init = (self.burst_times[1] + self.burst_times[2])/2
@@ -455,7 +455,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times
-        self.bursts_rois = bursts_rois
+        self.bursts_rois = [roi.Roi.from_roi_tuple(_roi) for _roi in bursts_rois]
         # reset the initial azimuth guess at the center of swath
         self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2])/2
 
@@ -474,7 +474,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             (col, row) coordinates of the burst origin in the swath.
 
         """
-        col = self.bursts_rois[burst_id][0] - self.col_min
+        col = self.bursts_rois[burst_id].col - self.col_min
         azt = self.bursts_times[burst_id][1]
         row, _ = self.to_row_col(azt, 0)
         orig = (col,  int(np.round(row)))
@@ -513,10 +513,10 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         Returns
         -------
-        overlap_prev_roi : tuple
-            (row, col, w, h) roi inside the previous burst.
-        overlap_next_roi : tuple
-            (row, col, w, h) roi inside the next burst.
+        overlap_prev_roi : eos.sar.roi.Roi
+            roi inside the previous burst.
+        overlap_next_roi : eos.sar.roi.Roi
+            roi inside the next burst.
 
         """
         if not hasattr(self, 'overlaps'):
@@ -525,11 +525,11 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             "overlap id out of bound"
         ovl = self.overlaps[overlap_id]
         # previous burst
-        _, _, w, h = self.bursts_rois[overlap_id]
-        overlap_prev_roi = 0, h - ovl, w, ovl
+        h, w = self.bursts_rois[overlap_id].get_shape()
+        overlap_prev_roi = roi.Roi(0, h - ovl, w, ovl)
         # next burst
-        _, _, w, h = self.bursts_rois[overlap_id + 1]
-        overlap_next_roi = 0, 0, w, ovl
+        h, w = self.bursts_rois[overlap_id + 1].get_shape()
+        overlap_next_roi = roi.Roi(0, 0, w, ovl)
         return overlap_prev_roi, overlap_next_roi
 
     def burst_roi_without_ovl(self, burst_id):
@@ -543,8 +543,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         Returns
         -------
-        burst_roi_without_ovl : tuple
-            (row, col, w, h) roi of the burst adjusted for debursting. the roi
+        burst_roi_without_ovl : eos.sar.roi.Roi
+            roi of the burst adjusted for debursting. the roi
             is computed w.r.t. the burst origin. 
 
         """
@@ -553,14 +553,14 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         assert burst_id >= 0 and burst_id < len(self.bursts_rois),\
             "burst id out of bound"
-        _, _, w, h = self.bursts_rois[burst_id]
+        h, w = self.bursts_rois[burst_id].get_shape()
         ovl_prev = self.overlaps[burst_id - 1] if burst_id else 0
         ovl_next = self.overlaps[burst_id] if burst_id < len(
             self.overlaps) else 0
         remove_lines_at_top = ovl_prev//2
         remove_lines_at_bottom = ovl_next - ovl_next//2
-        burst_roi_without_ovl = 0, remove_lines_at_top, w,\
-            h - remove_lines_at_top - remove_lines_at_bottom
+        burst_roi_without_ovl = roi.Roi(0, remove_lines_at_top, w,
+            h - remove_lines_at_top - remove_lines_at_bottom)
         return burst_roi_without_ovl
 
     def adjust_roi_to_swath(self, request_roi):
@@ -569,15 +569,15 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         Parameters
         ----------
-        request_roi: tuple
-            (col, row, w, h) in swath coordinates. Region defined inside the swath.
+        request_roi: eos.sar.roi.Roi
+            Roi in swath coordinates. Region defined inside the swath.
 
         Returns
         -------
-        roi_in_swath: tuple
-            (col, row, w, h) region of interest adjusted to the swath's boundaries
+        roi_in_swath: eos.sar.roi.Roi
+            Region of interest adjusted to the swath's boundaries
         """
-        return roi.make_valid_roi((self.h, self.w), request_roi)
+        return request_roi.make_valid((self.h, self.w))
 
     def get_read_write_rois(self, roi_in_swath=None):
         """
@@ -589,30 +589,30 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         Parameters
         ----------
-        roi_in_swath : tuple, optional
-            (col, row, w, h) in swath coordinates. Region defined inside the swath.
+        roi_in_swath : eos.sar.roi.Roi, optional
+            roi in swath. Region defined inside the swath.
             If not given, the whole swath is taken. The default is None.
 
         Returns
         -------
         burst_ids : list of int
             Ids of the bursts intersected by the roi.
-        rois_read : list of tuples
-            Each tuple (col, row, w, h) corresponds to the region to be read from 
+        rois_read : list of eos.sar.roi.Roi
+            Each roi corresponds to the region to be read from 
             the tiff file.
-        rois_write : list of tuples
-            Each tuple (col, row, w, h) corresponds to the region where the output
+        rois_write : list of eos.sar.roi.Roi
+            Each roi corresponds to the region where the output
             data should be written in the output image.
         out_shape: tuple
             (h, w) Output image shape
 
         """
         if roi_in_swath is None:
-            roi_in_swath = 0, 0, self.w, self.h
+            roi_in_swath = roi.Roi(0, 0, self.w, self.h)
 
         roi_in_swath = self.adjust_roi_to_swath(roi_in_swath)
 
-        col, row, w, h = roi_in_swath
+        col, row, w, h = roi_in_swath.to_roi()
         out_shape = (h, w)
 
         col += self.col_min  # x is now relative to the tiff img
@@ -625,9 +625,9 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         for burst_id in range(len(self.bursts_rois)):
             # burst roi without overlap relative to tiff img
-            bcol, brow, bw, bh = roi.translate_roi(self.burst_roi_without_ovl(burst_id),
-                                                   self.bursts_rois[burst_id][0],
-                                                   self.bursts_rois[burst_id][1])
+            bcol, brow, bw, bh = self.burst_roi_without_ovl(burst_id).translate_roi(
+                                                   self.bursts_rois[burst_id].col,
+                                                   self.bursts_rois[burst_id].row).to_roi() 
             # loop until we find first burst intersecting roi
             if previous_bursts_h + bh > row + previous_roi_h:
                 col_min = max(col, bcol)
@@ -639,9 +639,9 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                 col_size = col_max - col_min
                 row_size = row_max - row_min
                 burst_ids.append(burst_id)
-                rois_read.append((col_min, row_min, col_size, row_size))
-                rois_write.append(
-                    (col_min - col, previous_roi_h, col_size, row_size))
+                rois_read.append(roi.Roi(col_min, row_min, col_size, row_size))
+                rois_write.append(roi.Roi(col_min - col, previous_roi_h,
+                                          col_size, row_size))
                 previous_roi_h += row_size
             previous_bursts_h += bh
             if previous_bursts_h >= row + h:

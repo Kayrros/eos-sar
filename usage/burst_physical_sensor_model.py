@@ -30,7 +30,7 @@ bmod = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(burst_meta,
                                                                      max_iterations=20,
                                                                      tolerance=0.001)
 # create a grid of points
-x, y, w, h = bmod.burst_roi
+x, y, w, h = bmod.burst_roi.to_roi()
 cols_grid, rows_grid = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
 cols, rows = cols_grid.ravel(), rows_grid.ravel()
 alts = np.zeros_like(cols)
