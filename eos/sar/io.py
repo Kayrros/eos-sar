@@ -125,6 +125,7 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
             xml_content = f.read()
     return xml_content
 
+
 def read_window(image_reader, roi, get_complex=True):
     """Read window inside the tiff of a complex image.
 
@@ -144,12 +145,25 @@ def read_window(image_reader, roi, get_complex=True):
 
     """
     x, y, w, h = roi
-    cmplx_img = image_reader.read(1, window=(
-            (y, y+h), (x, x+w))).astype(np.complex64)
+    img = image_reader.read(1, window=(
+            (y, y+h), (x, x+w)))
+    complex_flg = np.iscomplexobj(img)
     if get_complex: 
-        return cmplx_img
-    else: 
-        return np.abs(cmplx_img)
+        # check if reader returned a complex image
+        assert complex_flg, "Reader should return a complex type"
+        if img.dtype == np.complex64: 
+            return img
+        else: 
+            return img.astype(np.complex64)
+    else:
+        if complex_flg: 
+            amp = np.abs(img)
+        else: 
+            amp = img
+        if amp.dtype == np.float32: 
+            return amp
+        else: 
+            return amp.astype(np.float32)
 
 def read_windows(image_reader, rois, get_complex=True):
     """Read windows inside the tiff of a complex image.
