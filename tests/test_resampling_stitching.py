@@ -116,12 +116,6 @@ class Test_Resample_Stitch:
         primary_burst_meta = primary_bursts_meta[b_index]
         secondary_burst_meta = secondary_bursts_meta[b_index]
 
-        # Now instantiate burst_model instances for projection/localization
-        primary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
-            primary_burst_meta)
-        secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
-            secondary_burst_meta)
-
         # A hardcoded for faster test
         A = np.array([[ 9.99998152e-01, -2.67751722e-07, -5.73518074e+00],
                       [ 1.49618113e-05,  1.00019496e+00,  4.55021115e+01],
@@ -170,15 +164,7 @@ class Test_Resample_Stitch:
         ################### If you wish to resample the amplitude
 
         # resample amplitude if you want to do this only (without phase )
-        # it is important to use resampler.matrix after the resampler has been set
-        # on the two rois. The matrix will be adapted to the rois location.
-
-        _, _, w, h = dst_roi_in_burst
-
-        resampled_secondary_amplitude = eos.sar.regist.apply_affine(matrix=resampler.matrix,
-                                                                    src_array=np.abs(
-                                                                        secondary_burst_array),
-                                                                    destination_array_shape=(h, w))
+        resampled_secondary_amplitude = resampler.resample(np.abs(secondary_burst_array))
 
         resamp_h, resamp_w = resampled_secondary_amplitude.shape
 
@@ -206,11 +192,12 @@ class Test_Resample_Stitch:
         roi_in_swath = (5000, 750, 40, 3000)
 
         # deburst
-        debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
-               primary_swath_model, image_readers[0], roi_in_swath)
-        h, w = debursted_crop.shape
-        assert h == 3000
-        assert w == 40
+        for get_complex in [True, False]: 
+            debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
+                   primary_swath_model, image_readers[0], roi_in_swath, get_complex)
+            h, w = debursted_crop.shape
+            assert h == 3000
+            assert w == 40
         self.close_readers(image_readers)
 
     def test_secondary_regist_deburst(self):
@@ -245,11 +232,12 @@ class Test_Resample_Stitch:
             secondary_bursts_meta, A_swath)
 
         # Secondary reading/resampling/ debursting
-        secondary_debursted_crop = s1.deburst.read_resample_and_deburst(
-            image_readers[1], secondary_read_rois,
-            resamplers, write_rois, out_shape)
-
-        h, w = secondary_debursted_crop.shape
-        assert h == 3000
-        assert w == 40
-        assert np.isnan(secondary_debursted_crop).sum() / secondary_debursted_crop.size < 0.05
+        for get_complex in [True, False]: 
+            secondary_debursted_crop = s1.deburst.read_resample_and_deburst(
+                image_readers[1], secondary_read_rois,
+                resamplers, write_rois, out_shape, get_complex)
+    
+            h, w = secondary_debursted_crop.shape
+            assert h == 3000
+            assert w == 40
+            assert np.isnan(secondary_debursted_crop).sum() / secondary_debursted_crop.size < 0.05

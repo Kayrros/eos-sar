@@ -95,33 +95,29 @@ primary_burst_array = eos.sar.io.read_window(image_readers[0],
 interf = primary_burst_array * np.conj(resampled_secondary_array)
 
 # Only resample the amplitude if you want
-resampled_secondary_amplitude = eos.sar.regist.apply_affine(
-    matrix=A,
-    src_array=np.abs(secondary_burst_array),
-    destination_array_shape=(h, w))
+resampled_secondary_amplitude = resampler.resample(np.abs(secondary_burst_array))
 
 #%% plots 
 import matplotlib.pyplot as plt 
-plt.figure()
-plt.imshow(np.angle(interf), cmap='jet')
-plt.show() 
-
-plt.figure() 
-plt.imshow(np.abs(resampled_secondary_array), cmap='gray', 
-           vmin=np.nanpercentile(np.abs(resampled_secondary_array),10), 
-           vmax=np.nanpercentile(np.abs(resampled_secondary_array),90)
-    ) 
-plt.show()
-
-
-plt.figure() 
+fig_size = (20,15)
+plt.figure(figsize=fig_size) 
 plt.imshow(np.abs(primary_burst_array), cmap='gray', 
             vmin=np.percentile(np.abs(primary_burst_array),10), 
             vmax=np.percentile(np.abs(primary_burst_array),90))
 plt.show()
 
-plt.figure() 
+plt.figure(figsize=fig_size) 
+plt.imshow(np.abs(resampled_secondary_array), cmap='gray', 
+           vmin=np.nanpercentile(np.abs(resampled_secondary_array),10), 
+            vmax=np.nanpercentile(np.abs(resampled_secondary_array),90)) 
+plt.show()
+
+plt.figure(figsize=fig_size) 
 plt.imshow(resampled_secondary_amplitude, cmap='gray', 
            vmin=np.nanpercentile(resampled_secondary_amplitude,10), 
-            vmax=np.nanpercentile(resampled_secondary_amplitude,90) ) 
+            vmax=np.nanpercentile(resampled_secondary_amplitude,90)) 
 plt.show()
+
+plt.figure(figsize=fig_size)
+plt.imshow(np.angle(interf), cmap='jet')
+plt.show() 

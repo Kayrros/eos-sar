@@ -20,6 +20,7 @@ xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-0
 tiff_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff',
                   's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
 
+#%%
 # list of our xmls
 xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames ]
 
@@ -74,7 +75,7 @@ row_primary, col_primary, _ = primary_burst_model.projection(
 A = eos.sar.regist.orbital_registration(row_primary, col_primary,
                                         secondary_burst_model, x, y, raster, crs)
 
-
+#%%
 # resampler on the complex secondary burst
 col_dst, row_dst, w_dst, h_dst = primary_burst_meta['burst_roi']
 col_src, row_src, w_src, h_src = secondary_burst_meta['burst_roi']
@@ -82,7 +83,7 @@ resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(seconda
                                                                          dst_burst_shape=(
                                                                              h_dst, w_dst),
                                                                          matrix=A, degree=11)
-
+#%%
 # warp the roi to the secondary, and add a margin of 5 pixels on each side
 src_roi_in_burst = eos.sar.roi.warp_valid_rois(dst_roi_in_burst, (h_dst, w_dst), (h_src, w_src),
                                                A, margin=5)
@@ -102,7 +103,7 @@ secondary_burst_array = eos.sar.io.read_window(
 
 # resample
 resampled_secondary_array = resampler.resample(secondary_burst_array)
-
+#%%
 ################## Do the interferogram (optional)
 
 # translate roi origin from burst to tiff coordinates
@@ -115,38 +116,19 @@ primary_burst_array = eos.sar.io.read_window(image_readers[0],
 
 # Do the interferogram
 interf = primary_burst_array * np.conj(resampled_secondary_array)
-
+#%%
 
 
 ################### If you wish to resample the amplitude 
 
 # resample amplitude if you want to do this only (without phase )
-# it is important to use resampler.matrix after the resampler has been set 
-# on the two rois. The matrix will be adapted to the rois location. 
 
-_, _, w, h = dst_roi_in_burst
-
-resampled_secondary_amplitude = eos.sar.regist.apply_affine(matrix=resampler.matrix,
-                                                            src_array=np.abs(
-                                                                secondary_burst_array),
-                                                            destination_array_shape=(h, w))
+resampled_secondary_amplitude = resampler.resample(np.abs(secondary_burst_array))
 
 # you can reset the resampler in case burst resampling is need
 resampler.set_to_default_roi()
 #%% plots 
 import matplotlib.pyplot as plt 
-plt.figure()
-plt.imshow(np.angle(interf), cmap='jet')
-plt.show() 
-
-plt.figure() 
-plt.imshow(np.abs(resampled_secondary_array), cmap='gray', 
-           vmin=np.percentile(np.abs(resampled_secondary_array),10), 
-            vmax=np.percentile(np.abs(resampled_secondary_array),90)
-    ) 
-plt.show()
-
-
 plt.figure() 
 plt.imshow(np.abs(primary_burst_array), cmap='gray', 
             vmin=np.percentile(np.abs(primary_burst_array),10), 
@@ -154,7 +136,19 @@ plt.imshow(np.abs(primary_burst_array), cmap='gray',
 plt.show()
 
 plt.figure() 
+plt.imshow(np.abs(resampled_secondary_array), cmap='gray', 
+           vmin=np.nanpercentile(np.abs(resampled_secondary_array),10), 
+            vmax=np.nanpercentile(np.abs(resampled_secondary_array),90)) 
+plt.show()
+
+plt.figure() 
 plt.imshow(resampled_secondary_amplitude, cmap='gray', 
            vmin=np.nanpercentile(resampled_secondary_amplitude,10), 
-            vmax=np.nanpercentile(resampled_secondary_amplitude,90) ) 
+            vmax=np.nanpercentile(resampled_secondary_amplitude,90)) 
 plt.show()
+
+plt.figure()
+plt.imshow(np.angle(interf), cmap='jet')
+plt.show() 
+
+
