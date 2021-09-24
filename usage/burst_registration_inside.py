@@ -37,7 +37,7 @@ for xml_path in xml_paths:
 # here, by "chance", the 3rd burst is the same geographical location in both products
 burst_id = 3
 # Region of interest inside the burst in the primary (col, row, w, h)
-dst_roi_in_burst = (90, 90, 1000, 1000)
+dst_roi_in_burst = eos.sar.roi.Roi(90, 90, 1000, 1000)
 
 
 # Now extract the needed metadata
@@ -85,8 +85,10 @@ resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(seconda
                                                                          matrix=A, degree=11)
 #%%
 # warp the roi to the secondary, and add a margin of 5 pixels on each side
-src_roi_in_burst = eos.sar.roi.warp_valid_rois(dst_roi_in_burst, (h_dst, w_dst), (h_src, w_src),
-                                               A, margin=5)
+src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst),
+                                                   (h_src, w_src),
+                                                   A, margin=5,
+                                                   inplace=False)
 
 # set the resampler to work on rois inside the burst
 # this will adapt the resampling matrix to the roi origins
@@ -94,8 +96,8 @@ src_roi_in_burst = eos.sar.roi.warp_valid_rois(dst_roi_in_burst, (h_dst, w_dst),
 resampler.set_inside_burst(dst_roi_in_burst, src_roi_in_burst)
 
 # translate the roi origin from the burst to the tiff coordinates
-secondary_tiff_roi = eos.sar.roi.translate_roi(
-    src_roi_in_burst, col_src, row_src)
+secondary_tiff_roi = src_roi_in_burst.translate_roi(
+    col_src, row_src, inplace=False)
 
 # read the roi inside the secondary burst
 secondary_burst_array = eos.sar.io.read_window(
@@ -107,8 +109,8 @@ resampled_secondary_array = resampler.resample(secondary_burst_array)
 ################## Do the interferogram (optional)
 
 # translate roi origin from burst to tiff coordinates
-primary_tiff_roi = eos.sar.roi.translate_roi(
-    dst_roi_in_burst, col_dst, row_dst)
+primary_tiff_roi = dst_roi_in_burst.translate_roi(
+    col_dst, row_dst, inplace=False)
 
 # read the roi inside the primary burst
 primary_burst_array = eos.sar.io.read_window(image_readers[0],

@@ -3,6 +3,8 @@ import os
 from matplotlib import pyplot as plt
 import eos.products.sentinel1 as s1
 import eos.sar
+from eos.sar.roi import Roi 
+
 
 get_complex = False # whether to deal with complex images
 remote_test = True
@@ -96,7 +98,7 @@ A_swath = eos.sar.regist.orbital_registration(row_primary, col_primary,
 # define the roi in the primary swath
 # Here, if you set a region of interest within the swath
 # in the primary burst, only this region will be considered
-primary_swath_roi = (0, 1000, 1000, 3000)
+primary_swath_roi = Roi(0, 1000, 1000, 3000)
 
 # if you set it to None, the whole swath will be considered
 # Change the comment here to see what happens!
@@ -142,6 +144,7 @@ plt.imshow(np.abs(secondary_debursted_crop), cmap='gray',
            vmax=np.nanpercentile(np.abs(secondary_debursted_crop),90)
     ) 
 plt.show()
+
 
 if get_complex: 
     plt.figure() 

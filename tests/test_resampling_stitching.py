@@ -130,12 +130,11 @@ class Test_Resample_Stitch:
                                                                                   matrix=A, degree=11)
 
         # Region of interest inside the burst in the primary (col, row, w, h)
-        dst_roi_in_burst = (90, 90, 150, 100)
+        dst_roi_in_burst = eos.sar.roi.Roi(90, 90, 150, 100)
 
         # warp the roi to the secondary, and add a margin of 5 pixels on each side
-        src_roi_in_burst = eos.sar.roi.warp_valid_rois(dst_roi_in_burst,
-                                                       (h_dst, w_dst), (h_src, w_src),
-                                                        A, margin=5)
+        src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst), (h_src, w_src),
+                                                        A, margin=5, inplace=False)
 
         # set the resampler to work on rois inside the burst
         # this will adapt the resampling matrix to the roi origins
@@ -145,8 +144,8 @@ class Test_Resample_Stitch:
         assert np.any(resampler.matrix != resampler.burst_matrix)
 
         # translate the roi origin from the burst to the tiff coordinates
-        secondary_tiff_roi = eos.sar.roi.translate_roi(
-            src_roi_in_burst, col_src, row_src)
+        secondary_tiff_roi = src_roi_in_burst.translate_roi(col_src, row_src,
+                                                            inplace=False)
 
         # read the roi inside the secondary burst
         secondary_burst_array = eos.sar.io.read_window(
@@ -165,6 +164,7 @@ class Test_Resample_Stitch:
 
         # resample amplitude if you want to do this only (without phase )
         resampled_secondary_amplitude = resampler.resample(np.abs(secondary_burst_array))
+
 
         resamp_h, resamp_w = resampled_secondary_amplitude.shape
 
@@ -189,7 +189,7 @@ class Test_Resample_Stitch:
             primary_bursts_meta)
 
         # If you wish to deburst a "crop" defined by a roi in the swath coordinates
-        roi_in_swath = (5000, 750, 40, 3000)
+        roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
 
         # deburst
         for get_complex in [True, False]: 
@@ -218,7 +218,7 @@ class Test_Resample_Stitch:
         # define the roi in the primary swath
         # Here, if you set a region of interest within the swath
         # in the primary burst, only this region will be considered
-        primary_swath_roi = (5000, 750, 40, 3000)
+        primary_swath_roi = eos.sar.roi.Roi(5000, 750, 40, 3000)
 
         burst_ids, read_rois, write_rois, out_shape = primary_swath_model.get_read_write_rois(
         primary_swath_roi)
