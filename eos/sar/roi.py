@@ -1,166 +1,279 @@
 import numpy as np
 import math 
 
-def warp_roi(roi, matrix): 
-    """
-    Warp a roi using the registration matrix. 
-
-    Parameters
-    ----------
-    roi : tuple
-        (col, row, w, h).
-    matrix: ndarray (3,3)
-        warping matrix to apply
-    Returns
-    -------
-    out_roi : tuple
-        (col, row, w, h) warped region of interest.
-
-    """
-    col_in, row_in, w_in, h_in = roi
-    col_max = col_in + w_in - 1
-    row_max = row_in + h_in - 1 
-    # get the boundary points of the input roi 
-    bound_points = np.array([[row_in, col_in, 1], 
-                             [row_in, col_max, 1], 
-                             [row_max, col_max, 1], 
-                             [row_max, col_in, 1]]).T
+class Roi: 
     
-    # warp points using the matrix
-    rows_out, cols_out = matrix.dot(bound_points)[:2]
+    def __init__(self, col, row, w, h):
+        self.set_from_roi(col, row, w, h)
     
-    # take the integer bounding box
-    row_min = math.floor(min(rows_out))
-    row_max = math.ceil(max(rows_out))
-    col_min = math.floor(min(cols_out))
-    col_max = math.ceil(max(cols_out))
-    
-    # construct output roi
-    h_out = row_max - row_min + 1
-    w_out = col_max - col_min + 1
-    out_roi = (col_min, row_min, w_out, h_out)
 
-    return out_roi
-
-def add_margin(roi, margin=0): 
-    """
-    Add a margin in pixels on the boundary of a roi. 
-
-    Parameters
-    ----------
-    roi : tuple
-        (col, row, w, h).
-    margin : int, optional
-        Margin in pixels to add to the roi. The default is 0.
-
-    Returns
-    -------
-    out_roi : tuple
-        (col, row, w, h) the expanded roi.
-
-    """
-    margin = int(margin)
-    col, row, w, h = roi 
-    out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin) 
-    return out_roi
-
-def make_valid_roi(parent_shape, child_roi):
-    """
-    If the child roi is not within the boundaries of the parent image dimension,
-    modify it to satisfy the condition.
-
-    Parameters
-    ----------
-    parent_shape : tuple
-        (h, w) shape of the parent image.
-    child_roi : tuple
-        (col, row, w, h) the region of interest in the parent image coordinates.
-
-    Returns
-    -------
-    adapted_roi : tuple
-        (col, row, w, h) region of interest that lies within the parent shape.
-
-    """""
-    h_p, w_p = parent_shape
-    col_c, row_c, w_c, h_c = child_roi
-
-    # take min, max with image boundary
-    col_min = max(col_c, 0)
-    col_max = min(col_c + w_c , w_p)
-    row_min = max(0, row_c)
-    row_max = min(row_c + h_c , h_p)
-
-    # reconstruct roi
-    adapted_roi = (col_min, row_min, col_max - col_min, row_max - row_min)
-
-    return adapted_roi
-
-def warp_valid_rois(in_roi, input_parent_shape, output_parent_shape,  
-                    matrix, margin=0): 
-    """
-    Warp an input roi while making sure it is valid to an output roi, add margin
-    and make sure it is valid. 
-
-    Parameters
-    ----------
-    in_roi : tuple
-        (col, row, w, h) of the input roi in the input image.
-    input_parent_shape : tuple
-        (h, w) of the input image that contains the input roi.
-    output_parent_shape : tuple
-        (h, w) of the output image that will contain the output roi.
-    matrix : ndarray (3,3)
-        Matrix that will be used to warp from input parent frame
-        to output parent  frame.
-    margin : int, optional
-        Margin in pixels to padd the bounding box of the warped roi. 
-        The default is 0.
-
-    Returns
-    -------
-    out_valid_roi : tuple
-        (col, row, w, h) Validated against the dimensions of the output image
-        and padded bounding box of the warped roi.
-
-    """
-    
-    # assert input roi within parent boundaries
-    in_valid_roi = make_valid_roi(input_parent_shape , in_roi)
-    
-    # transform roi, we get the bounding box 
-    out_roi = warp_roi(in_valid_roi, matrix=matrix  )
-    
-    # add a margin in pixels in all directions
-    out_margin_roi = add_margin(out_roi, margin=margin)
-    
-    # make valid output roi within parent boundaries
-    out_valid_roi = make_valid_roi(output_parent_shape, out_margin_roi)
-    
-    return out_valid_roi
-
-def translate_roi(roi, col, row): 
-    """
-    Translate a region of interest. 
-
-    Parameters
-    ----------
-    roi : tupple
-        (col, row, w, h) region of interest.
-    col : int
-        column translation.
-    row : int
-        row translation.
-
-    Returns
-    -------
-    out_roi: tuple
-        (col, row, w, h) translated roi
-
-    """
-    out_roi = (roi[0] + col, 
-               roi[1] + row, 
-               roi[2], 
-               roi[3])
-    return out_roi
+    def set_from_roi(self, col, row, w, h): 
+        self.col = col 
+        self.row = row 
+        self.w = w 
+        self.h = h 
         
+    def set_from_roi_tuple(self, roi): 
+        self.set_from_roi(*roi)
+     
+    def set_from_bounds_tuple(self, bounds): 
+        self.set_from_roi_tuple(Roi.bounds_to_roi(bounds))
+    
+    @staticmethod
+    def from_roi_tuple(roi): 
+        return Roi(*roi)
+    
+    @staticmethod
+    def from_bounds_tuple(bounds): 
+        return Roi(*Roi.bounds_to_roi(bounds))
+    
+    def obj_from_roi_tuple(self, roi, inplace=False): 
+        if inplace: 
+            self.set_from_roi_tuple(roi) 
+            return self
+        else: 
+            return Roi.from_roi_tuple(roi)
+
+    def obj_from_bounds_tuple(self, bounds, inplace=False): 
+            if inplace: 
+                self.set_from_bounds_tuple(bounds) 
+                return self
+            else: 
+                return Roi.from_bounds_tuple(bounds)
+    
+    @staticmethod
+    def roi_to_bounds(roi): 
+        """
+        Convert roi representation to bound representation
+
+        Parameters
+        ----------
+        roi : tuple
+            (col, row, w, h).
+
+        Returns
+        -------
+        bounds: tuple.
+            (col_min, row_min, col_max, row_max)
+            col_max and row_max are included in the image. 
+        """
+        col, row, w, h = roi
+        return (col, row, col + w - 1, row + h - 1)
+    
+    @staticmethod
+    def bounds_to_roi(bounds): 
+        """
+        Convert bounds to roi representation. 
+
+        Parameters
+        ----------
+        bounds: tuple.
+            (col_min, row_min, col_max, row_max)
+             col_max and row_max are included in the image. 
+        Returns
+        -------
+        roi : tuple
+            (col, row, w, h).
+
+        """
+        col, row, col_max, row_max = bounds 
+        w = col_max - col + 1
+        h = row_max - row + 1
+        return (col, row, w, h)
+    
+    @staticmethod
+    def points_to_bbox(rows, cols): 
+        """
+        Derive bounds from a set of points
+
+        Parameters
+        ----------
+        rows : float 1darray
+            Row coordinates.
+        cols : float 1darray
+            Column coordinates.
+
+        Returns
+        -------
+        bbox_bounds : tuple
+            (col_min, row_min, col_max, row_max).
+
+        """
+        # take the integer bounding box
+        row_min = math.floor(min(rows))
+        row_max = math.ceil(max(rows))
+        col_min = math.floor(min(cols))
+        col_max = math.ceil(max(cols))
+        bbox_bounds = (col_min, row_min, col_max, row_max)
+        return bbox_bounds
+    
+    def to_roi(self): 
+        return (self.col, self.row, self.w, self.h)
+    
+    def to_bounds(self): 
+        return Roi.roi_to_bounds(self.to_roi())
+    
+    def get_shape(self): 
+        return (self.h, self.w)
+    
+    def to_bounding_points(self, homogeneous=False): 
+        """
+        Convert to its bounding points representation. 
+
+        Parameters
+        ----------
+        homogeneous : bool, optional
+            If True, homogeneous coordinates points are returned,
+            i.e. a additional entry equal to 1 is added . The default is False.
+
+        Returns
+        -------
+        points : ndarray (N x 4) N=2 if homogeneous = False, N=3 otherwise
+            The bounding points. Each column is a point (row, col).
+
+        """
+        col_min, row_min, col_max, row_max = self.to_bounds()
+        
+        # get the boundary points of the input roi 
+        points = np.array([[row_min, row_min, row_max, row_max], 
+                           [col_min, col_max, col_max, col_min]])
+        if homogeneous: 
+            points = np.vstack((points, np.ones(4)))
+        return points
+    
+    def warp(self, matrix, inplace=False): 
+        
+        # input bounding points
+        bound_points = self.to_bounding_points(homogeneous=True)
+        # warp points using the matrix
+        rows_out, cols_out = matrix.dot(bound_points)[:2]
+        # output bounding points 
+        out_bounds = Roi.points_to_bbox(rows_out, cols_out)
+        # reset or get new Roi instance 
+        return self.obj_from_bounds_tuple(out_bounds,
+                                          inplace=inplace)
+        
+    def add_margin(self, margin=0, inplace=False): 
+        """
+        Add a margin in pixels on the boundary of a roi. 
+    
+        Parameters
+        ----------
+        margin : int, optional
+            Margin in pixels to add to the roi. The default is 0.
+    
+        Returns
+        -------
+        out_roi : 
+    
+        """
+        margin = int(margin)
+        col, row, w, h = self.to_roi()
+        out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin) 
+        return self.obj_from_roi_tuple(out_roi, inplace=inplace)
+    
+    def make_valid(self, parent_shape, inplace=False): 
+        """
+        If the child roi is not within the boundaries of the parent image dimension, 
+        modify it to satisfy the condition. 
+
+        Parameters
+        ----------
+        parent_shape : tuple
+            (h, w) shape of the parent image.
+        
+        Returns
+        -------
+        adapted_roi : tuple
+            (col, row, w, h) region of interest that lies within the parent shape.
+
+        """""
+        h_parent, w_parent = parent_shape
+        col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
+        assert (col_child_min < w_parent) and (row_child_min < h_parent), "Roi outside of parent"
+            
+        # take min, max with image boundary 
+        col_min = max(col_child_min, 0) 
+        col_max = min(col_child_max , w_parent - 1) 
+        row_min = max(0, row_child_min) 
+        row_max = min(row_child_max , h_parent - 1)
+        
+        out_bounds = (col_min, row_min, col_max, row_max)
+        # reset or get new Roi instance 
+        return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
+        
+    def warp_valid_roi(self, input_parent_shape, output_parent_shape,  
+                        matrix, margin=0, inplace=False): 
+        """
+        Warp an input roi while making sure it is valid to an output roi, add margin
+        and make sure it is valid. 
+    
+        Parameters
+        ----------
+        in_roi : tuple
+            (col, row, w, h) of the input roi in the input image.
+        input_parent_shape : tuple
+            (h, w) of the input image that contains the input roi.
+        output_parent_shape : tuple
+            (h, w) of the output image that will contain the output roi.
+        matrix : ndarray (3,3)
+            Matrix that will be used to warp from input parent frame
+            to output parent  frame.
+        margin : int, optional
+            Margin in pixels to padd the bounding box of the warped roi. 
+            The default is 0.
+    
+        Returns
+        -------
+        out_valid_roi : tuple
+            (col, row, w, h) Validated against the dimensions of the output image
+            and padded bounding box of the warped roi.
+    
+        """
+        
+        # assert input roi within parent boundaries
+        # if inplace=True, roi_obj is the same as self
+        roi_obj = self.make_valid(parent_shape=input_parent_shape,
+                                  inplace=inplace)
+        
+        # transform roi 
+        roi_obj.warp(matrix=matrix, inplace=True)
+        
+        # add a margin in pixels in all directions
+        roi_obj.add_margin(margin=margin, inplace=True)
+        
+        # make valid output roi within parent boundaries
+        roi_obj.make_valid(parent_shape=output_parent_shape,
+                                           inplace=True)
+        return roi_obj
+
+    def translate_roi(self, col, row, inplace=False): 
+        """
+        Translate a region of interest. 
+    
+        Parameters
+        ----------
+        col : int
+            column translation.
+        row : int
+            row translation.
+    
+        Returns
+        -------
+       
+        """
+        c, r, w, h = self.to_roi()
+        out_roi = (c + col, r + row, w, h)
+        return self.obj_from_roi_tuple(out_roi, inplace=inplace)
+   
+    def crop_array(self, arr): 
+        col_min, row_min, col_max, row_max = self.to_bounds()
+        arr_cropped = arr[row_min:row_max+1, col_min:col_max+1]
+        return arr_cropped
+        
+    def get_meshgrid(self):
+        
+        col, row, w, h = self.to_roi()
+        cols_grid, rows_grid = np.meshgrid(np.arange(col, col+w),
+                                           np.arange(row, row+h))
+        return cols_grid, rows_grid
