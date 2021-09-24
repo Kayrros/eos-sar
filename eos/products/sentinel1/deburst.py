@@ -12,8 +12,8 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
     ----------
     rect_arrays : list of ndarray
         Each element is a rectangular imagette to be used in the mosaic.
-    write_rois : list of tuples
-        Each tuple (col, row, w, h) indicates where we should write the 
+    write_rois : list of eos.sar.roi.Roi
+        Each instance indicates where we should write the 
         rectangular array in the output image.
     out_shape : tuple
         (h, w) Shape of output image.
@@ -26,7 +26,7 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
     """
     out_img = np.zeros(out_shape, dtype=rect_arrays[0].dtype)
     for arr, w_roi in zip(rect_arrays, write_rois):
-        col_min, row_min, w, h = w_roi
+        col_min, row_min, w, h = w_roi.to_roi()
         out_img[row_min:row_min+h, col_min:col_min+w] = arr
     return out_img
 
@@ -43,8 +43,8 @@ def deburst_in_primary_swath(primary_swath_model, image_reader,
         context of interferometry, since no resampling is performed. 
     image_reader : rasterio.DatasetReader
             opened image
-    roi_in_swath : tuple
-        (col, row, w, h) Region to deburst inside a swath in swath coordinates.
+    roi_in_swath : eos.sar.roi.Roi
+        Region to deburst inside a swath in swath coordinates.
         If None, the whole swath is taken. The default is None. 
     get_complex : bool
         If True, the complex image is returned. Otherwise, only the amplitude 
@@ -57,11 +57,11 @@ def deburst_in_primary_swath(primary_swath_model, image_reader,
         bursts in the swath.
     burst_ids : list of int
             Ids of the bursts intersected by the roi.
-    rois_read : list of tuples
-        Each tuple (col, row, w, h) corresponds to the region to be read from 
+    rois_read : list of eos.sar.roi.Roi
+        Each roi corresponds to the region to be read from 
         the tiff file.
-    rois_write : list of tuples
-        Each tuple (col, row, w, h) corresponds to the region where the output
+    rois_write : list of eos.sar.roi.Roi
+        Each roi corresponds to the region where the output
         data should be written in the output image.
     """
     burst_ids, rois_read, rois_write, out_shape = primary_swath_model.get_read_write_rois(
@@ -83,8 +83,8 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
     ----------
     primary_swath_model : Sentinel1SwathModel
         Model for the swath of the primary acquisition.
-    rois_read : list of tuples
-        Each tuple (col, row, w, h) is a location to be read from the primary 
+    rois_read : list of eos.sar.roi.Roi
+        Each roi is a location to be read from the primary 
         tiff within the burst of corresponding id.
     burst_ids : list of int
         Ids of bursts associated with rois_read.
@@ -99,9 +99,9 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
 
     Returns
     -------
-    Secondary_rois_read: list of tuples
-        Each tuple (col, row, w, h) is a location to be read from the secondary image.
-    Resamplers: list of Sentinel1BurstResample
+    secondary_rois_read: list of eos.sar.roi.Roi
+        Each roi is a location to be read from the secondary image.
+    resamplers: list of Sentinel1BurstResample
         Each resampler is associated with the corresponding roi in Secondary_read_roi
 
     """
@@ -119,14 +119,16 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
             row_dst, col_dst, row_src, col_src, matrix)
 
         # get the roi w.r.t. burst origin
-        col_dst, row_dst, w_dst, h_dst = primary_swath_model.bursts_rois[burst_ids[j]]
-        dst_roi_in_burst = roi.translate_roi(rois_read[j], -col_dst, -row_dst)
+        col_dst, row_dst, w_dst, h_dst = primary_swath_model.bursts_rois[burst_ids[j]].to_roi()
+        dst_roi_in_burst = rois_read[j].translate_roi(-col_dst, -row_dst,
+                                                      inplace=False)
 
         # warp the roi
-        col_src, row_src, w_src, h_src = secondary_swath_model.bursts_rois[burst_ids[j]]
-        src_roi_in_burst = roi.warp_valid_rois(dst_roi_in_burst, (h_dst, w_dst),
+        col_src, row_src, w_src, h_src = secondary_swath_model.bursts_rois[burst_ids[j]].to_roi()
+        src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst),
                                                (h_src, w_src),
-                                               A_resamp, margin=5)
+                                               A_resamp, margin=5,
+                                               inplace=False)
 
         # burst resampler
         resampler = burst_resamp.burst_resample_from_meta(secondary_bursts_meta[burst_ids[j]],
@@ -139,8 +141,7 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
         resamplers.append(resampler)
 
         # Secondary read rois
-        secondary_rois_read.append(roi.translate_roi(
-            src_roi_in_burst, col_src, row_src))
+        secondary_rois_read.append(src_roi_in_burst.translate_roi(col_src, row_src))
         
     return secondary_rois_read, resamplers
 
@@ -154,12 +155,12 @@ def read_resample_and_deburst(secondary_image_reader, secondary_rois_read,
     ----------
     secondary_image_reader : rasterio.DatasetReader
         Opened secondary image
-    secondary_rois_read : list of tuples
-        Each tuple (col, row, w, h) is a location to read from in the secondary tiff.
+    secondary_rois_read : list of eos.sar.roi.Roi
+        Each roi is a location to read from in the secondary tiff.
     resamplers : list of Sentinel1BurstResample
         Each resampler is associated with the corresponding roi in Secondary_read_roi.
-    rois_write : list of tuples
-        Each tuple (col, row, w, h) is a location to write at in the output image.
+    rois_write : list of eos.sar.roi.Roi
+        Each roi is a location to write at in the output image.
     out_shape : tuple
         (h, w) output image shape.
     get_complex : bool

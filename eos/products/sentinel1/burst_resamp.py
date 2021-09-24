@@ -1,6 +1,7 @@
 """Resamples a complex Sentinel1 burst."""
 import numpy as np
-from eos.sar import regist, orbit
+
+from eos.sar import regist, orbit, roi
 
 def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix, **kwargs):
     """Create a Sentinel1BurstResample instance from a Sentinel1Model\
@@ -117,7 +118,7 @@ class Sentinel1BurstResample(regist.SarResample):
         """
         # set the abstract variables
         # burst level quantities
-        self.src_burst_roi = src_burst_roi
+        self.src_burst_roi = roi.Roi.from_roi_tuple(src_burst_roi)
         self.dst_burst_shape = dst_burst_shape 
         self.burst_matrix = matrix
         
@@ -184,7 +185,7 @@ class Sentinel1BurstResample(regist.SarResample):
         """
         eta = (self.burst_times[1] - self.burst_times[0]) \
             + (row - (self.lines_per_burst - 1)/2) / self.azimuth_frequency
-        slrt = (self.src_burst_roi[0] + col)/self.range_frequency \
+        slrt = (self.src_burst_roi.col + col)/self.range_frequency \
             + self.slant_range_time
         return eta, slrt
 
@@ -277,10 +278,10 @@ class Sentinel1BurstResample(regist.SarResample):
 
         Parameters
         ----------
-        dst_roi_in_burst : tuple
-            (col, row, w, h) dst roi in dst burst coordinates.
-        src_roi_in_burst : tuple
-            (col, row, w, h) src roi in src burst coordinates..
+        dst_roi_in_burst : eos.sar.roi.Roi
+            dst roi in dst burst coordinates.
+        src_roi_in_burst : eos.sar.roi.Roi
+            src roi in src burst coordinates.
 
         Returns
         -------
@@ -288,8 +289,8 @@ class Sentinel1BurstResample(regist.SarResample):
 
         """
         # change self.matrix 
-        col_src, row_src = src_roi_in_burst[:2]
-        col_dst, row_dst = dst_roi_in_burst[:2]
+        col_src, row_src, _, _ = src_roi_in_burst.to_roi()
+        col_dst, row_dst, w_dst, h_dst = dst_roi_in_burst.to_roi()
         
         self.matrix = regist.change_resamp_mat_orig(row_dst, col_dst, 
                                                    row_src, col_src,
@@ -298,11 +299,12 @@ class Sentinel1BurstResample(regist.SarResample):
         self.src_roi_in_burst = src_roi_in_burst
         
         # change self.dst_shape
-        self.dst_shape = (dst_roi_in_burst[3], dst_roi_in_burst[2])
+        self.dst_shape = (h_dst, w_dst)
     
     def set_to_default_roi(self): 
         """Reset the resampling to the whole burst."""
-        self.src_roi_in_burst = (0, 0, self.src_burst_roi[2], self.src_burst_roi[3])
+        h, w = self.src_burst_roi.get_shape()
+        self.src_roi_in_burst = roi.Roi(0, 0, w, h)
         self.dst_shape = self.dst_burst_shape
         self.matrix = self.burst_matrix
     
@@ -323,7 +325,7 @@ class Sentinel1BurstResample(regist.SarResample):
             done after this step.
 
         """
-        col0, row0, w, h = self.src_roi_in_burst
+        col0, row0, w, h = self.src_roi_in_burst.to_roi()
         assert src_array.shape == (h, w), "src array is not of the expected shape"
         eta, slrt = self.to_eta_slrt(np.arange(row0, row0 + h),
                                      np.arange(col0, col0 + w))
@@ -383,9 +385,11 @@ class Sentinel1BurstResample(regist.SarResample):
         del dst_points
 
         # reference row_src and col_src w.r.t. the burst origin
-        row_src += self.src_roi_in_burst[1]
-        col_src += self.src_roi_in_burst[0]
 
+        col_roi, row_roi, _, _ = self.src_roi_in_burst.to_roi()
+        row_src += row_roi
+        col_src += col_roi
+        
         eta, slrt = self.to_eta_slrt(row_src, col_src)
         del row_src, col_src
 
