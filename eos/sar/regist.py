@@ -224,9 +224,9 @@ def apply_affine(src_array, matrix, destination_array_shape):
     return resampled
 
 
-class ComplexResample(abc.ABC):
-    """ComplexResample is an abstract class that defines the expected method\
-        of any complex resampling mechanism. It is expected that this abstract\
+class SarResample(abc.ABC):
+    """SarResample is an abstract class that defines the expected method\
+        of any SAR resampling mechanism. It is expected that this abstract\
         will be implemented for each SAR satellite,\
         and for each satellite mode."""
 
@@ -246,8 +246,10 @@ class ComplexResample(abc.ABC):
         pass
 
     def resample(self, src_array):
-        """.
-
+        """
+        Resample a SAR image. If the image is complex, deramping and reramping
+        must be applied. 
+        
         Parameters
         ----------
         src_array : ndarray
@@ -255,18 +257,17 @@ class ComplexResample(abc.ABC):
 
         Returns
         -------
-        ndarray
-            Resampled complex image.
+        dst_array : ndarray
+            Resampled SAR image.
         """
-        # deramp
-        deramped = self.deramp(src_array)
-
-        # resample
-        dst_array = apply_affine(deramped, self.matrix, self.dst_shape)
-
-        # reramp
-        return self.reramp(dst_array)
-
+        if src_array.dtype == np.complex64:
+            # deramp, resample, reramp
+            dst_array = self.reramp(apply_affine(self.deramp(src_array),
+                                                 self.matrix, self.dst_shape))
+        else: 
+            dst_array = apply_affine(src_array, self.matrix, self.dst_shape)
+        return dst_array
+        
 def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
     """
     Adapts a resampling matrix to new origins at the source and the destination. 
