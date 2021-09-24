@@ -577,7 +577,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         roi_in_swath: eos.sar.roi.Roi
             Region of interest adjusted to the swath's boundaries
         """
-        return request_roi.make_valid((self.h, self.w), inplace=False)
+        return request_roi.make_valid((self.h, self.w))
 
     def get_read_write_rois(self, roi_in_swath=None):
         """

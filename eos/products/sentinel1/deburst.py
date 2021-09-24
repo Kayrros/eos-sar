@@ -1,5 +1,5 @@
 import numpy as np
-from eos.sar import io, regist, roi
+from eos.sar import io, regist
 from eos.products.sentinel1 import burst_resamp
 
 
@@ -120,15 +120,13 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
 
         # get the roi w.r.t. burst origin
         col_dst, row_dst, w_dst, h_dst = primary_swath_model.bursts_rois[burst_ids[j]].to_roi()
-        dst_roi_in_burst = rois_read[j].translate_roi(-col_dst, -row_dst,
-                                                      inplace=False)
+        dst_roi_in_burst = rois_read[j].translate_roi(-col_dst, -row_dst)
 
         # warp the roi
         col_src, row_src, w_src, h_src = secondary_swath_model.bursts_rois[burst_ids[j]].to_roi()
         src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst),
                                                (h_src, w_src),
-                                               A_resamp, margin=5,
-                                               inplace=False)
+                                               A_resamp, margin=5)
 
         # burst resampler
         resampler = burst_resamp.burst_resample_from_meta(secondary_bursts_meta[burst_ids[j]],

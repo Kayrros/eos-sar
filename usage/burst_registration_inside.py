@@ -87,8 +87,7 @@ resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(seconda
 # warp the roi to the secondary, and add a margin of 5 pixels on each side
 src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst),
                                                    (h_src, w_src),
-                                                   A, margin=5,
-                                                   inplace=False)
+                                                   A, margin=5)
 
 # set the resampler to work on rois inside the burst
 # this will adapt the resampling matrix to the roi origins
@@ -97,7 +96,7 @@ resampler.set_inside_burst(dst_roi_in_burst, src_roi_in_burst)
 
 # translate the roi origin from the burst to the tiff coordinates
 secondary_tiff_roi = src_roi_in_burst.translate_roi(
-    col_src, row_src, inplace=False)
+    col_src, row_src)
 
 # read the roi inside the secondary burst
 secondary_burst_array = eos.sar.io.read_window(
@@ -110,7 +109,7 @@ resampled_secondary_array = resampler.resample(secondary_burst_array)
 
 # translate roi origin from burst to tiff coordinates
 primary_tiff_roi = dst_roi_in_burst.translate_roi(
-    col_dst, row_dst, inplace=False)
+    col_dst, row_dst)
 
 # read the roi inside the primary burst
 primary_burst_array = eos.sar.io.read_window(image_readers[0],

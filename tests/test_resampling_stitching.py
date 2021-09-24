@@ -134,7 +134,7 @@ class Test_Resample_Stitch:
 
         # warp the roi to the secondary, and add a margin of 5 pixels on each side
         src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst), (h_src, w_src),
-                                                        A, margin=5, inplace=False)
+                                                        A, margin=5)
 
         # set the resampler to work on rois inside the burst
         # this will adapt the resampling matrix to the roi origins
@@ -144,8 +144,7 @@ class Test_Resample_Stitch:
         assert np.any(resampler.matrix != resampler.burst_matrix)
 
         # translate the roi origin from the burst to the tiff coordinates
-        secondary_tiff_roi = src_roi_in_burst.translate_roi(col_src, row_src,
-                                                            inplace=False)
+        secondary_tiff_roi = src_roi_in_burst.translate_roi(col_src, row_src)
 
         # read the roi inside the secondary burst
         secondary_burst_array = eos.sar.io.read_window(
