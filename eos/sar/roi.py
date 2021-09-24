@@ -64,10 +64,10 @@ def add_margin(roi, margin=0):
     out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin) 
     return out_roi
 
-def make_valid_roi(parent_shape, child_roi): 
+def make_valid_roi(parent_shape, child_roi):
     """
-    If the child roi is not within the boundaries of the parent image dimension, 
-    modify it to satisfy the condition. 
+    If the child roi is not within the boundaries of the parent image dimension,
+    modify it to satisfy the condition.
 
     Parameters
     ----------
@@ -84,16 +84,16 @@ def make_valid_roi(parent_shape, child_roi):
     """""
     h_p, w_p = parent_shape
     col_c, row_c, w_c, h_c = child_roi
-    
-    # take min, max with image boundary 
-    col_min = max(col_c, 0) 
-    col_max = min(col_c + w_c , w_p) 
-    row_min = max(0, row_c) 
+
+    # take min, max with image boundary
+    col_min = max(col_c, 0)
+    col_max = min(col_c + w_c , w_p)
+    row_min = max(0, row_c)
     row_max = min(row_c + h_c , h_p)
-    
+
     # reconstruct roi
-    adapted_roi = (col_min, row_min, col_max - col_min, row_max - row_min) 
-    
+    adapted_roi = (col_min, row_min, col_max - col_min, row_max - row_min)
+
     return adapted_roi
 
 def warp_valid_rois(in_roi, input_parent_shape, output_parent_shape,  

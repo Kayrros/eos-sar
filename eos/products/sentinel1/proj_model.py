@@ -563,11 +563,29 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             h - remove_lines_at_top - remove_lines_at_bottom
         return burst_roi_without_ovl
 
+    def adjust_roi_to_swath(self, request_roi):
+        """
+        Adjust an roi to that it does not go beyond the swath's boundaries.
+
+        Parameters
+        ----------
+        request_roi: tuple
+            (col, row, w, h) in swath coordinates. Region defined inside the swath.
+
+        Returns
+        -------
+        roi_in_swath: tuple
+            (col, row, w, h) region of interest adjusted to the swath's boundaries
+        """
+        return roi.make_valid_roi((self.h, self.w), request_roi)
+
     def get_read_write_rois(self, roi_in_swath=None):
         """
-        Compute the region to read from each burst if given a roi contained in 
+        Compute the region to read from each burst if given a roi contained in
         a swath. The writing roi is also returned, with the corresponding burst
-        ids. 
+        ids.
+        The output size might be smaller than the `roi_in_swath` if it goes beyond
+        the swath's boundaries.
 
         Parameters
         ----------
@@ -592,7 +610,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         if roi_in_swath is None:
             roi_in_swath = 0, 0, self.w, self.h
 
-        roi_in_swath = roi.make_valid_roi((self.h, self.w), roi_in_swath)
+        roi_in_swath = self.adjust_roi_to_swath(roi_in_swath)
 
         col, row, w, h = roi_in_swath
         out_shape = (h, w)
