@@ -31,7 +31,8 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
     return out_img
 
 
-def deburst_in_primary_swath(primary_swath_model, image_reader, roi_in_swath=None):
+def deburst_in_primary_swath(primary_swath_model, image_reader,
+                             roi_in_swath=None, get_complex=True):
     """
     Compute debursted crop inside the swath/of the whole swath of a primary image. 
 
@@ -45,6 +46,10 @@ def deburst_in_primary_swath(primary_swath_model, image_reader, roi_in_swath=Non
     roi_in_swath : tuple
         (col, row, w, h) Region to deburst inside a swath in swath coordinates.
         If None, the whole swath is taken. The default is None. 
+    get_complex : bool
+        If True, the complex image is returned. Otherwise, only the amplitude 
+        is returned. 
+        
     Returns
     -------
     debursted_crop : ndarray
@@ -61,7 +66,7 @@ def deburst_in_primary_swath(primary_swath_model, image_reader, roi_in_swath=Non
     """
     burst_ids, rois_read, rois_write, out_shape = primary_swath_model.get_read_write_rois(
         roi_in_swath)
-    burst_arrays = io.read_windows(image_reader, rois_read)
+    burst_arrays = io.read_windows(image_reader, rois_read, get_complex)
     debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
     return debursted_crop, burst_ids, rois_read, rois_write
 
@@ -140,7 +145,7 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
     return secondary_rois_read, resamplers
 
 def read_resample_and_deburst(secondary_image_reader, secondary_rois_read, 
-                              resamplers, rois_write, out_shape): 
+                              resamplers, rois_write, out_shape, get_complex=True): 
     """
     Read rois from secondary, resample the complex images with deramping/reramping, 
     and deburst into a final stitched image. 
@@ -157,7 +162,9 @@ def read_resample_and_deburst(secondary_image_reader, secondary_rois_read,
         Each tuple (col, row, w, h) is a location to write at in the output image.
     out_shape : tuple
         (h, w) output image shape.
-
+    get_complex : bool
+        If True, the complex image is returned. Otherwise, only the amplitude 
+        is returned.
     Returns
     -------
     secondary_debursted_crop : ndarray
@@ -165,7 +172,8 @@ def read_resample_and_deburst(secondary_image_reader, secondary_rois_read,
 
     """    
     
-    burst_arrays = io.read_windows(secondary_image_reader, secondary_rois_read)
+    burst_arrays = io.read_windows(secondary_image_reader, secondary_rois_read,
+                                   get_complex)
     burst_arrays = [resamp.resample(arr) for arr,resamp in zip(burst_arrays, resamplers)]
     secondary_debursted_crop = stitch_arrays(burst_arrays, rois_write, out_shape)
     return secondary_debursted_crop

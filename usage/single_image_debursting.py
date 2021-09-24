@@ -1,7 +1,9 @@
 import os
+import numpy as np
+import matplotlib.pyplot as plt 
 import eos.products.sentinel1
 
-
+get_complex = True # to get complex debursted images
 remote_test = True
 
 if remote_test: 
@@ -38,22 +40,20 @@ primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_
 
 # # deburst the whole swath
 debursted_swath, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
-    primary_swath_model, image_reader)
+    primary_swath_model, image_reader, get_complex=get_complex)
 
 # If you wish to deburst a "crop" defined by a roi in the swath coordinates
 roi_in_swath = (500, 750, 1000, 3000)
 
 # deburst
 debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
-    primary_swath_model, image_reader, roi_in_swath)
+    primary_swath_model, image_reader, roi_in_swath, get_complex)
 
 # burst_ids are the burst ids covered by the roi ( O based in the swath)
 # rois_read are the regions that were read from the tiff 
 # rois_write are the rois where the read patches were written in the crop
 
 #%% plots 
-import matplotlib.pyplot as plt 
-
 plt.figure() 
 plt.imshow(np.abs(debursted_crop), cmap='gray', 
            vmin=np.percentile(np.abs(debursted_crop),10), 

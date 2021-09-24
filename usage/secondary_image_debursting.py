@@ -1,8 +1,10 @@
 import numpy as np
 import os
+from matplotlib import pyplot as plt
 import eos.products.sentinel1 as s1
 import eos.sar
 
+get_complex = False # whether to deal with complex images
 remote_test = True
 
 if remote_test: 
@@ -90,7 +92,7 @@ A_swath = eos.sar.regist.orbital_registration(row_primary, col_primary,
                                               secondary_swath_model, x, y,
                                               raster, crs
                                               )
-
+#%%
 # define the roi in the primary swath
 # Here, if you set a region of interest within the swath
 # in the primary burst, only this region will be considered
@@ -102,7 +104,7 @@ primary_swath_roi = (0, 1000, 1000, 3000)
 
 # primary debursting
 primary_debursted_crop, burst_ids, read_rois, write_rois = s1.deburst.deburst_in_primary_swath(
-    primary_swath_model, image_readers[0], primary_swath_roi)
+    primary_swath_model, image_readers[0], primary_swath_roi, get_complex)
 
 
 # burst_ids are the burst ids covered by the roi ( O based in the swath)
@@ -120,10 +122,11 @@ secondary_read_rois, resamplers = s1.deburst.secondary_rois_and_resamplers(
 # Secondary reading/resampling/ debursting
 secondary_debursted_crop = s1.deburst.read_resample_and_deburst(
     image_readers[1], secondary_read_rois,
-    resamplers, write_rois, primary_debursted_crop.shape)
+    resamplers, write_rois, primary_debursted_crop.shape, get_complex)
 
-# if you wish to do the interferogram
-interf = primary_debursted_crop * np.conj(secondary_debursted_crop)
+if get_complex: 
+    # if you wish to do the interferogram
+    interf = primary_debursted_crop * np.conj(secondary_debursted_crop)
 
 #%% plots 
 plt.figure() 
@@ -140,6 +143,7 @@ plt.imshow(np.abs(secondary_debursted_crop), cmap='gray',
     ) 
 plt.show()
 
-plt.figure() 
-plt.imshow(np.angle(interf), cmap='jet') 
-plt.show()
+if get_complex: 
+    plt.figure() 
+    plt.imshow(np.angle(interf), cmap='jet') 
+    plt.show()
