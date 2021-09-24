@@ -41,7 +41,7 @@ def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix, **kwargs):
                                   **kwargs)
 
 
-class Sentinel1BurstResample(regist.ComplexResample):
+class Sentinel1BurstResample(regist.SarResample):
     """Resample a complex Sentinel1 burst.
 
     For more info:
