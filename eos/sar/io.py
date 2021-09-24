@@ -125,7 +125,7 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
             xml_content = f.read()
     return xml_content
 
-def read_window(image_reader, roi):
+def read_window(image_reader, roi, get_complex=True):
     """Read window inside the tiff of a complex image.
 
     Parameters
@@ -134,19 +134,24 @@ def read_window(image_reader, roi):
         opened image
     roi : tuple
         (x,y,w,h) location to read from in the tiff file.
-
+    get_complex : bool
+        If True, the complex image is returned. Otherwise, only the amplitude
+        is returned. 
     Returns
     -------
-    array : ndarray
-        np.complex64 image.
+    array : ndarray (np.complex64 or np.float32)
+        image corresponding to roi.
 
     """
     x, y, w, h = roi
-    return image_reader.read(1, window=(
+    cmplx_img = image_reader.read(1, window=(
             (y, y+h), (x, x+w))).astype(np.complex64)
+    if get_complex: 
+        return cmplx_img
+    else: 
+        return np.abs(cmplx_img)
 
-
-def read_windows(image_reader, rois):
+def read_windows(image_reader, rois, get_complex=True):
     """Read windows inside the tiff of a complex image.
 
     Parameters
@@ -155,14 +160,17 @@ def read_windows(image_reader, rois):
         opened image
     rois : list of tuples
         (x,y,w,h) location to read from in the tiff file.
-
+    get_complex : bool
+        If True, the complex imagettes are returned. Otherwise, only the amplitude
+        are returned.
+        
     Returns
     -------
-    arrays : list of np.complex64
-         Each element in the list is an image.
+    arrays : list of np.complex64 or np.float32
+         Each element in the list is an image corresponding to an roi.
 
     """
     arrays = []
     for roi in rois:
-        arrays.append(read_window(image_reader, roi))
+        arrays.append(read_window(image_reader, roi, get_complex))
     return arrays
