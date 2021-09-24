@@ -74,10 +74,11 @@ A = eos.sar.regist.orbital_registration(row_primary, col_primary,
                                         )
 # Now read the secondary array
 secondary_burst_array = eos.sar.io.read_window(
-    image_readers[1], secondary_burst_meta['burst_roi'])
+    image_readers[1],
+    secondary_burst_model.burst_roi)
 
 # resample the complex secondary burst
-_, _, w, h = primary_burst_meta['burst_roi']
+h, w = primary_burst_model.burst_roi.get_shape()
 
 # create a resampler instance
 resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(
@@ -90,7 +91,7 @@ resampled_secondary_array = resampler.resample(secondary_burst_array)
 # Do the interferogram (optional)
 # read
 primary_burst_array = eos.sar.io.read_window(image_readers[0],
-                                             primary_burst_meta['burst_roi'])
+                                             primary_burst_model.burst_roi)
 
 interf = primary_burst_array * np.conj(resampled_secondary_array)
 

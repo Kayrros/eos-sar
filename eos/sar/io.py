@@ -133,20 +133,21 @@ def read_window(image_reader, roi, get_complex=True):
     ----------
     image_reader : rasterio.DatasetReader
         opened image
-    roi : tuple
-        (x,y,w,h) location to read from in the tiff file.
+    roi : eos.sar.roi.Roi
+        location to read from in the tiff file.
     get_complex : bool
         If True, the complex image is returned. Otherwise, only the amplitude
-        is returned. 
+        is returned.
+    
     Returns
     -------
     array : ndarray (np.complex64 or np.float32)
         image corresponding to roi.
 
     """
-    x, y, w, h = roi
+    col, row, w, h = roi.to_roi()
     img = image_reader.read(1, window=(
-            (y, y+h), (x, x+w)))
+            (row, row+h), (col, col+w)))
     complex_flg = np.iscomplexobj(img)
     if get_complex: 
         # check if reader returned a complex image
@@ -172,8 +173,8 @@ def read_windows(image_reader, rois, get_complex=True):
     ----------
     image_reader : rasterio.DatasetReader
         opened image
-    rois : list of tuples
-        (x,y,w,h) location to read from in the tiff file.
+    rois : list of eos.sar.roi.Roi
+        locations to read from in the tiff file.
     get_complex : bool
         If True, the complex imagettes are returned. Otherwise, only the amplitude
         are returned.

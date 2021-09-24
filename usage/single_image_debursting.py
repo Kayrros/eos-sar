@@ -2,8 +2,10 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt 
 import eos.products.sentinel1
+from eos.sar.roi import Roi
 
 get_complex = True # to get complex debursted images
+
 remote_test = True
 
 if remote_test: 
@@ -38,12 +40,12 @@ primary_bursts_meta = eos.products.sentinel1.metadata.extract_bursts_metadata(
 primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
     primary_bursts_meta)
 
-# # deburst the whole swath
-debursted_swath, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
-    primary_swath_model, image_reader, get_complex=get_complex)
-
 # If you wish to deburst a "crop" defined by a roi in the swath coordinates
-roi_in_swath = (500, 750, 1000, 3000)
+roi_in_swath = Roi(500, 750, 1000, 3000)
+# if you wish to deburst the whole swath, set to None
+# roi_in_swath = None 
+# Careful, might be slow due to io
+# might be better to test it with remote_test = False
 
 # deburst
 debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
@@ -56,13 +58,6 @@ debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburs
 #%% plots 
 plt.figure() 
 plt.imshow(np.abs(debursted_crop), cmap='gray', 
-           vmin=np.percentile(np.abs(debursted_crop),10), 
-           vmax=np.percentile(np.abs(debursted_crop),90)
-    ) 
-plt.show()
-
-plt.figure() 
-plt.imshow(np.abs(debursted_swath), cmap='gray', 
            vmin=np.percentile(np.abs(debursted_crop),10), 
            vmax=np.percentile(np.abs(debursted_crop),90)
     ) 
