@@ -29,6 +29,7 @@ def select_orbit_file_from_filelist(files, date, missionid):
     date = string_to_timestamp(date)
     missionid = missionid.lower()
 
+    candidates = []
     for file in files:
         filename = os.path.basename(file)
 
@@ -45,7 +46,10 @@ def select_orbit_file_from_filelist(files, date, missionid):
         buffer_post = 10 * 10
 
         if s + buffer_pre < date and e - buffer_post > date:
-            return file
+            candidates.append(file)
+
+    if candidates:
+        return sorted(candidates)[-1]
 
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
@@ -150,10 +154,12 @@ def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, forc
         prefix = f'{type}/{missionid.upper()}_OPER_AUX_{type.upper()}ORB_OPOD_'
 
         prefixes = (
-            # first, look for the same month
-            prefix + curmonthdate,
-            # then, the next month
+            # first, look the next month
+            # POE are delayed by 21 days
+            # for RES, it can still be useful to look for the next month in case they republish one orbit file
             prefix + nextmonthdate,
+            # then, look for the same month
+            prefix + curmonthdate,
             # we could search more broadly, but that shouldn't be necessary?
         )
 
