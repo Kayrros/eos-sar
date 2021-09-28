@@ -39,7 +39,46 @@ class SensorModel(abc.ABC):
     def localize_without_alt(self, row, col, max_iter=5, eps=1,
                              alt_min=-1000, alt_max=9000, num_alt=100,
                              verbosity=False):
+        """
+        Localize a pixel in the image to the 3D point without needing the 
+        the altitude. A set of altitude values are tested recursively. 
 
+        Parameters
+        ----------
+        row : ndarray
+            row in the image.
+        col : ndarray
+            col in the image.
+        max_iter : int, optional
+            maximum number of recursions to find the height. The default is 5.
+        eps : float, optional
+            Precision on the height to stop the iterations. The default is 1.
+        alt_min : float, optional
+            Minimum altitude in the search space. The default is -1000.
+        alt_max : float, optional
+            Maximum altitude in the search space. The default is 9000.
+        num_alt : int, optional
+            Number of altitudes to test in each iteration. The default is 100.
+        verbosity : bool, optional
+            If True, print messages about the optimization. The default is False.
+
+        Returns
+        -------
+        lon : ndarray
+            longitude of point (wgs84).
+        lat : ndarray
+            latitude of point (wgs84).
+        alt_opt : ndarray
+            altitude of point (wgs84).
+        masks : dict 
+            Masks on the returned points to indicate the status of the optim.
+            mask["zeros"] indicates points that have exactly converged (error of 0)
+            mask["converged"] indicates points that converged within eps tolerance. 
+            mask["invalid"] indicates the points for which no solution was found, 
+            probably because the actual altitude is outside the given range. 
+            
+
+        """
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
             self, row, col, alt_min, alt_max, num_alt,
@@ -53,13 +92,67 @@ class SensorModel(abc.ABC):
 
 
 def localized_vs_dem(sensor_model, row, col, alt):
+    """
+    Computes the error between localized point at a certain height and the dem. 
+
+    Parameters
+    ----------
+    sensor_model : SensorModel instance
+        Model to project or localize points.
+    row : ndarrat
+        row in image.
+    col : ndarray
+        col in image.
+    alt : ndarray
+        Altitude to test vs dem.
+
+    Returns
+    -------
+    ndarray
+        alt - dem at localized point Loc(row, col, alt) .
+
+    """
     # TODO remove dependency on multidem elevation (io will be faster)
     lon, lat, _ = sensor_model.localization(row, col, alt)
     return alt - elevation(lon, lat)
 
 
-def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
-                    ):
+def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt):
+    """
+    Shrink a search interval by num_alt
+
+    Parameters
+    ----------
+    sensor_model : SensorModel instance
+        model to perform projection and localization.
+    rows : ndarray
+        row in the image.
+    cols : ndarray
+        col in the image.
+    alts_min : ndarray
+        lower bound of the search space.
+    alts_max : ndarray
+        upper bound of the search space.
+    num_alt : int
+        number of altitudes to test.
+    
+    Returns
+    -------
+    _alts_min : ndarray
+        New lower bound of the search space.
+    _alts_max : ndarray
+        New upper bound of the search space.
+    alts_diff1 : ndarray
+        Difference of alts_min with the dem .
+    alts_diff2 : ndarray
+        Difference of alts_max with the dem .
+    masks : dict
+        masks["zeros"] indicates points where _alts_min = _alts_max = dem.
+        masks["valid"] indicates points where the search space was shrinked
+        masks["invalid"] indicates points where the true solution lies outside 
+        of the search space.
+
+    """
     # TODO to make this call faster, localization seems to have a bottelneck
     # related to the pyproj transformer
 
@@ -125,6 +218,49 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
 
 def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
                               num_alt, max_iter=10, eps=1e-1, verbosity=False):
+    """
+    Iteratively shrink the search interval for the altitude of a point. 
+
+    Parameters
+    ----------
+    sensor_model : SensorModel instance
+        model to perform projection and localization.
+    row : ndarray
+        row in the image.
+    col : ndarray
+        col in the image.
+    alt_min : ndarray
+        lower bound of the search space.
+    alt_max : ndarray
+        upper bound of the search space.
+    num_alt : int
+        number of altitudes to test.
+    max_iter : int, optional
+        maximum number of iterations. The default is 10.
+    eps : float, optional
+        Width of the search interval needed to stop the iterations.
+        The default is 1e-1.
+    verbosity : bool, optional
+        if True, print optim messages. The default is False.
+
+    Returns
+    -------
+    alts_min : ndarray
+        Lower bound of the search interval.
+    alts_max : ndarray
+        Upper bound of the search interval.
+    alts_diff1 : ndarray
+        alts_min - dem.
+    alts_diff2 : ndarray
+        alts_max - dem.
+    masks : dict
+        Masks on the returned points to indicate the status of the optim.
+        mask["zeros"] indicates points that have exactly converged (error of 0)
+        mask["converged"] indicates points that converged within eps tolerance. 
+        mask["invalid"] indicates the points for which no solution was found, 
+        probably because the actual altitude is outside the given range. 
+
+    """
     row = np.atleast_1d(row)
     col = np.atleast_1d(col)
     alts_min = np.ones(row.shape, dtype=float) * alt_min
