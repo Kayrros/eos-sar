@@ -3,58 +3,58 @@ import pyproj
 from eos.sar import poly
 
 
-def normalize(Vec):
+def normalize(vec):
     '''
     normalize vec so that norm(Vec) = 1
-    Vec (n, 3)
+    vec (n, 3)
     '''
-    norm = np.linalg.norm(Vec, axis=1).reshape(-1, 1)
+    norm = np.linalg.norm(vec, axis=1).reshape(-1, 1)
     norm[norm == 0] = 1
-    return Vec/norm
+    return vec/norm
 
 
-def compute_baseline(Prim, Sec, P, speed):
+def compute_baseline(prim, sec, points, speed):
     """Compute the geometric baseline. 
 
 
     Parameters
     ----------
-    Prim : ndarray (n, 3)
+    prim : ndarray (n, 3)
         Primary satellite positions.
-    Sec : ndarray (n, 3)
+    sec : ndarray (n, 3)
         Secondary satellite positions.
-    P : ndarray
+    points : ndarray
         Points positions ( on ellipsoid assumed).
     speed : ndarray
         Speed at primary position.
 
     Returns
     -------
-    Bpar : ndarray
+    par_baseline : ndarray
         Baseline parallel (projected on LOS).
-    Bperp : ndarray
+    perp_baseline : ndarray
         Baseline perpendicular (in the zero doppler plane, orthogonal to LOS).
-    Bdepth : ndarray
+    depth_baseline : ndarray
         Baseline along the speed component.
 
     """
     # assert 2D arrays
-    Prim = Prim.reshape(-1, 3)
-    Sec = Sec.reshape(-1, 3)
-    P = P.reshape(-1, 3)
+    prim = prim.reshape(-1, 3)
+    sec = sec.reshape(-1, 3)
+    points = points.reshape(-1, 3)
     speed = speed.reshape(-1, 3)
-    B = Sec - Prim  # baseline vec
-    LOS = (P - Prim)
+    baseline = sec - prim  # baseline vec
+    line_of_sight = (points - prim)
     # construct basis
-    LOS = normalize(LOS)
+    line_of_sight = normalize(line_of_sight)
     speed = normalize(speed)
-    cross = np.cross(LOS, speed)
+    cross = np.cross(line_of_sight, speed)
     cross = normalize(cross)
     # projection
-    Bpar = np.sum(B * LOS, axis=1)
-    Bperp = np.sum(B * cross, axis=1)
-    Bdepth = np.sum(B * speed, axis=1)
-    return Bpar, Bperp, Bdepth
+    par_baseline = np.sum(baseline * line_of_sight, axis=1)
+    perp_baseline = np.sum(baseline * cross, axis=1)
+    depth_baseline = np.sum(baseline * speed, axis=1)
+    return par_baseline, perp_baseline, depth_baseline
 
 
 def get_grid(width, height, grid_size_col, grid_size_row, train=True):
@@ -78,9 +78,9 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
 
     Returns
     -------
-    Col : ndarray
+    col : ndarray
         Column meshgrid.
-    Row : ndarray
+    row : ndarray
         Row meshgrid.
 
     """
@@ -98,8 +98,8 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
         row_step = height/(grid_size_row - 1)
         rows = np.linspace(row_step/2, height - 1 + row_step/2, grid_size_row)
         rows = rows[:-1]
-    Col, Row = np.meshgrid(cols, rows)
-    return Col, Row
+    col, row = np.meshgrid(cols, rows)
+    return col, row
 
 
 def get_geom_config(primary_model, secondary_models, grid_size_col=20,
@@ -126,17 +126,17 @@ def get_geom_config(primary_model, secondary_models, grid_size_col=20,
         Image points locations (col, row).
     theta_inc : ndarray (N, )
         Incidence angle.
-    Bperp : ndarray (N, )
+    perp_baseline : ndarray (N, )
         Perpendicular baseline.
     delta_r : ndarray (N, )
         Parallel baseline.
 
     """
     # construct grid on which we estimate each parameter
-    Col, Row = get_grid(primary_model.w, primary_model.h, grid_size_col,
+    col, row = get_grid(primary_model.w, primary_model.h, grid_size_col,
                         grid_size_row, train=train)
-    rows = Row.ravel()
-    cols = Col.ravel()
+    rows = row.ravel()
+    cols = col.ravel()
     points = np.column_stack([cols, rows])
     num_points = len(rows)
 
@@ -167,7 +167,7 @@ def get_geom_config(primary_model, secondary_models, grid_size_col=20,
     # local incidence on ellipsoid estimation
     theta_inc = np.arccos((_os**2 - op**2 - ps**2) / (2 * op * ps))
 
-    Bperp = np.zeros((len(secondary_models), num_points))
+    perp_baseline = np.zeros((len(secondary_models), num_points))
     delta_r = np.zeros((len(secondary_models), num_points))
 
     for sid, secondary_model in enumerate(secondary_models):
@@ -178,15 +178,15 @@ def get_geom_config(primary_model, secondary_models, grid_size_col=20,
         sat_pos_sec = secondary_model.orbit.evaluate(azt_sec, order=0)
 
         # Calculation of baseline for each defined pixel
-        _, _Bperp, _ = compute_baseline(
+        _, _perp_baseline, _ = compute_baseline(
             sat_pos_prim, sat_pos_sec, points_3D, sat_speed_prim)
-        Bperp[sid] = _Bperp
+        perp_baseline[sid] = _perp_baseline
         delta_r[sid] = ps.ravel() - rng_sec.ravel()
 
-    return points, theta_inc, Bperp, delta_r
+    return points, theta_inc, perp_baseline, delta_r
 
 
-class geometryPredictor:
+class GeometryPredictor:
     '''
     Used to predict the geometry (baselines, incidence angles)
     '''
@@ -218,29 +218,29 @@ class geometryPredictor:
         self.degree = degree
 
         # training set to fit the geometric config
-        points_Train, theta_inc_Train, Bperp_Train, delta_r_Train = get_geom_config(
+        points_train, theta_inc_train, perp_baseline_train, delta_r_train = get_geom_config(
             primary_model, secondary_models, grid_size_col=grid_size,
             grid_size_row=grid_size, train=True)
 
         # fit a 2d polynomial of degree
         polynom = poly.polymodel(degree)
         ztrue = np.column_stack(
-            [Bperp_Train.T,  delta_r_Train.T, theta_inc_Train])
+            [perp_baseline_train.T,  delta_r_train.T, theta_inc_train])
 
-        polynom.fit_poly(points_Train[:, 0], points_Train[:, 1], ztrue)
+        polynom.fit_poly(points_train[:, 0], points_train[:, 1], ztrue)
         self.polynom = polynom
 
-    def checkIds(self, Ids):
+    def check_ids(self, ids):
         """ Check that the ids are coherent with the secondary models list
         """
-        if Ids is None:
-            Ids = np.arange(self.len_secon)
+        if ids is None:
+            ids = np.arange(self.len_secon)
         else:
-            Ids = np.array(Ids)
-            Ids = Ids[np.logical_and(Ids >= 0, Ids < self.len_secon)]
-        return Ids
+            ids = np.array(ids)
+            ids = ids[np.logical_and(ids >= 0, ids < self.len_secon)]
+        return ids
 
-    def predict_Bperp(self, rows, cols, secondary_ids=None, grid_eval=False):
+    def predict_perp_baseline(self, rows, cols, secondary_ids=None, grid_eval=False):
         """Predicts the perpendicular baseline on a set of debursted points. 
 
 
@@ -265,12 +265,12 @@ class geometryPredictor:
             Perpendicular baseline for each point and each image (numpts, numImgs).
 
         """
-        secondary_ids = self.checkIds(secondary_ids)
+        secondary_ids = self.check_ids(secondary_ids)
         return self.polynom.eval_poly(cols, rows, 
                                       secondary_ids,
                                       grid_eval)
 
-    def predict_Bpar(self, rows, cols, secondary_ids=None, grid_eval=False):
+    def predict_par_baseline(self, rows, cols, secondary_ids=None, grid_eval=False):
         """Compute the parallel baseline on a set of debursted points. 
 
 
@@ -296,7 +296,7 @@ class geometryPredictor:
             Parallel baseline for each point and each image (numpts, numImgs).
 
         """
-        secondary_ids = self.checkIds(secondary_ids)
+        secondary_ids = self.check_ids(secondary_ids)
         return self.polynom.eval_poly(cols, rows, 
                                 self.len_secon + np.array(secondary_ids), 
                                 grid_eval)

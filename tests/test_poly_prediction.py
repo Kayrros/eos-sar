@@ -57,22 +57,22 @@ def test_baseline_predictions():
     
     secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(secondary_bursts_meta)
     
-    pred = geoconfig.geometryPredictor(primary_swath_model, [secondary_swath_model],
+    pred = geoconfig.GeometryPredictor(primary_swath_model, [secondary_swath_model],
                       grid_size=20, degree=7)
     
     npts = 50
     rows = np.random.uniform(0, primary_swath_model.h, size=npts)
     cols = np.random.uniform(0, primary_swath_model.w, size=npts)
     
-    Bpar = pred.predict_Bpar(rows, cols)
-    Bperp = pred.predict_Bperp(rows, cols)
+    par_baseline = pred.predict_par_baseline(rows, cols)
+    perp_baseline = pred.predict_perp_baseline(rows, cols)
     inc = pred.predict_incidence(rows, cols)
-    assert Bpar.shape == (npts,1)
-    assert Bperp.shape == (npts,1)
+    assert par_baseline.shape == (npts,1)
+    assert perp_baseline.shape == (npts,1)
     assert inc.shape == (npts,1)
-    Bpar = pred.predict_Bperp(rows, cols, grid_eval=True)
-    Bperp = pred.predict_Bperp(rows, cols, grid_eval=True)
+    par_baseline = pred.predict_par_baseline(rows, cols, grid_eval=True)
+    perp_baseline = pred.predict_perp_baseline(rows, cols, grid_eval=True)
     inc = pred.predict_incidence(rows, cols, grid_eval=True)
-    assert Bpar.shape == (npts**2,1)
-    assert Bperp.shape == (npts**2,1)
+    assert par_baseline.shape == (npts**2,1)
+    assert perp_baseline.shape == (npts**2,1)
     assert inc.shape == (npts**2,1)
