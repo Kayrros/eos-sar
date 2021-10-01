@@ -38,7 +38,7 @@ class SensorModel(abc.ABC):
 
     def localize_without_alt(self, row, col, max_iter=5, eps=1,
                              alt_min=-1000, alt_max=9000, num_alt=100,
-                             verbosity=False):
+                             verbosity=False, elev=elevation):
         """
         Localize a pixel in the image to the 3D point without needing the 
         the altitude. A set of altitude values are tested recursively. 
@@ -61,7 +61,11 @@ class SensorModel(abc.ABC):
             Number of altitudes to test in each iteration. The default is 100.
         verbosity : bool, optional
             If True, print messages about the optimization. The default is False.
-
+        elev: function
+            Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
+            lon, lat are in wgs84 crs. 
+            Should be vectorized (able to handle a query of arrays).
+            
         Returns
         -------
         lon : ndarray
@@ -82,7 +86,7 @@ class SensorModel(abc.ABC):
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
             self, row, col, alt_min, alt_max, num_alt,
-            max_iter=max_iter, eps=eps, verbosity=verbosity)
+            max_iter=max_iter, eps=eps, verbosity=verbosity, elev=elev)
         
         # do a last linear interpolation
         alt_opt = alt_min - alt_diff1 * \
@@ -91,7 +95,7 @@ class SensorModel(abc.ABC):
         return lon, lat, alt_opt, masks
 
 
-def localized_vs_dem(sensor_model, row, col, alt):
+def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
     """
     Computes the error between localized point at a certain height and the dem. 
 
@@ -99,13 +103,17 @@ def localized_vs_dem(sensor_model, row, col, alt):
     ----------
     sensor_model : SensorModel instance
         Model to project or localize points.
-    row : ndarrat
+    row : ndarray
         row in image.
     col : ndarray
         col in image.
     alt : ndarray
         Altitude to test vs dem.
-
+    elev: function
+        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
+        lon, lat are in wgs84 crs. 
+        Should be vectorized (able to handle a query of arrays).
+        
     Returns
     -------
     ndarray
@@ -114,10 +122,11 @@ def localized_vs_dem(sensor_model, row, col, alt):
     """
     # TODO remove dependency on multidem elevation (io will be faster)
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - elevation(lon, lat)
+    return alt - elev(lon, lat)
 
 
-def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt):
+def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt, 
+                    elev=elevation):
     """
     Shrink a search interval by num_alt
 
@@ -135,7 +144,11 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt):
         upper bound of the search space.
     num_alt : int
         number of altitudes to test.
-    
+    elev: function
+        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
+        lon, lat are in wgs84 crs. 
+        Should be vectorized (able to handle a query of arrays).
+        
     Returns
     -------
     _alts_min : ndarray
@@ -171,7 +184,8 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt):
     alt_diff = localized_vs_dem(sensor_model,
                                 utils.hrepeat(rows, num_alt).ravel(),
                                 utils.hrepeat(cols, num_alt).ravel(),
-                                potential_alt.ravel())
+                                potential_alt.ravel(), 
+                                elev)
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
@@ -217,7 +231,8 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt):
 
 
 def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
-                              num_alt, max_iter=10, eps=1e-1, verbosity=False):
+                              num_alt, max_iter=10, eps=1e-1,
+                              verbosity=False, elev=elevation):
     """
     Iteratively shrink the search interval for the altitude of a point. 
 
@@ -242,6 +257,10 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
         The default is 1e-1.
     verbosity : bool, optional
         if True, print optim messages. The default is False.
+    elev: function
+        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
+        lon, lat are in wgs84 crs. 
+        Should be vectorized (able to handle a query of arrays).
 
     Returns
     -------
@@ -279,7 +298,7 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
             col[iterate_mask],
             alts_min[iterate_mask],
             alts_max[iterate_mask],
-            num_alt)
+            num_alt, elev)
         # update masks
         zero_mask[iterate_mask] = masks["zeros"]
         invalid_mask[iterate_mask] = masks["invalid"]
