@@ -25,7 +25,7 @@ def _parse_start_end_date_from_orbit_file(s):
     return start, end
 
 
-def select_orbit_file_from_filelist(files, date, missionid):
+def select_orbit_files_from_filelist(files, date, missionid):
     date = string_to_timestamp(date)
     missionid = missionid.lower()
 
@@ -49,7 +49,7 @@ def select_orbit_file_from_filelist(files, date, missionid):
             candidates.append(file)
 
     if candidates:
-        return sorted(candidates)[-1]
+        return sorted(candidates)
 
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
@@ -64,17 +64,15 @@ def _list_files_from_s3(client_s3, bucket, prefix):
             continue
         for obj in page["Contents"]:
             key = obj['Key']
-            files.append(key[len(prefix):])
+            files.append(key)
 
     return files
 
 
-def select_orbit_file_from_s3(client_s3, bucket, prefix, date, missionid):
+def select_orbit_files_from_s3(client_s3, bucket, prefix, date, missionid):
     files = _list_files_from_s3(client_s3, bucket, prefix)
-    filenames = [os.path.basename(prefix + f) for f in files]
-    filename = select_orbit_file_from_filelist(filenames, date, missionid)
-    index = filenames.index(filename)
-    return files[index]
+    files = select_orbit_files_from_filelist(files, date, missionid)
+    return files
 
 
 def apply_new_statevectors_to_burst(xml_content, burst, orbtype):
@@ -116,21 +114,7 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
         b['state_vectors_origin'] = orbtype
 
 
-def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, force_type=None):
-    '''Retrieve the orbit statevectors of the given bursts using the bucket s3://s1-orbits.
-
-    Args
-        client_s3: a boto3.client instance with kayrros OIO credentials
-        product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
-        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
-        force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
-
-    Returns
-        str: the type of orbit found ('orbres' or 'orbpre')
-
-    Raises
-        FileNotFoundError: if no orbit file is found for the product_info
-    '''
+def search_valid_orbit_files(client_s3, product_info, type, return_all=False, fullsearch=False):
     if isinstance(product_info, tuple):
         # ('20210216T151206', 'S1A')
         date, missionid = product_info
@@ -149,10 +133,10 @@ def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, forc
     curmonthdate = f'{curyear:04d}{curmonth:02d}'
     nextmonthdate = f'{nextmonthyear:04d}{nextmonth:02d}'
 
-    def try_for_orbit_type(type):
-        orbtype = f'orb{type}'
-        prefix = f'{type}/{missionid.upper()}_OPER_AUX_{type.upper()}ORB_OPOD_'
-
+    prefix = f'{type}/{missionid.upper()}_OPER_AUX_{type.upper()}ORB_OPOD_'
+    if fullsearch:
+        prefixes = (prefix,)
+    else:
         prefixes = (
             # first, look the next month
             # POE are delayed by 21 days
@@ -163,22 +147,57 @@ def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, forc
             # we could search more broadly, but that shouldn't be necessary?
         )
 
-        for prefix in prefixes:
-            try:
-                file = select_orbit_file_from_s3(client_s3, S1_ORBITS_BUCKET, prefix, date, missionid)
-                break
-            except FileNotFoundError:
-                pass
-        else:
+    allfiles = []
+    for prefix in prefixes:
+        try:
+            files = select_orbit_files_from_s3(client_s3, S1_ORBITS_BUCKET, prefix, date, missionid)
+            if not return_all and files:
+                return files[-1]
+            allfiles += files
+        except FileNotFoundError:
+            pass
+
+    return sorted(allfiles)
+
+
+def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, force_type=None, fullsearch=False):
+    '''Retrieve the orbit statevectors of the given bursts using the bucket s3://s1-orbits.
+
+    Args
+        client_s3: a boto3.client instance with kayrros OIO credentials
+        product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
+        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
+        force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
+        fullsearch (bool, optional): search for the orbit file in all the history (can be useful since old POEs have been preprocessed early 2021)
+
+    Returns
+        str: the type of orbit found ('orbres' or 'orbpre')
+
+    Raises
+        FileNotFoundError: if no orbit file is found for the product_info
+    '''
+    if isinstance(product_info, tuple):
+        # ('20210216T151206', 'S1A')
+        date, missionid = product_info
+    else:
+        # 'S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650'
+        assert isinstance(product_info, str)
+        missionid = product_info[:3]
+        date = product_info[17:32]
+
+    def try_for_orbit_type(type):
+        file = search_valid_orbit_files(client_s3, (date, missionid), type, fullsearch=fullsearch)
+        if not file:
             return None
 
         xml = io.BytesIO()
         client_s3.download_fileobj(
             Fileobj=xml,
             Bucket=S1_ORBITS_BUCKET,
-            Key=f'{prefix}{file}')
+            Key=file)
         xml.seek(0)
 
+        orbtype = f'orb{type}'
         if isinstance(burst, dict):
             apply_new_statevectors_to_burst(xml, burst, orbtype)
         else:
