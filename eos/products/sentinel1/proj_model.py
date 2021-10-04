@@ -23,6 +23,7 @@ def burst_model_from_burst_meta(burst_meta, **kwargs):
                                burst_meta['azimuth_frequency'],
                                burst_meta['slant_range_time'],
                                burst_meta['samples_per_burst'],
+                               burst_meta['wave_length'],
                                burst_meta['burst_times'],
                                burst_meta['burst_roi'],
                                burst_meta['approx_geom'],
@@ -39,6 +40,9 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  approx_geom,
                  range_frequency,
                  azimuth_frequency,
+                 width,
+                 height,
+                 wavelength, 
                  slant_range_time,
                  samples_per_burst,
                  state_vectors,
@@ -62,6 +66,12 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             Two way range time sampling frequency .
         azimuth_frequency : float
             Azimuth time sampling frequency.
+        width: int
+            width of the image
+        height: int
+            height of the image
+        wavelength: float
+            wavelength in m 
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
         samples_per_burst : int
@@ -92,6 +102,11 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         """
         self.range_frequency = range_frequency
         self.azimuth_frequency = azimuth_frequency
+        
+        self.w = width 
+        self.h = height
+        self.wavelength = wavelength
+        
         self.slant_range_time = slant_range_time
         self.samples_per_burst = samples_per_burst
         self.orbit = orbit.Orbit(state_vectors, degree)
@@ -278,6 +293,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                  azimuth_frequency,
                  slant_range_time,
                  samples_per_burst,
+                 wavelength, 
                  burst_times,
                  burst_roi,
                  approx_geom,
@@ -300,6 +316,8 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
             Two way time to the first column in the sentinel1 raster.
         samples_per_burst : int
             Number of columns per burst in the sentinel1 raster.
+        wavelength: float
+            wavelength in m 
         burst_times : (3,) ndarray/tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
             start/end_valid denote the azimuth time of the
@@ -337,12 +355,14 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         # set these for the CoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
-        approx_geom = approx_geom
         super().__init__(first_row_time,
                          first_col_time,
                          approx_geom,
                          range_frequency,
                          azimuth_frequency,
+                         burst_roi[2], 
+                         burst_roi[3], 
+                         wavelength, 
                          slant_range_time,
                          samples_per_burst,
                          state_vectors,
@@ -368,6 +388,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  azimuth_frequency,
                  slant_range_time,
                  samples_per_burst,
+                 wavelength,
                  bursts_times,
                  bursts_rois,
                  bursts_approx_geom,
@@ -390,6 +411,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             Two way time to the first column in the sentinel1 raster.
         samples_per_burst : int
             Number of columns per burst in the sentinel1 raster.
+        wavelength: float
+            wavelength in m 
         bursts_times : list of (3,) tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
             start/end_valid denote the azimuth time of the
@@ -430,13 +453,23 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         first_col_time = slant_range_time + self.col_min / range_frequency
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
-
+        
+        # setting image size
+        self.row_min = bursts_rois[0][1
+                                      ]
+        col_max = max(roi_[0] + roi_[2] - 1 for roi_ in bursts_rois)
+        w = (col_max - self.col_min + 1)
+        h = int(np.round((bursts_times[-1][2] - first_row_time)
+                              * azimuth_frequency))
         # call the base class constructor
         super().__init__(first_row_time,
                          first_col_time,
                          approx_geom,
                          range_frequency,
                          azimuth_frequency,
+                         w, 
+                         h, 
+                         wavelength, 
                          slant_range_time,
                          samples_per_burst,
                          state_vectors,
@@ -445,13 +478,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          apd_correction,
                          max_iterations,
                          tolerance)
-
-        # setting image size
-        self.row_min = bursts_rois[0][1]
-        col_max = max(roi_[0] + roi_[2] - 1 for roi_ in bursts_rois)
-        self.w = (col_max - self.col_min + 1)
-        self.h = int(np.round((bursts_times[-1][2] - first_row_time)
-                              * self.azimuth_frequency))
 
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times
@@ -676,6 +702,7 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
                                bursts_metadata[0]['azimuth_frequency'],
                                bursts_metadata[0]['slant_range_time'],
                                bursts_metadata[0]['samples_per_burst'],
+                               bursts_metadata[0]['wave_length'],
                                bursts_times,
                                bursts_rois,
                                bursts_approx_geom,
