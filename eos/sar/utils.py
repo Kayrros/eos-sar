@@ -1,4 +1,5 @@
 import numpy as np 
+import eos.sar 
 
 
 def hrepeat(arr, w):
@@ -15,6 +16,71 @@ def first_nonzero(arr, axis, invalid_val=-1):
     mask = arr != 0
     return np.where(mask.any(axis=axis), mask.argmax(axis=axis), invalid_val)
 
+def geom_to_raster(approx_geom, transform, px_is_area=True):
+    """
+    Get the (col, row) coordinates of an approximate geometry in a raster
+    defined by a transform. 
+
+    Parameters
+    ----------
+    approx_geom : list of tuples
+        Each element is a (lon, lat) tuple.
+    transform : affine.Affine
+        Raster transform.
+    px_is_area : bool, optional
+        Convention of a px being an area as opposed to being a point.
+        The default is True.
+
+    Returns
+    -------
+    list of tuples
+        Each element is a (col, row) tuple.
+
+    """
+    lons = np.array([g[0] for g in approx_geom])
+    lats = np.array([g[1] for g in approx_geom])
+        
+    col, row = ~transform * (lons, lats) 
+    
+    if px_is_area: 
+        # PIXEL_IS_AREA 
+        col -= 0.5
+        row -= 0.5
+    return [(c, r) for c,r in zip(col, row)]
+
+def geom_to_raster_roi(approx_geom, transform, raster_shape, px_is_area=True): 
+    """
+    Get the bounding box of an approximate geometry inside a raster defined 
+    by a transform.
+
+    Parameters
+    ----------
+    approx_geom : list of tuples
+        Each element is a (lon, lat) tuple.
+    transform : affine.Affine
+        Raster transform.
+    raster_shape : tuple
+        Shape of the parent raster.
+    px_is_area : bool, optional
+        Convention of a px being an area as opposed to being a point.
+        The default is True.
+
+    Returns
+    -------
+    raster_roi : eos.sar.roi.Roi
+        Roi of the bounding box of the approximate geometry in the raster.
+
+    """
+    raster_coords = geom_to_raster(approx_geom, transform, px_is_area)
+    col = [coord[0] for coord in raster_coords]
+    row = [coord[1] for coord in raster_coords]
+    # deduce the bouding box
+    raster_bounds = eos.sar.roi.Roi.points_to_bbox(row, col)
+    raster_roi = eos.sar.roi.Roi.from_bounds_tuple(raster_bounds)
+    
+    raster_roi.make_valid(parent_shape=raster_shape, inplace=True)
+    
+    return raster_roi
 
 def raster_xy_grid(raster_shape, transform, px_is_area=True): 
     """
