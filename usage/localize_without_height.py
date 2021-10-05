@@ -1,6 +1,6 @@
 import numpy as np
 import os
-from eos.sar import model, io
+from eos.sar import model, io, roi
 from eos.products import sentinel1
 
 remote_test = True
@@ -73,3 +73,24 @@ rows_pred, cols_pred, _ = bmod.projection(lon, lat, alt)
 print("Row error : ", rows_pred - rows)
 print("Col error : ", cols_pred - cols)
 
+#%% Localize a Region of interest without height
+roi_geom = roi.Roi(50,10, 800, 1000)
+# here this is just to get the ground truth bounding points 
+rows_roi, cols_roi = roi_geom.to_bounding_points()
+# Localize to get the geometry, altitudes, validity masks
+approx_geom, alts, masks = bmod.get_approx_geom(roi_geom)
+
+print("Approx geom: ", approx_geom)
+print("alts :", alts)
+print("Num of converged points: ", masks["converged"].sum())
+print("Num of points where opt exactly 0: ", masks["zeros"].sum())
+print("Num of points where opt not found in interval: ", masks["invalid"].sum())
+
+# reproject and compare with the ground truth 
+projected = [bmod.projection(*a, alt) for (a, alt) in zip(approx_geom, alts)]
+
+row_err = rows_roi - np.array([p[0] for p in projected])
+col_err = cols_roi - np.array([p[1] for p in projected])
+
+print("Row err: ", row_err)
+print("Col err:", col_err)
