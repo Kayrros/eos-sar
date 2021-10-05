@@ -4,7 +4,7 @@ import abc
 import numpy as np
 from multidem import elevation
 from eos.sar.orbit import Orbit
-from eos.sar import utils
+from eos.sar import utils, roi
 
 
 class SensorModel(abc.ABC):
@@ -94,6 +94,45 @@ class SensorModel(abc.ABC):
         lon, lat, alt_opt = self.localization(row, col, alt_opt)
         return lon, lat, alt_opt, masks
 
+    def get_approx_geom(self, _roi=None, margin=0, **kwargs): 
+        """
+        Get the approximate geometry in epsg:4326 of a roi in an image whose 
+        localization function is defined by a model. Localization is conducted 
+        without knowledge of the altitude. 
+    
+        Parameters
+        ----------
+        _roi : eos.sar.roi.Roi, optional
+            Defines the region to localize. The default is None.
+        margin : int, optional
+            Margin in px to buffer the roi. The default is 0.
+       **kwargs: Keyword arguments for localize_without_alt function. 
+        
+        Returns
+        -------
+        approx_geom: list of tuples
+            The 4 (lon, lat) corners of the approximate geometry
+        alts: ndarray 
+            The altitude for each point
+        masks : dict
+                keys: "zeros", "converged", "invalid"
+                as returned by localize_without_alt
+        """
+        if _roi is None: 
+            _roi = roi.Roi(0, 0, self.w, self.h)
+        if margin:
+            _roi = _roi.add_margin(margin)
+        
+        rows, cols = _roi.to_bounding_points()
+        
+        lons, lats, alts, masks = self.localize_without_alt(
+            rows, cols, **kwargs)
+        
+        approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
+        
+        if np.any(masks["invalid"]): 
+            print("Warning: Some points may be invalid")
+        return approx_geom, alts, masks
 
 def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
     """
