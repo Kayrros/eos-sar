@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import abc
 import multidem
-
+from eos.sar import utils
 
 def affine_transformation(src, dst):
     """Estimate a 2D affine transform from a list of point correspondences.
@@ -115,20 +115,7 @@ def dem_points(geometry, source="SRTM30", datum="ellipsoidal",
         # save dem
         multidem.write_crop_to_file(raster, transform, crs, outfile)
 
-    # get dem points in crs
-    col, row = np.meshgrid(
-        np.arange(raster.shape[1]), np.arange(raster.shape[0]))
-    col = col.ravel()
-    row = row.ravel()
-
-    # Add 0.5 for pixel is area
-    col = col + 0.5
-    row = row + 0.5
-    # to earth coordinates
-    x, y = transform * (col, row)
-    # reshape
-    x = x.reshape(raster.shape)
-    y = y.reshape(raster.shape)
+    x, y = utils.raster_xy_grid(raster.shape, transform, px_is_area=True)
     return x, y, raster, transform, crs
 
 

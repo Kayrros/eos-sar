@@ -1,6 +1,7 @@
 import numpy as np
 import os
-from eos.sar import model, io
+import shapely 
+from eos.sar import model, io, roi
 from eos.products import sentinel1
 
 def test_localize_without_alt(): 
@@ -53,3 +54,30 @@ def test_localize_without_alt():
         verbosity=False)
     assert len(lon) == len(rows)
     assert masks["converged"].sum() == len(rows)
+    
+    rows_pred, cols_pred, _ = bmod.projection(lon, lat, alt)
+    np.testing.assert_allclose(rows_pred, rows, atol=1e-2)
+    np.testing.assert_allclose(cols_pred, cols, atol=1e-2)
+    
+    # test localizing an roi
+    roi_geom = roi.Roi(50,10, 800, 1000)
+    # here this is just to get the ground truth bounding points 
+    rows_roi, cols_roi = roi_geom.to_bounding_points()
+    # Localize to get the geometry, altitudes, validity masks
+    approx_geom, alts, masks = bmod.get_approx_geom(roi_geom)
+    assert len(approx_geom) == 4
+    # reproject and compare with the ground truth 
+    projected = [bmod.projection(*a, alt) for (a, alt) in zip(approx_geom, alts)]
+
+    np.testing.assert_allclose(rows_roi,[p[0] for p in projected], atol=1e-2) 
+    np.testing.assert_allclose(cols_roi, [p[1] for p in projected], atol=1e-2)
+    
+    initial_geom = shapely.geometry.Polygon(bmod.approx_geom)
+    refined_geom, alts, mask = bmod.get_approx_geom()
+    refined_geom_shp = shapely.geometry.Polygon(refined_geom)
+    assert not refined_geom_shp.equals(initial_geom),\
+    "Refined geometry is exactly the same as the initial geometry!"
+    inter = refined_geom_shp.intersection(initial_geom).area
+    union = refined_geom_shp.union(initial_geom).area
+    IoU = inter/union
+    assert IoU > 0.5, "Refined geometry is too different from initial geometry!"
