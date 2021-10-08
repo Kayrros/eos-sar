@@ -1,6 +1,4 @@
 """Fill needed metadata of a burst."""
-import os
-import io
 import math
 import dateutil.parser
 import datetime
@@ -282,6 +280,13 @@ def extract_common_metadata(xml):
     for x in dc_estimate:
         o['dc_estimate_poly'].append(
             list(map(float, x[dc_polynomial_name]['#text'].split())))
+
+    # pulse things
+    d = i['generalAnnotation']['downlinkInformationList']['downlinkInformation']['downlinkValues']
+    o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
+    o['pri'] = float(d['pri'])    # used for full_bistatic_correction
+    o['rank'] = float(d['rank'])  # used for full_bistatic_correction
+
     return o, i
 
 

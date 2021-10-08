@@ -132,7 +132,7 @@ def secondary_rois_and_resamplers(primary_swath_model, rois_read, burst_ids,
         resampler = burst_resamp.burst_resample_from_meta(secondary_bursts_meta[burst_ids[j]],
                                                           dst_burst_shape=(
                                                               h_dst, w_dst),
-                                                          matrix=A_resamp, degree=11)
+                                                          matrix=A_resamp)
         # set to resample within the burst
         resampler.set_inside_burst(dst_roi_in_burst, src_roi_in_burst)
 
