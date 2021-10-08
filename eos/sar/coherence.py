@@ -30,10 +30,12 @@ def _modify_borders(coherence, filter_size):
         hs = list(map(lambda f: f // 2, filter_size))
     else:
         hs = (filter_size // 2, filter_size // 2)
-    coherence[:hs[0],:] = np.nan
-    coherence[-hs[0]:,:] = np.nan
-    coherence[:,:hs[1]] = np.nan
-    coherence[:,-hs[1]:] = np.nan
+    if hs[0]:
+        coherence[:hs[0],:] = np.nan
+        coherence[-hs[0]:,:] = np.nan
+    if hs[1]:
+        coherence[:,:hs[1]] = np.nan
+        coherence[:,-hs[1]:] = np.nan
 
 
 def on_pair(im1, im2, filter_size, eps=1e-10,
