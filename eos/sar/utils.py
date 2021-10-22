@@ -1,7 +1,6 @@
 import numpy as np 
 import eos.sar 
 
-
 def hrepeat(arr, w):
     """Flip a 1D array vertically and repeat horizontally w times."""
     return np.repeat(arr.reshape(-1, 1), repeats=w, axis=1)
@@ -122,3 +121,10 @@ def raster_xy_grid(raster_shape, transform, px_is_area=True):
     y = y.reshape(raster_shape)
     return x, y
 
+def compare(phi1, phi2):
+    ''' Compare two phases by their coherence'''
+    return np.abs(np.sum(np.exp(1j*(phi1 - phi2))))/phi1.size
+
+def wrap(phi):
+    ''' Wrap phi to [-pi, pi]'''
+    return (phi + np.pi)%(2*np.pi) - np.pi
