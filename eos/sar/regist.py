@@ -118,6 +118,53 @@ def dem_points(geometry, source="SRTM30", datum="ellipsoidal",
     x, y = utils.raster_xy_grid(raster.shape, transform, px_is_area=True)
     return x, y, raster, transform, crs
 
+def get_registration_dem_pts(primary_model, sampling_ratio=0.01, 
+                             dem_source='SRTM30',
+                             dem_datum='ellipsoidal' ): 
+    """
+    
+
+    Parameters
+    ----------
+    primary_model : eos.sar.model.SensorModel 
+        Sensor model (used for proj/localize) of the primary image onto which we register.
+    sampling_ratio : float, optional
+        The sampling ratio used to sample points from the dem.
+        Only the sampled points will be used for the registration.
+        The default is 0.01.
+    dem_source : str, optional
+        DEM source "SRTM30", "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI".
+        The default is 'SRTM30'.
+    dem_datum : str, optional
+        "ellipsoidal" (height above WGS84 ellipsoid), or
+        "orthometric" (height above EGM96 geoid). The default is 'ellipsoidal'.
+
+    Returns
+    -------
+    x_sampled : ndarray
+        x coordinate in the dem crs of the sampled points.
+    y_sampled : ndarray
+        y coordinate in the dem crs of the sampled points.
+    raster_sampled : ndarray
+        Height coordinate in the dem crs of the sampled points.
+    crs : Any crs type accepted by pyproj
+        crs of the returned points.
+
+    """
+    assert sampling_ratio > 0 and sampling_ratio <= 1, "sampling ratio out of range"
+    
+    refined_geom, alts, mask = primary_model.get_approx_geom(margin=10)
+    # get dem points
+    x, y, raster, transform, crs = dem_points(refined_geom, source=dem_source,
+                                                             datum=dem_datum)
+    
+    # you can mask some pixels to speed up the projection
+    mask = np.random.binomial(n=1, p=sampling_ratio, size=x.shape).astype(bool) 
+    mask = np.logical_and(mask, ~np.isnan(raster))
+    x_sampled = x[mask]
+    y_sampled = y[mask]
+    raster_sampled = raster[mask]
+    return x_sampled, y_sampled, raster_sampled, crs
 
 def orbital_registration(row_primary, col_primary, secondary_model,
                          x, y, raster, crs):

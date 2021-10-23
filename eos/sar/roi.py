@@ -1,11 +1,15 @@
 import numpy as np
 import math 
 
+from eos.sar import utils
+
 class Roi: 
     
     def __init__(self, col, row, w, h):
         self.set_from_roi(col, row, w, h)
     
+    def __repr__(self): 
+        return f"ROI (col={self.col}, row={self.row}, w={self.w}, h={self.h})"
 
     def set_from_roi(self, col, row, w, h): 
         self.col = col 
@@ -277,3 +281,28 @@ class Roi:
         cols_grid, rows_grid = np.meshgrid(np.arange(col, col+w),
                                            np.arange(row, row+h))
         return cols_grid, rows_grid
+    
+    def contains(self, cols, rows):
+        """
+        Compute mask on points that are within the roi. 
+
+        Parameters
+        ----------
+        cols : array
+            Colmuns.
+        rows : array
+            Rows.
+
+        Returns
+        -------
+        mask : array(boolean)
+            Mask of points in the roi.
+
+        """
+        col_min, row_min, col_max, row_max = self.to_bounds()
+        
+        # get a mask on the points that are within the roi
+        mask = np.logical_and(utils.arr_in_interval(cols, col_min, col_max), 
+                                    utils.arr_in_interval(rows, row_min, row_max)
+                                   )       
+        return mask
