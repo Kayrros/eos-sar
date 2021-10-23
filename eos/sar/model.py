@@ -29,11 +29,12 @@ class SensorModel(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None):
+    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None):
         pass
 
     @abc.abstractmethod
-    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None):
+    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None, 
+                     x_init=None, y_init=None, z_init=None):
         pass
 
     def localize_without_alt(self, row, col, max_iter=5, eps=1,

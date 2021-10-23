@@ -1,7 +1,7 @@
 """Sentinel1 models for projection/localization."""
 import numpy as np
 import pyproj
-from eos.sar import model, range_doppler, const, coordinates, orbit, roi
+from eos.sar import model, range_doppler, const, coordinates, orbit, roi, utils
 
 
 def burst_model_from_burst_meta(burst_meta, **kwargs):
@@ -127,8 +127,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         # set some params necessary for processing
         self.azt_init = first_row_time
         self.approx_geom = approx_geom
-
-    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None):
+            
+    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None):
         """Projects a 3D point into the image coordinates.
 
         Parameters
@@ -142,6 +142,9 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                     Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
         vert_crs: string, optional
             Vertical crs
+        azt_init: ndarray or scalar, optional
+            Initial azimuth time guess of the points. If not given, the first
+            row time will be used. The default is None. 
 
         Returns
         -------
@@ -168,8 +171,13 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
 
         # convert to geocentric cartesian
         gx, gy, gz = transformer.transform(x, y, alt)
-
-        azt_init = self.azt_init * np.ones_like(x)
+        
+        if azt_init is not None:
+            err_msg = "Init azimuth time should be scalar or have the\
+                 same length of the points"
+            azt_init = utils.check_input_len(azt_init, len(x), err_msg)
+        else: 
+            azt_init = self.azt_init * np.ones_like(x)
 
         azt, rng, i = range_doppler.iterative_projection(
             self.orbit, gx, gy,
@@ -195,7 +203,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
 
         return row, col, i
 
-    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None):
+    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None,
+                     x_init=None, y_init=None, z_init=None):
         """Localize a point in the image at a certain altitude.
 
         Parameters
@@ -211,11 +220,23 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                     Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
         vert_crs: string, optional
             Vertical crs in which the point is returned
+        x_init: ndarray or scalar, optional
+            Initial guess of the x component. The default is None. 
+        y_init: ndarray or scalar, optional
+            Initial guess of the y component. The default is None.
+        z_init: ndarray or scalar, optional
+            Initial guess of the z component. The default is None.
 
         Returns
         -------
         x, y, z : ndarray or scalar
             Coordinates of the point in the crs
+        
+        Notes
+        -----
+        If no initial guess for the 3D point is given, the initial point for 
+        the iterative localization is taken at the centroid of the approx 
+        geometry of the model, with altitudes given by the alt array. 
         """
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)
@@ -254,18 +275,38 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             # correct range
             rng -= (alt**2/8.55e7 - alt/3411.0 + 2.41)/cos_incidence
 
-        # initial geocentric point xyz definition
-        # from lon, lat, alt to x, y, z
-        to_gxyz = pyproj.Transformer.from_crs(
-            'epsg:4326', 'epsg:4978', always_xy=True)
+        
+        if vert_crs is None:
+            dst_crs = crs
+        else:
+            dst_crs = pyproj.crs.CompoundCRS(
+                name='ukn_reference', components=[crs, vert_crs])
+            
+        if (x_init is not None) and (y_init is not None) and (z_init is not None): 
+            to_gxyz = pyproj.Transformer.from_crs(
+                dst_crs, 'epsg:4978', always_xy=True)
+            out_len = len(alt)
+            err_msg = "{} length should be the same as row/col/alt len"
+            x_init = utils.check_input_len(x_init, out_len, err_msg.format("x_init"))
+            y_init = utils.check_input_len(y_init, out_len, err_msg.format("y_init"))
+            z_init = utils.check_input_len(z_init, out_len, err_msg.format("z_init"))
+        else: 
+            # initial geocentric point xyz definition
+            # from lon, lat, alt to x, y, z
+            to_gxyz = pyproj.Transformer.from_crs(
+                'epsg:4326', 'epsg:4978', always_xy=True)
 
-        # point at swath centroid, 0 altitude as init
-        lon_c, lat_c = np.mean(self.approx_geom, axis=0)
-
+            # point at swath centroid, 0 altitude as init
+            lon_c, lat_c = np.mean(self.approx_geom, axis=0)
+            
+            x_init = lon_c * np.ones_like(alt)
+            y_init = lat_c * np.ones_like(alt)
+            z_init = alt
+        
         gx_init, gy_init, gz_init = to_gxyz.transform(
-            lon_c * np.ones_like(alt),
-            lat_c * np.ones_like(alt),
-            alt)
+            x_init,
+            y_init,
+            z_init)
 
         # localize each point
         gx, gy, gz = range_doppler.iterative_localization(
@@ -273,11 +314,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             max_iterations=self.max_iterations,
             tol=self.localization_tolerance)
 
-        if vert_crs is None:
-            dst_crs = crs
-        else:
-            dst_crs = pyproj.crs.CompoundCRS(
-                name='ukn_reference', components=[crs, vert_crs])
+
         todst = pyproj.Transformer.from_crs(
             'epsg:4978', dst_crs, always_xy=True)
         x, y, z = todst.transform(gx, gy, gz)
