@@ -43,11 +43,11 @@ def poly_vs_dem_intersect(approx_geometry, x, y, raster):
     
     return x, y, raster 
 
-def get_radar_height_interpolator(model, x, y, raster, 
+def get_radar_dem_interpolator(model, x, y, raster, 
                                   row_interval, col_interval, 
-                                  margin=10):
+                                  margin=10, get_xy=False):
     """
-    Construct a height interpolator in radar coordinates
+    Construct a height (and optionally x, y dem coordinates) interpolator in radar coordinates
 
     Parameters
     ----------
@@ -67,12 +67,15 @@ def get_radar_height_interpolator(model, x, y, raster,
         Only projected dem points in this interval will be used. 
     margin: int
         Margin in px to add to the row and column interval
-            
+    get_xy: boolean, optional
+        If True, the interpolator is constructed on (raster, x, y). 
+        The default is False. 
+        
     Returns
     -------
     interpolator : scipy.interpolate.LinearNDInterpolator
-        interpolator for the height.
-        to get the height at a location, call interpolator([row, col])
+        interpolator for the height,( x, y optionally).
+        to get the values at a location, call interpolator(row, col)
     """
     # get the bounds where we need to interpolate 
 
@@ -85,14 +88,19 @@ def get_radar_height_interpolator(model, x, y, raster,
     mask = np.logical_and(row_mask, col_mask)
    # project DEM in crop
     irreg_points = np.column_stack([rows[mask], cols[mask]])
-    interpolator = LinearNDInterpolator(irreg_points, raster[mask],
-                                        rescale=True)
+
+    if get_xy: 
+        target = np.column_stack([raster[mask], x[mask], y[mask]])
+    else: 
+        target = raster[mask]
+    # get triangulation 
+    interpolator = LinearNDInterpolator(irreg_points, target, rescale=True)
     return interpolator
 
-def get_height(x, y, raster, model, rows, cols, approx_geometry=None, 
-               margin=10): 
+def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry=None, 
+               margin=10, get_xy=False): 
     """
-    Compute the height at a set of locations in a radar image. 
+    Compute the height (and lon, lat optionally) at a set of locations in a radar image. 
 
     Parameters
     ----------
@@ -116,11 +124,14 @@ def get_height(x, y, raster, model, rows, cols, approx_geometry=None,
         Margin in px to add to the row and colmun interval. 
         Projected dem points within the intervals + margin will be considered 
         during the height estimation
+    get_xy: boolean, optional
+        If True, the interpolated x, y dem coordinates are returned as well. 
+        The default is False.   
         
     Returns
     -------
-    ndarray
-        Heights at the rows, cols locations.
+    ndarray rows.shape or (*rows.shape, 3)
+        Heights (and x, y optionally) at the rows, cols locations.
 
     """
     if approx_geometry is None: 
@@ -131,18 +142,19 @@ def get_height(x, y, raster, model, rows, cols, approx_geometry=None,
         approx_geometry, x, y, raster)
     
     # get the interval where we need the interpolator 
-    row_interval = min(rows), max(rows)
-    col_interval = min(cols), max(cols)
+    row_interval = np.amin(rows), np.amax(rows)
+    col_interval = np.amin(cols), np.amax(cols)
     # project the dem points and deduce interpolator
     # assume points are in epsg:4326 and height w.r.t. ellispoind
-    interpolator = get_radar_height_interpolator(
-        model, x, y, raster, row_interval, col_interval, margin=margin)
+    interpolator = get_radar_dem_interpolator(
+        model, x, y, raster, row_interval, col_interval,
+        margin=margin, get_xy=get_xy)
     
-    return interpolator(np.column_stack([rows, cols]))
+    return interpolator(rows, cols)
 
 
 def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None, 
-                    margin=10): 
+                    margin=10, get_xy=False): 
     """
     Project a dem in radar coordinates and compute a height value for 
     each pixel in the radar image. 
@@ -166,11 +178,15 @@ def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
     margin: int 
         The margin to buffer our roi during the approximate geometry estimation, 
         and during the height interpolator construction
+    get_xy: boolean, optional
+        If True, the interpolated x, y dem coordinates are returned as well. 
+        The default is False.   
 
     Returns
     -------
-    ndarray (h, w)
-        Image of height per pixel in the radar coordinates.
+    ndarray
+        (h, w) if get_xy is False: image of height per pixel in the radar coordinates.
+        (h, w, 3) otherwise: image of (height, x, y) per pixel in radar coordinates.
 
     """
     if roi is None: 
@@ -195,8 +211,8 @@ def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
     cols_grid, rows_grid = roi.get_meshgrid()
     # Call function to project (x, y, raster) points inside approx geom
     # build a height interpolator and predict it on rows and cols meshgrid
-    height = get_height(x.ravel(), y.ravel(), raster.ravel(), model, 
-                        rows_grid.ravel(), cols_grid.ravel(),
-                        approx_geometry, margin=margin)
+    radarcoded = get_radar_dem(x.ravel(), y.ravel(), raster.ravel(), model, 
+                        rows_grid, cols_grid,
+                        approx_geometry, margin=margin, get_xy=get_xy)
 
-    return height.reshape(cols_grid.shape)
+    return radarcoded
