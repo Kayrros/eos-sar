@@ -47,6 +47,7 @@ def test_radar_coding():
     # the approximate geometry is implicitly re-estimated (since not passed as param)
     crop_alt = dem_to_radar.dem_radarcoding(raster, transform, bmod,
                                             roi=crop_roi,
-                                            margin=margin)
+                                            margin=margin, 
+                                            get_xy=True)
     assert not np.any(np.isnan(crop_alt)), 'NaN detected, perhaps increase the margin ?'
-    assert crop_alt.shape == crop_roi.get_shape()
+    assert crop_alt.shape == (*crop_roi.get_shape(), 3)

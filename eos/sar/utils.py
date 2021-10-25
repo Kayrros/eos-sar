@@ -128,3 +128,14 @@ def compare(phi1, phi2):
 def wrap(phi):
     ''' Wrap phi to [-pi, pi]'''
     return (phi + np.pi)%(2*np.pi) - np.pi
+
+def check_input_len(input_var, out_len, error_msg='shape mismatch'):
+    """Check that the length of the input array is compatible with a certain\
+        desired length. If a scalar is given, create a constant array with\
+        desired length."""
+    in_var = np.atleast_1d(input_var)
+    if len(in_var) == 1: 
+        return in_var * np.ones(out_len) 
+    else: 
+        assert len(in_var) == out_len, error_msg
+        return in_var
