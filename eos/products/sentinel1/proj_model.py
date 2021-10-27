@@ -557,7 +557,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  samples_per_burst,
                  lines_per_burst,
                  wavelength,
-                 doppler: doppler_info.Sentinel1Doppler,
                  bursts_times,
                  bursts_rois,
                  bursts_approx_geom,
@@ -587,7 +586,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             Number of lines per burst in the sentinel1 raster. 
         wavelength: float
             wavelength in m 
-        doppler
         bursts_times : list of (3,) tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
             start/end_valid denote the azimuth time of the
@@ -660,7 +658,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          max_iterations,
                          tolerance)
 
-        self.doppler = doppler
         self.lines_per_burst = lines_per_burst
 
         # additional burst params, will surely be needed for coord conversion
@@ -893,15 +890,13 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     assert alleq('wave_length')
     assert alleq('pri')
     assert alleq('rank')
-
-    doppler = doppler_info.doppler_from_meta(bursts_metadata[0])
+    
     return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'],
                                bursts_metadata[0]['azimuth_frequency'],
                                bursts_metadata[0]['slant_range_time'],
                                bursts_metadata[0]['samples_per_burst'],
                                bursts_metadata[0]['lines_per_burst'],
                                bursts_metadata[0]['wave_length'],
-                               doppler,
                                bursts_times,
                                bursts_rois,
                                bursts_approx_geom,
@@ -909,3 +904,8 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
                                pri=bursts_metadata[0].get('pri'),
                                rank=bursts_metadata[0].get('rank'),
                                **kwargs)
+
+#TODO rethink models structure, taking into account that some things might 
+#not be constant for the whole swath for ex. samples per burst 
+# ( which is btw weird to include in the basemodel)
+# so basically, do sliceAssembly later, 
