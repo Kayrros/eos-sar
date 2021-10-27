@@ -4,6 +4,22 @@ import numpy as np
 from eos.sar import orbit
 
 def doppler_from_meta(burst_meta, **kwargs):
+    """
+    Construct a Sentinel1Doppler object from burst metadata. 
+
+    Parameters
+    ----------
+    burst_meta : dict
+        Dict of burst metadata.
+    **kwargs : key word arguments 
+        Additional key word args for the constructor of Sentinel1Doppler.
+
+    Returns
+    -------
+    Sentinel1Doppler
+        Object to predict the doppler info of a burst.
+
+    """
     return Sentinel1Doppler(
             burst_times=burst_meta['burst_times'],
             lines_per_burst=burst_meta['lines_per_burst'],
@@ -37,13 +53,6 @@ class Sentinel1Doppler:
 
         Parameters
         ----------
-        src_burst_roi : tuple
-            (col, row, w, h) of the burst roi in the sentinel1 product
-            of the burst to be resampled.
-        dst_burst_shape : tuple
-            (h, w) of the destination burst.
-        matrix : 3x3 ndarray
-            Resampling matrix such as matrix*dst_coord = src_coord of bursts
         lines_per_burst : int
             Lines per burst (with invalid data)
             as read from sentinel1 metadata.

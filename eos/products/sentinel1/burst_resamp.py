@@ -17,6 +17,10 @@ def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
         (h, w) shape of the destination burst.
     matrix : ndarray
         Affine registration matrix.
+    doppler: eos.products.sentinel1.Sentinel1Doppler
+        Object used to compute the Doppler info within a burst
+    doppler_kwargs: dict 
+        Keywords used to instantiate the doppler object if not given
     **kwargs :
         Additional key word arguments to
         pass to the constructor of Sentinel1BurstResample.

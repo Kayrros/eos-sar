@@ -13,6 +13,10 @@ def burst_model_from_burst_meta(burst_meta, doppler=None, doppler_kwargs={}, **k
     burst_meta : dict
         Dict containing all metadata of the burst and sentinel1 product needed
         for processing
+    doppler: eos.products.sentinel1.Sentinel1Doppler
+        Object used to compute the Doppler info within a burst
+    doppler_kwargs: dict 
+        Keywords used to instantiate the doppler object if not given
     **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
 
     Returns
@@ -91,15 +95,20 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             List of state vectors (time, position, velocity).
         degree : int, optional
             Degree of the orbit polynomial. The default is 11.
-        pri:
-        rank:
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None. 
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None. 
         bistatic_correction : Boolean, optional
             Apply bistatic correction on the azimuth time. The default is True.
         full_bistatic_correction_reference: Dict, optional
-            Metadata of one of the bursts of IW2.
+            Metadata of one of the bursts of IW2. The default is None. 
         apd_correction : Boolean, optional
             Apply atmospheric correction on the range. The default is True.
-        intra_pulse_correction:
+        intra_pulse_correction: Boolean, optional. 
+            Whether to apply intra_pulse_correction. The default is False. 
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -416,15 +425,23 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
             List of state vectors (time, position, velocity).
         degree : int, optional
             Degree of the orbit polynomial. The default is 11.
-        chirp_rate:
-        pri:
-        rank:
+        chirp_rate: float, optional
+            The linear FM rate at which the frequency changes over the pulse duration [Hz/s].
+            The default is None. 
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None. 
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None. 
         bistatic_correction : Boolean, optional
             Apply bistatic correction on the azimuth time. The default is True.
-        full_bistatic_correction_reference:
+        full_bistatic_correction_reference: Dict, optional
+            Metadata of one of the bursts of IW2. The default is None. 
         apd_correction : Boolean, optional
             Apply atmospheric correction on the range. The default is True.
-        intra_pulse_correction:
+        intra_pulse_correction: Boolean, optional. 
+            Whether to apply intra_pulse_correction. The default is False. 
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -479,9 +496,23 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
 
     def _intra_pulse(self, t, r):
         """
-        Compute intra-pulse motion range correction (azimuth dependent range shift
+        Compute intra-pulse motion range correction (azimuth dependent range shift\
         depending on the Doppler frequency under which the target has been observed).
+        
+        Parameters
+        ----------
+        t : float or array
+            azimuth time.
+        r : float or array
+            range distance to sensor.
 
+        Returns
+        -------
+        dr : float or array
+            intra-pulse motion range correction.
+        
+        Notes
+        -----
         The correction is described in Piantanida, R., et al. "Accurate Geometric
         Calibration of Sentinel-1 Data." EUSAR 2018; 12th European Conference on
         Synthetic Aperture Radar. VDE, 2018. and Scheiber, R, et al. "Speckle
@@ -489,12 +520,6 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         nonstationary scenarios." IEEE Journal of Selected Topics in Applied Earth
         Observations and Remote Sensing 8.4 (2015): 1709-1720.
 
-        Args:
-            t (array): azimuth time
-            r (array): range distance to sensor
-
-        Retruns:
-            dr (float or array): intra-pulse motion range correction
         """
         if not isinstance(t, (list, np.ndarray)):
             d = self._intra_pulse(np.asarray([t]), np.asarray([r]))
@@ -543,7 +568,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  bistatic_correction=True,
                  full_bistatic_correction_reference=None,
                  apd_correction=True,
-                 intra_pulse_correction=False,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1SwathModel used to perform projection and localization\
@@ -560,6 +584,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         samples_per_burst : int
             Number of columns per burst in the sentinel1 raster.
         lines_per_burst : int
+            Number of lines per burst in the sentinel1 raster. 
         wavelength: float
             wavelength in m 
         doppler
@@ -576,11 +601,16 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             List of state vectors (time, position, velocity).
         degree : int, optional
             Degree of the orbit polynomial. The default is 11.
-        pri:
-        rank:
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None. 
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None. 
         bistatic_correction : Boolean, optional
             Apply bistatic correction on the azimuth time. The default is True.
-        full_bistatic_correction_reference:
+        full_bistatic_correction_reference: Dict, optional
+            Metadata of one of the bursts of IW2. The default is None. 
         apd_correction : Boolean, optional
             Apply atmospheric correction on the range. The default is True.
         max_iterations : int, optional
