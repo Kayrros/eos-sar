@@ -607,12 +607,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         rank: float, optional
             The number of PRI between transmitted pulse and return echo.
             The default is None. 
-        bistatic_correction : Boolean, optional
-            Apply bistatic correction on the azimuth time. The default is True.
-        full_bistatic_correction_reference: Dict, optional
-            Metadata of one of the bursts of IW2. The default is None. 
-        apd_correction : Boolean, optional
-            Apply atmospheric correction on the range. The default is True.
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -659,10 +653,10 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          degree,
                          pri,
                          rank,
-                         bistatic_correction,
-                         full_bistatic_correction_reference,
-                         apd_correction,
-                         False,  # intra_pulse_correction
+                         False,
+                         None,
+                         False,
+                         False,  
                          max_iterations,
                          tolerance)
 
