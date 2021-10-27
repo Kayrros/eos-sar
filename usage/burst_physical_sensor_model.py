@@ -23,12 +23,7 @@ burst_meta = eos.products.sentinel1.metadata.extract_burst_metadata(
     xml_content, burst_id)
 
 # create a Sentinel1BurstModel
-bmod = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(burst_meta,
-                                                                     degree=11,
-                                                                     bistatic_correction=True,
-                                                                     apd_correction=True,
-                                                                     max_iterations=20,
-                                                                     tolerance=0.001)
+bmod = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(burst_meta)
 # create a grid of points
 x, y, w, h = bmod.burst_roi.to_roi()
 cols_grid, rows_grid = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))

@@ -25,11 +25,7 @@ def test_radar_coding():
     
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta,
-                                                            degree=11,
-                                                            bistatic_correction=True,
-                                                            apd_correction=True,
-                                                            max_iterations=20,
-                                                            tolerance=0.001)
+                                                            intra_pulse_correction=True)
     
 
     margin = 10
