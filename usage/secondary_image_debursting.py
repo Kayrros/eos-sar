@@ -61,18 +61,14 @@ primary_bursts_meta = filter_list(primary_bursts_meta, prim_burst_ids)
 secondary_bursts_meta = filter_list(secondary_bursts_meta, sec_burst_ids)
 
 #%%
-keywords = {'degree': 11,
-            'bistatic_correction': True,
-            'apd_correction': True,
-            'max_iterations': 20,
-            'tolerance': 0.001}
 
 primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-    primary_bursts_meta, **keywords)
+    primary_bursts_meta)
 
 secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-    secondary_bursts_meta, **keywords)
+    secondary_bursts_meta)
 
+#%%
 # Now estimate the registration matrix
 # get dem points
 x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_swath_model.approx_geom,

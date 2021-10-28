@@ -23,12 +23,7 @@ burst_meta = sentinel1.metadata.extract_burst_metadata(
     xml_content, burst_id)
 
 # create a Sentinel1BurstModel
-bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta,
-                                                        degree=11,
-                                                        bistatic_correction=True,
-                                                        apd_correction=True,
-                                                        max_iterations=20,
-                                                        tolerance=0.001)
+bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta)
 
 #%%
 rows = np.round(np.random.rand(5) * 1000)

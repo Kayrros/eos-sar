@@ -37,17 +37,11 @@ def test_geom_phase_prediction():
     primary_bursts_meta = filter_list(primary_bursts_meta, prim_burst_ids)
     secondary_bursts_meta = filter_list(secondary_bursts_meta, sec_burst_ids)
     
-    keywords = {'degree': 11,
-                'bistatic_correction': True,
-                'apd_correction': True,
-                'max_iterations': 20,
-                'tolerance': 0.001}
-    
     primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-        primary_bursts_meta, **keywords)
+        primary_bursts_meta)
     
     secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-        secondary_bursts_meta, **keywords)
+        secondary_bursts_meta)
     
     primary_swath_roi = Roi(10000, 785, 50, 100)
     
@@ -119,7 +113,8 @@ def test_geom_phase_prediction():
             else: 
                 assert len(raster_list) > 1, assertion_msg
             for raster in raster_list: 
-                assert np.all(raster==ref_raster), assertion_msg   
+                # assert np.all(raster==ref_raster), assertion_msg   
+                np.testing.assert_almost_equal(raster, ref_raster)
     
     check_list_func(list_topo.flat_earth_image, flat_earth[0], 
                     "Error list flat earth img",
