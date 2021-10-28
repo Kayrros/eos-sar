@@ -1,1 +1,6 @@
-from eos.products.sentinel1 import proj_model, metadata, burst_resamp, deburst, orbits
+from eos.products.sentinel1 import proj_model
+from eos.products.sentinel1 import metadata
+from eos.products.sentinel1 import burst_resamp
+from eos.products.sentinel1 import deburst
+from eos.products.sentinel1 import orbits
+from eos.products.sentinel1 import doppler_info

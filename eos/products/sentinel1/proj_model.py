@@ -2,9 +2,10 @@
 import numpy as np
 import pyproj
 from eos.sar import model, range_doppler, const, coordinates, orbit, roi, utils
+from . import doppler_info
 
 
-def burst_model_from_burst_meta(burst_meta, **kwargs):
+def burst_model_from_burst_meta(burst_meta, doppler=None, doppler_kwargs={}, **kwargs):
     """Create a Sentinel1BurstModel from a burst meta dict.
 
     Parameters
@@ -12,6 +13,10 @@ def burst_model_from_burst_meta(burst_meta, **kwargs):
     burst_meta : dict
         Dict containing all metadata of the burst and sentinel1 product needed
         for processing
+    doppler: eos.products.sentinel1.Sentinel1Doppler
+        Object used to compute the Doppler info within a burst
+    doppler_kwargs: dict 
+        Keywords used to instantiate the doppler object if not given
     **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
 
     Returns
@@ -19,7 +24,10 @@ def burst_model_from_burst_meta(burst_meta, **kwargs):
     Sentinel1BurstModel instance.
 
     """
-    return Sentinel1BurstModel(burst_meta['range_frequency'],
+    if not doppler:
+        doppler = doppler_info.doppler_from_meta(burst_meta, **doppler_kwargs)
+    return Sentinel1BurstModel(doppler,
+                               burst_meta['range_frequency'],
                                burst_meta['azimuth_frequency'],
                                burst_meta['slant_range_time'],
                                burst_meta['samples_per_burst'],
@@ -28,6 +36,9 @@ def burst_model_from_burst_meta(burst_meta, **kwargs):
                                burst_meta['burst_roi'],
                                burst_meta['approx_geom'],
                                burst_meta['state_vectors'],
+                               chirp_rate=burst_meta.get('chirp_rate'),
+                               pri=burst_meta.get('pri'),
+                               rank=burst_meta.get('rank'),
                                **kwargs)
 
 
@@ -47,8 +58,12 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  samples_per_burst,
                  state_vectors,
                  degree=11,
+                 pri=None,
+                 rank=None,
                  bistatic_correction=True,
+                 full_bistatic_correction_reference=None,
                  apd_correction=True,
+                 intra_pulse_correction=False,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BaseModel used to perform projection and localization\
@@ -80,10 +95,20 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             List of state vectors (time, position, velocity).
         degree : int, optional
             Degree of the orbit polynomial. The default is 11.
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None. 
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None. 
         bistatic_correction : Boolean, optional
             Apply bistatic correction on the azimuth time. The default is True.
+        full_bistatic_correction_reference: Dict, optional
+            Metadata of one of the bursts of IW2. The default is None. 
         apd_correction : Boolean, optional
             Apply atmospheric correction on the range. The default is True.
+        intra_pulse_correction: Boolean, optional. 
+            Whether to apply intra_pulse_correction. The default is False. 
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -102,17 +127,21 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         """
         self.range_frequency = range_frequency
         self.azimuth_frequency = azimuth_frequency
-        
+
         self.w = width 
         self.h = height
-        self.wavelength = wavelength
-        
+        self.wavelength = wavelength  # for TopoCorrection
+
         self.slant_range_time = slant_range_time
         self.samples_per_burst = samples_per_burst
         self.orbit = orbit.Orbit(state_vectors, degree)
         # processing params
+        self.pri = pri
+        self.rank = rank
         self.bistatic_correction = bistatic_correction
+        self.full_bistatic_correction_reference = full_bistatic_correction_reference
         self.apd_correction = apd_correction
+        self.intra_pulse_correction = intra_pulse_correction
         # stopping criteria
         self.max_iterations = max_iterations
         # setting the tolerance
@@ -184,19 +213,38 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             gz, azt_init=azt_init,
             max_iterations=self.max_iterations,
             tol=self.projection_tolerance)
+
         # Apply corrections on rng and azt if needed
         if self.apd_correction:
             alt = alt.squeeze()
             rng += (alt * alt / 8.55e7 - alt / 3411.0 + 2.41) / np.cos(i)
 
-        # bistatic residual error correction, as described by Schubert et al in
-        # Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
-        # Results. Remote Sens. 7, 9431-9449 (2015)
+        if self.intra_pulse_correction:
+            rng -= self._intra_pulse(azt, rng)
+
         if self.bistatic_correction:
-            # slant range (col coordinate)
-            azt -= 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
-                          self.slant_range_time -
-                          0.5*self.samples_per_burst/self.range_frequency)
+            ref = self.full_bistatic_correction_reference
+            if ref is None:
+                # bistatic residual error correction, as described by Schubert et al in
+                # Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
+                # Results. Remote Sens. 7, 9431-9449 (2015)
+                # slant range (col coordinate)
+                azt -= 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
+                              self.slant_range_time -
+                              0.5*self.samples_per_burst/self.range_frequency)
+            else:
+                assert self.pri is not None
+                assert self.rank is not None
+                # full bistatic error correction, as described by Gisinger et al., in
+                # "Recent Findings on the Sentinel-1 Geolocation Accuracy Using the
+                # Australian Corner Reflector Array." IGARSS 2018-2018 IEEE International
+                # Geoscience and Remote Sensing Symposium. IEEE, 2018.
+
+                # this correction requires the IW2 values of slant_range_time,
+                # samples_per_burst and range_frequency from the ref metadata
+
+                azt -= ((ref['slant_range_time'] + 0.5 * ref['samples_per_burst'] / ref['range_frequency']) / 2
+                        - self.rank * self.pri + (2 * rng / const.LIGHT_SPEED_M_PER_SEC) / 2)
 
         # convert to row and col
         row, col = self.to_row_col(azt, rng)
@@ -252,6 +300,10 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             azt += 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
                           self.slant_range_time -
                           0.5*self.samples_per_burst/self.range_frequency)
+
+            # TODO: full_bistatic_correction_reference
+
+        # TODO: intra pulse correction
 
         if self.apd_correction:
 
@@ -321,11 +373,11 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
 
         return x, y, z
 
-
 class Sentinel1BurstModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at the burst."""
 
     def __init__(self,
+                 doppler: doppler_info.Sentinel1Doppler,
                  range_frequency,
                  azimuth_frequency,
                  slant_range_time,
@@ -336,8 +388,13 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                  approx_geom,
                  state_vectors,
                  degree=11,
+                 chirp_rate=None,
+                 pri=None,
+                 rank=None,
                  bistatic_correction=True,
+                 full_bistatic_correction_reference=None,
                  apd_correction=True,
+                 intra_pulse_correction=False,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BurstModel used to perform projection and localization\
@@ -368,10 +425,23 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
             List of state vectors (time, position, velocity).
         degree : int, optional
             Degree of the orbit polynomial. The default is 11.
+        chirp_rate: float, optional
+            The linear FM rate at which the frequency changes over the pulse duration [Hz/s].
+            The default is None. 
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None. 
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None. 
         bistatic_correction : Boolean, optional
             Apply bistatic correction on the azimuth time. The default is True.
+        full_bistatic_correction_reference: Dict, optional
+            Metadata of one of the bursts of IW2. The default is None. 
         apd_correction : Boolean, optional
             Apply atmospheric correction on the range. The default is True.
+        intra_pulse_correction: Boolean, optional. 
+            Whether to apply intra_pulse_correction. The default is False. 
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -404,8 +474,12 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                          samples_per_burst,
                          state_vectors,
                          degree,
+                         pri,
+                         rank,
                          bistatic_correction,
+                         full_bistatic_correction_reference,
                          apd_correction,
+                         intra_pulse_correction,
                          max_iterations,
                          tolerance)
 
@@ -413,8 +487,64 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         self.burst_times = burst_times
         self.burst_roi = roi.Roi.from_roi_tuple(burst_roi)
 
+        # for _intra_pulse
+        self.chirp_rate = chirp_rate
+
         # reset the initial azimuth guess at the center of burst
         self.azt_init = (self.burst_times[1] + self.burst_times[2])/2
+        self.doppler = doppler
+
+    def _intra_pulse(self, t, r):
+        """
+        Compute intra-pulse motion range correction (azimuth dependent range shift\
+        depending on the Doppler frequency under which the target has been observed).
+        
+        Parameters
+        ----------
+        t : float or array
+            azimuth time.
+        r : float or array
+            range distance to sensor.
+
+        Returns
+        -------
+        dr : float or array
+            intra-pulse motion range correction.
+        
+        Notes
+        -----
+        The correction is described in Piantanida, R., et al. "Accurate Geometric
+        Calibration of Sentinel-1 Data." EUSAR 2018; 12th European Conference on
+        Synthetic Aperture Radar. VDE, 2018. and Scheiber, R, et al. "Speckle
+        tracking and interferometric processing of TerraSAR-X TOPS data for mapping
+        nonstationary scenarios." IEEE Journal of Selected Topics in Applied Earth
+        Observations and Remote Sensing 8.4 (2015): 1709-1720.
+
+        """
+        if not isinstance(t, (list, np.ndarray)):
+            d = self._intra_pulse(np.asarray([t]), np.asarray([r]))
+            assert len(d) == 1
+            return d[0]
+
+        LIGHT_SPEED = const.LIGHT_SPEED_M_PER_SEC
+
+        # Doppler FM rate
+        range_dependent_doppler_rate = self.doppler.get_rg_dpt_dop_rate(2 * r / LIGHT_SPEED)
+        assert len(range_dependent_doppler_rate) == len(r)
+
+        # Doppler Centroid Rate
+        doppler_rate = self.doppler.get_dop_rate(range_dependent_doppler_rate)
+
+        # Doppler Centroid Frequency
+        f_geom = self.doppler.get_dop_centroid(2 * r / LIGHT_SPEED)
+
+        # azimuth dependent Doppler Centroid Frequency
+        mid_time = self.doppler.get_burst_mid_time()
+        ref_time = self.doppler.get_ref_time(f_geom, range_dependent_doppler_rate)
+        f = doppler_rate * (t - mid_time - ref_time)
+
+        dr = (f + f_geom) / self.chirp_rate * LIGHT_SPEED / 2
+        return dr
 
 
 class Sentinel1SwathModel(Sentinel1BaseModel):
@@ -425,13 +555,17 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  azimuth_frequency,
                  slant_range_time,
                  samples_per_burst,
+                 lines_per_burst,
                  wavelength,
                  bursts_times,
                  bursts_rois,
                  bursts_approx_geom,
                  state_vectors,
                  degree=11,
+                 pri=None,
+                 rank=None,
                  bistatic_correction=True,
+                 full_bistatic_correction_reference=None,
                  apd_correction=True,
                  max_iterations=20,
                  tolerance=0.001):
@@ -448,6 +582,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             Two way time to the first column in the sentinel1 raster.
         samples_per_burst : int
             Number of columns per burst in the sentinel1 raster.
+        lines_per_burst : int
+            Number of lines per burst in the sentinel1 raster. 
         wavelength: float
             wavelength in m 
         bursts_times : list of (3,) tuple (start_time, start_valid, end_valid)
@@ -463,10 +599,12 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             List of state vectors (time, position, velocity).
         degree : int, optional
             Degree of the orbit polynomial. The default is 11.
-        bistatic_correction : Boolean, optional
-            Apply bistatic correction on the azimuth time. The default is True.
-        apd_correction : Boolean, optional
-            Apply atmospheric correction on the range. The default is True.
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None. 
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None. 
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -490,7 +628,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         first_col_time = slant_range_time + self.col_min / range_frequency
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
-        
+
         # setting image size
         self.row_min = bursts_rois[0][1
                                       ]
@@ -511,10 +649,16 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          samples_per_burst,
                          state_vectors,
                          degree,
-                         bistatic_correction,
-                         apd_correction,
+                         pri,
+                         rank,
+                         False,
+                         None,
+                         False,
+                         False,  
                          max_iterations,
                          tolerance)
+
+        self.lines_per_burst = lines_per_burst
 
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times
@@ -735,13 +879,33 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     bursts_times = [b['burst_times'] for b in bursts_metadata]
     bursts_rois = [b['burst_roi'] for b in bursts_metadata]
     bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]
+
+    def alleq(prop):
+        burst = bursts_metadata[0]
+        return all(b[prop] == burst[prop] for b in bursts_metadata)
+    assert alleq('range_frequency')
+    assert alleq('azimuth_frequency')
+    assert alleq('slant_range_time')
+    assert alleq('lines_per_burst')
+    assert alleq('wave_length')
+    assert alleq('pri')
+    assert alleq('rank')
+    
     return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'],
                                bursts_metadata[0]['azimuth_frequency'],
                                bursts_metadata[0]['slant_range_time'],
                                bursts_metadata[0]['samples_per_burst'],
+                               bursts_metadata[0]['lines_per_burst'],
                                bursts_metadata[0]['wave_length'],
                                bursts_times,
                                bursts_rois,
                                bursts_approx_geom,
                                bursts_metadata[0]['state_vectors'],
+                               pri=bursts_metadata[0].get('pri'),
+                               rank=bursts_metadata[0].get('rank'),
                                **kwargs)
+
+#TODO rethink models structure, taking into account that some things might 
+#not be constant for the whole swath for ex. samples per burst 
+# ( which is btw weird to include in the basemodel)
+# so basically, do sliceAssembly later, 

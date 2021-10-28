@@ -127,7 +127,7 @@ class Test_Resample_Stitch:
         resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(secondary_burst_meta,
                                                                                   dst_burst_shape=(
                                                                                       h_dst, w_dst),
-                                                                                  matrix=A, degree=11)
+                                                                                  matrix=A)
 
         # Region of interest inside the burst in the primary (col, row, w, h)
         dst_roi_in_burst = eos.sar.roi.Roi(90, 90, 150, 100)
