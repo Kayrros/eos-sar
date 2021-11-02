@@ -352,7 +352,8 @@ def extract_bursts_metadata(xml, burst_ids=None):
         corners = corners_of_geolocation_grid_points_list(
             gcp, only_burst_id=bid)
         burst['approx_geom'] = [(float(c['longitude']),
-                                       float(c['latitude'])) for c in corners]
+                                 float(c['latitude'])) for c in corners]
+        burst['approx_altitude'] = [float(c['height']) for c in corners]
 
         # compute the burst id
         _compute_burst_id(burst, i, b, dictbursts[0])
