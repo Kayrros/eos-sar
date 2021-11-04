@@ -4,8 +4,23 @@ import dateutil.parser
 import datetime
 import xmltodict
 import numpy as np
+import logging
+logger = logging.Logger(__name__)
+
 from eos.sar import const
 
+# T_beam is sensing time between two bursts
+# this value was obtained by subtracting the sensing time of two consecutive bursts
+# and tweaking to fit the ground-truth burst id data
+T_beam = 2.7582730
+
+# time offset to account for the fact that the first burst of each swaths
+# crosses the ascending node at different times (and might not at t=0)
+T_pre_per_swath = {
+    'IW1': 2.27,
+    'IW2': 2.3,
+    'IW3': 2.33,
+}
 
 def string_to_timestamp(s):
     """Convert a string representing a date and time to a float number."""
@@ -72,26 +87,6 @@ def _compute_burst_id(o, i, b, first_burst):
     # repeat cycle is 12 days, with 175 orbits per cycle
     T_orb = 12 * 24 * 3600 / 175
 
-    # T_beam is sensing time between two bursts
-    # this value was obtained by subtracting the sensing time of two consecutive bursts
-    # and tweaking to fit the ground-truth burst id data
-    T_beam = 2.75827302
-
-    # T_pre is a time offset to account for the fact that the
-    # first burst of each swaths crosses the ascending node
-    # at different times (and might not at t=0)
-    if o['swath'] == 'IW1':
-        T_pre = 0.9
-    elif o['swath'] == 'IW2':
-        # > 0.9260
-        T_pre = 1.5
-    elif o['swath'] == 'IW3':
-        # > 1.89
-        # < 2.55
-        T_pre = 2.53
-    else:
-        raise ValueError(f"Invalid subswath {o['swath']}")
-
     # compute the mid-burst sensing time
     N = o['lines_per_burst']
     PRF = o['azimuth_frequency']
@@ -100,7 +95,7 @@ def _compute_burst_id(o, i, b, first_burst):
     # time at the middle of the burst
     delta_b = t_anx + (N - 1) / (2 * PRF)
     # subtract a short delay to align the swaths
-    delta_b -= T_pre
+    delta_b -= T_pre_per_swath[o['swath']]
 
     # in the following, we have 3 slices (= 3 products), 3 bursts per slice
     # the second slice crosses the equator, somewhere inside the second burst
@@ -203,6 +198,14 @@ def _compute_burst_id(o, i, b, first_burst):
     # subtract the preamble and divide by the beam cycle time to obtain the burst ids
     o['relative_burst_id'] = 1 + math.floor(delta_t_b_rel / T_beam)
     o['absolute_burst_id'] = 1 + math.floor(delta_t_b_abs / T_beam)
+
+    if 'burstId' in b:
+        true_absolute_burst_id = int(b['burstId']['@absolute'])
+        true_relative_burst_id = int(b['burstId']['#text'])
+        if true_absolute_burst_id != o['absolute_burst_id']:
+            logger.warning('absolute_burst_id mismatch: {} {}'.format(true_absolute_burst_id, o['absolute_burst_id']))
+        if true_relative_burst_id != o['relative_burst_id']:
+            logger.warning('relative_burst_id mismatch: {} {}'.format(true_relative_burst_id, o['relative_burst_id']))
 
 def extract_common_metadata(xml):
     """Extract common metadata for all the swath.
