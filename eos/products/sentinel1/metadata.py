@@ -4,8 +4,40 @@ import dateutil.parser
 import datetime
 import xmltodict
 import numpy as np
+import logging
+logger = logging.Logger(__name__)
+
 from eos.sar import const
 
+# time offset to account for the fact that the first burst of each swaths
+# crosses the ascending node at different times (and might not at t=0)
+T_pre_per_swath = {
+    'IW1': 1.98128646e+00,
+    'IW2': 2.93349930e+00,
+    'IW3': 2.51911828e+00
+}
+
+# T_orb = 12 * 24 * 3600 / 175
+T_orb = 5.92465065e+03
+
+# T_beam is sensing time between two bursts
+# this value was obtained by subtracting the sensing time of two consecutive bursts
+# and tweaking to fit the ground-truth burst id data
+T_beam = {
+    'IW1': 2.75830987e+00,
+    'IW2': 2.75830987e+00,
+    'IW3': 2.75830987e+00,
+}
+
+T_pre_per_swath["IW1"] = 0
+T_pre_per_swath["IW2"] = 0.1
+T_pre_per_swath["IW3"] = 0.2
+T_orb = 12 * 24 * 3600 / 175
+T_beam = {
+    'IW1': 2.7582730,
+    'IW2': 2.7582730,
+    'IW3': 2.7582730,
+}
 
 def string_to_timestamp(s):
     """Convert a string representing a date and time to a float number."""
@@ -30,7 +62,29 @@ def corners_of_geolocation_grid_points_list(l, only_burst_id):
     d = min(last_line, key=lambda k: int(k['pixel']))
     return a, b, c, d
 
+def _compute_burst_id2(o):
+    swath = o['swath']
+    N = o['lines_per_burst']
+    PRF = o['azimuth_frequency']
+    absolute_orbit_number = o['absolute_orbit_number']
+    relative_orbit_number = o['relative_orbit_number']
+    t_anx = o['azimuth_anx_time']
+    tmid = (N - 1) / (2 * PRF)
 
+    # o['relative_burst_id'] = 1 + math.floor(delta_t_b_rel / T_beam)
+    # delta_t_b_rel = delta_b + (relative_orbit_number - 1) * T_orb
+    # delta_b = t_anx + (N - 1) / (2 * PRF) - T_pre_per_swath[o['swath']]
+    t_beam = T_beam[swath]
+    t_anx_pred  = (o['true_relative_burst_id'] - 1) * t_beam - (relative_orbit_number - 1) * T_orb + T_pre_per_swath[swath]
+    t_anx_pred2 = (o['true_absolute_burst_id'] - 1) * t_beam - (absolute_orbit_number - 1) * T_orb + T_pre_per_swath[swath]
+
+    T_beam2 = 2.7582730
+    T = lambda x: max(abs(x - t_anx) - tmid/2, 0)
+    # T = lambda x: abs(x - t_anx) ** 2
+    return T(t_anx_pred) + T(t_anx_pred2)
+    # return T(t_anx_pred2)
+
+assert_stuff = False
 def _compute_burst_id(o, i, b, first_burst):
     """Compute the absolute/relative burst id and adds theses entries to the
        provided dictionary.
@@ -70,27 +124,7 @@ def _compute_burst_id(o, i, b, first_burst):
 
     # time taken to go over one orbit
     # repeat cycle is 12 days, with 175 orbits per cycle
-    T_orb = 12 * 24 * 3600 / 175
-
-    # T_beam is sensing time between two bursts
-    # this value was obtained by subtracting the sensing time of two consecutive bursts
-    # and tweaking to fit the ground-truth burst id data
-    T_beam = 2.75827302
-
-    # T_pre is a time offset to account for the fact that the
-    # first burst of each swaths crosses the ascending node
-    # at different times (and might not at t=0)
-    if o['swath'] == 'IW1':
-        T_pre = 0.9
-    elif o['swath'] == 'IW2':
-        # > 0.9260
-        T_pre = 1.5
-    elif o['swath'] == 'IW3':
-        # > 1.89
-        # < 2.55
-        T_pre = 2.53
-    else:
-        raise ValueError(f"Invalid subswath {o['swath']}")
+    # T_orb = 12 * 24 * 3600 / 175
 
     # compute the mid-burst sensing time
     N = o['lines_per_burst']
@@ -100,7 +134,14 @@ def _compute_burst_id(o, i, b, first_burst):
     # time at the middle of the burst
     delta_b = t_anx + (N - 1) / (2 * PRF)
     # subtract a short delay to align the swaths
-    delta_b -= T_pre
+    delta_b -= T_pre_per_swath[o['swath']]
+
+    orbit_anx_time = i['imageAnnotation']['imageInformation']['ascendingNodeTime']
+    orbit_anx_time = datetime.datetime.fromisoformat(orbit_anx_time)
+    t_start = datetime.datetime.fromisoformat(b['azimuthTime'])
+    anx = (t_start - orbit_anx_time).total_seconds()
+    if abs(t_anx - anx) > 1e-6:
+        print('oops')
 
     # in the following, we have 3 slices (= 3 products), 3 bursts per slice
     # the second slice crosses the equator, somewhere inside the second burst
@@ -191,6 +232,8 @@ def _compute_burst_id(o, i, b, first_burst):
     fanx = float(first_burst['azimuthAnxTime'])
     if not (close_to_next_anx and orbit_looks_off) and fanx > T_orb:
         delta_b -= T_orb
+    if fanx > T_orb or t_anx > T_orb:
+        o['fme'] = True
 
     # NOTE: if we completed an orbit during the acquisition, we would need to adjust the orbit numbers
     #       this is only required because of the relative_orbit_number
@@ -201,8 +244,46 @@ def _compute_burst_id(o, i, b, first_burst):
     delta_t_b_abs = delta_b + (absolute_orbit_number - 1) * T_orb
 
     # subtract the preamble and divide by the beam cycle time to obtain the burst ids
-    o['relative_burst_id'] = 1 + math.floor(delta_t_b_rel / T_beam)
-    o['absolute_burst_id'] = 1 + math.floor(delta_t_b_abs / T_beam)
+    o['relative_burst_id'] = 1 + math.floor(delta_t_b_rel / T_beam[o['swath']])
+    o['absolute_burst_id'] = 1 + math.floor(delta_t_b_abs / T_beam[o['swath']])
+    # o['absolute_burst_id'] = o['relative_burst_id'] + math.floor((absolute_orbit_number - 1) * T_orb / T_beam)
+    o['absolute_orbit_number'] = absolute_orbit_number
+    o['relative_orbit_number'] = relative_orbit_number
+
+    if 'burstId' in b:
+        true_absolute_burst_id = int(b['burstId']['@absolute'])
+        true_relative_burst_id = int(b['burstId']['#text'])
+        o['true_absolute_burst_id'] = true_absolute_burst_id
+        o['true_relative_burst_id'] = true_relative_burst_id
+        if assert_stuff:
+            # print(true_relative_burst_id, o['relative_burst_id'])
+            # assert true_relative_burst_id == o['relative_burst_id']
+
+            if abs(true_relative_burst_id - o['relative_burst_id']) == 1:
+                print('O', end='')
+            elif true_relative_burst_id != o['relative_burst_id']:
+                print('K', end='')
+            else:
+                print('1', end='')
+
+            if abs(true_absolute_burst_id - o['absolute_burst_id']) == 1:
+                print('O', end='')
+            elif true_absolute_burst_id != o['absolute_burst_id']:
+                print('K', end='')
+            else:
+                print('1', end='')
+
+        else:
+            if true_absolute_burst_id != o['absolute_burst_id']:
+                logger.warning('absolute_burst_id mismatch: {} {}'.format(true_absolute_burst_id, o['absolute_burst_id']))
+            if true_relative_burst_id != o['relative_burst_id']:
+                logger.warning('relative_burst_id mismatch: {} {}'.format(true_relative_burst_id, o['relative_burst_id']))
+
+# from joblib import Memory
+# memory = Memory('./cachedir', verbose=0)
+# @memory.cache
+def parse_xml(xml):
+    return xmltodict.parse(xml)
 
 def extract_common_metadata(xml):
     """Extract common metadata for all the swath.
@@ -220,7 +301,7 @@ def extract_common_metadata(xml):
         Full metadata contained in the xml as a nested dictionnary.
 
     """
-    i = xmltodict.parse(xml)['product']  # input full dictionary (huge)
+    i = parse_xml(xml)['product']  # input full dictionary (huge)
     o = {}  # output dictionary with only the stuff we need (tiny)
 
     d = i['imageAnnotation']['imageInformation']
@@ -380,3 +461,79 @@ def extract_burst_metadata(xml, burst_id):
         The metadata of the burst.
     """
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
+
+def main(swath, xmls):
+    global assert_stuff
+    assert_stuff = True
+
+    import glob
+    global T_beam, T_orb
+    swath = swath.upper()
+    print('\n')
+    import os, pickle
+    if not os.path.exists('bss'):
+        bss = []
+        for xml in glob.glob(xmls):
+            print(xml)
+            bs = extract_bursts_metadata(open(xml).read())
+            for b in bs:
+                if 'fme' not in b:
+                    bss.append(b)
+        pickle.dump(bss, open('bss', 'wb'))
+    bss = pickle.load(open('bss', 'rb'))
+    print(len(bss))
+
+    s0 = 0
+    for b in bss:
+        s0 += _compute_burst_id2(b) / len(bss)
+
+    from scipy.optimize import minimize
+    def f(x):
+        a, b, c, d, e, f, g = x
+        global T_beam, T_orb
+        T_pre_per_swath['IW1'] = a
+        T_pre_per_swath['IW2'] = b
+        T_pre_per_swath['IW3'] = c
+        T_orb = d
+        T_beam['IW1'] = e
+        T_beam['IW2'] = f
+        T_beam['IW3'] = g
+        s = 0
+        for b in bss:
+            s += _compute_burst_id2(b) / len(bss)
+        return s
+
+    x0 = (T_pre_per_swath['IW1'], T_pre_per_swath['IW2'], T_pre_per_swath['IW3'], T_orb, T_beam['IW1'], T_beam['IW2'], T_beam['IW3'])
+    x = minimize(f, x0, method='Nelder-Mead', tol=1e-9, options={'maxiter': 5000})
+    print(x, s0)
+    a, b, c, d, e, f, g = x['x']
+    T_pre_per_swath['IW1'] = a
+    T_pre_per_swath['IW2'] = b
+    T_pre_per_swath['IW3'] = c
+    T_orb = d
+    T_beam['IW1'] = e
+    T_beam['IW2'] = f
+    T_beam['IW3'] = g
+    s = 0
+    for b in bss:
+        e = _compute_burst_id2(b)
+        s += e / len(bss)
+        # print(e)
+    print(s)
+
+    for xml in glob.glob(xmls):
+        extract_bursts_metadata(open(xml).read())
+    print('\nend')
+
+    print('T_pre_per_swath["IW1"] = ', T_pre_per_swath['IW1'])
+    print('T_pre_per_swath["IW2"] = ', T_pre_per_swath['IW2'])
+    print('T_pre_per_swath["IW3"] = ', T_pre_per_swath['IW3'])
+    print('T_orb = ', T_orb)
+    print('T_beam["IW1"] = ', T_beam['IW1'])
+    print('T_beam["IW2"] = ', T_beam['IW2'])
+    print('T_beam["IW3"] = ', T_beam['IW3'])
+
+if __name__ == '__main__':
+    import fire
+    fire.Fire(main)
+
