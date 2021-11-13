@@ -8,6 +8,26 @@ import tifffile
 import eos.products.sentinel1
 import eos.sar
 
+def extract_keys(big_dict, list_keys): 
+    o = {}
+    for key in list_keys: 
+        o[key] = big_dict[key]
+    return o
+
+def get_ref_metas(safe_dirs): 
+    ref_swath = "iw2"
+    xml_paths = [glob_single_file(os.path.join(s, "annotation", f"*{ref_swath}*vv*" ))\
+                    for s in safe_dirs]
+    xml_paths = sorted([x for x in xml_paths if x], key=get_date)
+    
+    xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in xml_paths]
+    keys = ['slant_range_time',
+    'samples_per_burst',
+    'range_frequency']
+    ref_metas = [extract_keys(eos.products.sentinel1.metadata.extract_burst_metadata(
+        xml_content, 0), keys) for xml_content in xml_contents]
+    return ref_metas
+
 def get_date(xml_path): 
     return os.path.basename(xml_path).split('-')[4][:8]
 
@@ -39,7 +59,9 @@ safe_path = os.path.join(experiment_path,
 
 safe_dirs = glob.glob(os.path.join(safe_path, "S1*.SAFE")) 
 
-swath = 'iw2'
+ref_metas = get_ref_metas(safe_dirs) # 1 dict per product
+
+swath = 'iw1'
 
 # image readers 
 tiff_paths = [glob_single_file(os.path.join(s, "measurement", f"*{swath}*vv*tiff" ))\
@@ -95,7 +117,7 @@ primary_swath_model = swath_models[p_id]
 burst_ids = np.arange(len(primary_swath_model.bursts_times))
 x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
 
-for b_cor, apd_cor, intra_cor in tqdm.tqdm(zip(bistatic_correction, apd_correction, intra_pulse_correction)): 
+for b_cor, apd_cor, intra_cor in zip(bistatic_correction, apd_correction, intra_pulse_correction): 
     
     out_f_name = f"apd_{bool_to_str(apd_cor)}_bistatic_{bool_to_str(b_cor)}_intrapulse_{bool_to_str(intra_cor)}"
     out_path = os.path.join(experiment_path, "ovls_Newcastle", out_f_name)
@@ -105,7 +127,7 @@ for b_cor, apd_cor, intra_cor in tqdm.tqdm(zip(bistatic_correction, apd_correcti
     # construct burst models with appropriate corrections
     primary_burst_models = [eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
                 b_meta, bistatic_correction=b_cor,
-                full_bistatic_correction_reference=filtered_burst_metas[p_id][0],
+                full_bistatic_correction_reference=ref_metas[p_id],
                 apd_correction=apd_cor,
                 intra_pulse_correction=intra_cor) for b_meta in filtered_burst_metas[p_id]]
     
@@ -127,7 +149,7 @@ for b_cor, apd_cor, intra_cor in tqdm.tqdm(zip(bistatic_correction, apd_correcti
         secondary_swath_model = swath_models[i]
         secondary_burst_models = [eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
                     b_meta, bistatic_correction=b_cor,
-                    full_bistatic_correction_reference=filtered_burst_metas[i][0],
+                    full_bistatic_correction_reference=ref_metas[i],
                     apd_correction=apd_cor,
                     intra_pulse_correction=intra_cor) for b_meta in filtered_burst_metas[i]]
         
