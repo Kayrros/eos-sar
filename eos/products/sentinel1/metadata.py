@@ -40,7 +40,7 @@ def corners_of_geolocation_grid_points_list(l, only_burst_id):
     return a, b, c, d
 
 
-def _mid_burst_sensing_time_correction(o, first_burst):
+def _mid_burst_sensing_time_correction(o, first_burst_xml):
     """
     """
     # in the following, we have 3 slices (= 3 products), 3 bursts per slice
@@ -130,7 +130,7 @@ def _mid_burst_sensing_time_correction(o, first_burst):
     # - then we can check case 1. by checking whether the first burst of the product
     #   was already after the next anx
     # this strategy avoid having to rely on precise timings (with timings from other swaths to consider)
-    fanx = float(first_burst['azimuthAnxTime'])
+    fanx = float(first_burst_xml['azimuthAnxTime'])
     if not (close_to_next_anx and orbit_looks_off) and fanx > T_orb:
         return -T_orb
     else:
@@ -141,7 +141,7 @@ def _mid_burst_sensing_time_correction(o, first_burst):
     #       however, the start of orbit 1 is above the sea so we can ignore this case for now
 
 
-def compute_burst_id(burst):
+def compute_burst_id(burst, first_burst_xml):
     """Compute relative and absolute burst IDs.
 
     The absolute burst id (+ subswath) provides a unique identifier for a
@@ -169,7 +169,7 @@ def compute_burst_id(burst):
     anx_time = burst['anx_time']
     n = burst['lines_per_burst']
     pri = burst['pri']
-    burst_sensing_time = burst['burst_sensing_time']
+    burst_sensing_time = burst['burst_sensing_time'] + _mid_burst_sensing_time_correction(burst, first_burst_xml)
 
     # mid-burst sensing time
     t_b = burst_sensing_time + pri * (n - 1) / 2
@@ -355,7 +355,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
         burst['approx_altitude'] = [float(c['height']) for c in corners]
 
         # compute the burst id
-        relative_burst_id, absolute_burst_id = compute_burst_id(burst)
+        relative_burst_id, absolute_burst_id = compute_burst_id(burst, first_burst_xml=dictbursts[0])
 
         if 'burstId' in b:  # True for IPF >= 3.40
             assert relative_burst_id == int(b['burstId']['#text'])
