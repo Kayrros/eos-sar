@@ -4,8 +4,11 @@ import dateutil.parser
 import datetime
 import xmltodict
 import numpy as np
+import logging
+
 from eos.sar import const
 
+logger = logging.Logger(__name__)
 
 # time taken to go over one orbit
 # repeat cycle is 12 days, with 175 orbits per cycle
@@ -358,8 +361,14 @@ def extract_bursts_metadata(xml, burst_ids=None):
         relative_burst_id, absolute_burst_id = compute_burst_id(burst, first_burst_xml=dictbursts[0])
 
         if 'burstId' in b:  # True for IPF >= 3.40
-            assert relative_burst_id == int(b['burstId']['#text'])
-            assert absolute_burst_id == int(b['burstId']['@absolute'])
+            esa_relative_burst_id = int(b['burstId']['#text'])
+            esa_absolute_burst_id = int(b['burstId']['@absolute'])
+            if relative_burst_id != esa_relative_burst_id:
+                logger.warning('relative_burst_id mismatch (xml:{}, computed:{})'
+                        .format(esa_relative_burst_id, relative_burst_id))
+            if absolute_burst_id != esa_absolute_burst_id:
+                logger.warning('absolute_burst_id mismatch (xml:{}, computed:{})'
+                        .format(esa_absolute_burst_id, absolute_burst_id))
 
         burst['relative_burst_id'] = relative_burst_id
         burst['absolute_burst_id'] = absolute_burst_id
