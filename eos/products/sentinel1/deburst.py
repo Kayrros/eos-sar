@@ -1,7 +1,7 @@
 import numpy as np
-from eos.sar import io
+from eos.sar import io, roi
 from eos.products.sentinel1 import burst_resamp
-    
+
 def stitch_arrays(rect_arrays, write_rois, out_shape):
     """
     Stitch individual rectangular arrays into an image of known shape, by 
@@ -24,10 +24,33 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
 
     """
     out_img = np.zeros(out_shape, dtype=rect_arrays[0].dtype)
-    for arr, w_roi in zip(rect_arrays, write_rois):
-        col_min, row_min, w, h = w_roi.to_roi()
+    for arr, write_roi in zip(rect_arrays, write_rois):
+        assert arr.shape == write_roi.get_shape(), "array shape must match write roi shape"
+        write_roi.assert_valid(out_shape)
+        col_min, row_min, w, h = write_roi.to_roi()
         out_img[row_min:row_min+h, col_min:col_min+w] = arr
     return out_img
+
+def write_array(arr, write_roi, out_shape):
+    """
+    Write an array using the roi location. 
+
+    Parameters
+    ----------
+    arr : ndarray
+        Array to be written.
+    write_roi : eos.sar.roi.Roi
+        Roi where array needs to be written.
+    out_shape : tuple
+        Output array shape.
+
+    Returns
+    -------
+    out_arr : ndarray
+        Shifted output array.
+
+    """
+    return stitch_arrays([arr], [write_roi], out_shape)
 
 def get_read_rois_correc_and_resamplers(
         burst_ids, read_rois_no_correc, swath_model_no_correc,
@@ -109,8 +132,8 @@ def get_overlaps(swath_model, ovl_ids):
         Burst id associated with the overlap.
     read_rois : list
         Read roi of the overlap in the swath.
-    dcols : list
-        Column shift of the read roi w.r.t the swath.
+    write_rois : list
+        Write roi in the final overlap array
     out_shapes : list
         Each element is a (overalp_height, swath_width) tuple.
 
@@ -118,47 +141,24 @@ def get_overlaps(swath_model, ovl_ids):
     read_rois = []
     ovl_burst_ids = []
     out_shapes = []
-    dcols = []
+    write_rois = []
     swath_width = swath_model.w
     assert (min(ovl_ids) > -1) and (max(ovl_ids)<len(swath_model.bursts_times) - 1),\
     "Overlap id out of range"
     for ovl_id in ovl_ids: 
         # forward looking overlap
         prev_roi, next_roi = swath_model.overlap_roi(ovl_id)
-        ovl_h, _ = prev_roi.get_shape()
+        ovl_h, ovl_w = prev_roi.get_shape()
         for bid, ovl_roi in zip([ovl_id, ovl_id + 1], [prev_roi, next_roi]): 
             ovl_burst_ids.append(bid)
             col, row, _, _ = swath_model.bursts_rois[bid].to_roi()
             ovl_roi.translate_roi(col, row, inplace=True)
             read_rois.append(ovl_roi)
             out_shapes.append((ovl_h, swath_width))
-            dcols.append(col - swath_model.col_min)
-    return ovl_burst_ids, read_rois, dcols, out_shapes 
+            write_rois.append(roi.Roi(col - swath_model.col_min, 0, ovl_w, ovl_h))
+    return ovl_burst_ids, read_rois, write_rois, out_shapes 
 
-def write_shifted_array(arr, col_shift, out_shape):
-    """
-    Write an array after apply an integer column shift. 
 
-    Parameters
-    ----------
-    arr : ndarray
-        Array to be written.
-    col_shift : int
-        Column shift to be applied.
-    out_shape : tuple
-        Output array shape.
-
-    Returns
-    -------
-    out_arr : ndarray
-        Shifted output array.
-
-    """
-    assert arr.shape[0] == out_shape[0]
-    assert arr.shape[1] + col_shift <= out_shape[1] 
-    out_arr = np.zeros(out_shape, dtype=arr.dtype)
-    out_arr[:, col_shift:col_shift + arr.shape[1]] = arr
-    return out_arr
 
 def warp_rois_read_resample(read_rois_no_correc, burst_ids, swath_model_no_correc,
                             swath_model_correc, burst_resampling_matrices,
@@ -301,7 +301,7 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
 def warp_rois_read_resample_ovl(primary_swath_model, secondary_swath_model,
                                 secondary_bursts_metas, burst_resampling_matrices, 
                                 ovl_burst_ids, read_rois_no_correc,
-                                dcols,  out_shapes, image_reader, get_complex=True): 
+                                write_rois,  out_shapes, image_reader, get_complex=True): 
     """
     Warp overlap rois, read, resample.
 
@@ -320,8 +320,8 @@ def warp_rois_read_resample_ovl(primary_swath_model, secondary_swath_model,
         Burst id associated with the overlap..
     read_rois_no_correc : List of eos.sar.roi.Roi
         Each elem is an roi of an overlap in the ideal frame.
-    dcols : list of int
-        Integer column shift to apply before writing the overlap.
+    write_rois : list of eos.sar.roi.Roi
+        Roi to write the ovl in the final array.
     out_shapes : list of tuple
         Output shapes of the overlaps.
     image_reader : rasterio.DatasetReader
@@ -340,10 +340,10 @@ def warp_rois_read_resample_ovl(primary_swath_model, secondary_swath_model,
                                 secondary_swath_model, burst_resampling_matrices,
                                 secondary_bursts_metas, image_reader,
                                 get_complex)
-    burst_arrays_resamp = [write_shifted_array(arr, dcol, out_shape)\
-                           for arr, dcol, out_shape in zip(
-                                   burst_arrays_resamp, dcols, out_shapes)]
     return burst_arrays_resamp
+    burst_arrays_resamp = [write_array(arr, write_roi, out_shape)\
+                           for arr, write_roi, out_shape in zip(
+                                   burst_arrays_resamp, write_rois, out_shapes)]
 
 def warp_rois_read_resample_ovl_primary(primary_swath_model, burst_resampling_matrices, 
         primary_burst_metas, image_reader, ovl_ids, get_complex=True):
@@ -373,8 +373,8 @@ def warp_rois_read_resample_ovl_primary(primary_swath_model, burst_resampling_ma
         Burst id associated with the overlap.
     read_rois : list
         Read roi of the overlap in the swath.
-    dcols : list
-        Column shift of the read roi w.r.t the swath.
+    write_rois : list
+        write rois for the overlaps.
     out_shapes : list
         Each element is a (overalp_height, swath_width) tuple.
     burst_arrays_resamp_prim : List of arrays
@@ -382,15 +382,16 @@ def warp_rois_read_resample_ovl_primary(primary_swath_model, burst_resampling_ma
 
     """
     
-    ovl_burst_ids, read_rois_no_correc, dcols, out_shapes = get_overlaps(primary_swath_model, ovl_ids)
+    ovl_burst_ids, read_rois_no_correc, write_rois, out_shapes = get_overlaps(primary_swath_model, ovl_ids)
     
     burst_arrays_resamp_prim = warp_rois_read_resample_ovl(
         primary_swath_model, primary_swath_model,
         primary_burst_metas, burst_resampling_matrices, 
         ovl_burst_ids, read_rois_no_correc,
-        dcols,  out_shapes, image_reader, get_complex)
+        write_rois, out_shapes, image_reader, get_complex)
     
-    return ovl_burst_ids, read_rois_no_correc, dcols, out_shapes, burst_arrays_resamp_prim
+    return ovl_burst_ids, read_rois_no_correc, write_rois, out_shapes,\
+        burst_arrays_resamp_prim
 
 # filter bursts common to all acquisitions in time series 
 def get_bursts_intersection(num_bursts, burst_rel_ids): 
