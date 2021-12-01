@@ -141,7 +141,7 @@ for b_cor, apd_cor, intra_cor in zip(bistatic_correction, apd_correction, intra_
             primary_swath_model, primary_burst_models, x, y, alt, crs, burst_ids)
     
     
-    debursted_crop =  \
+    debursted_crop, read_rois_correc, resamplers =  \
         eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
             read_rois_no_correc, burst_ids, primary_swath_model,
             primary_swath_model, burst_resampling_matrices,
@@ -164,7 +164,7 @@ for b_cor, apd_cor, intra_cor in zip(bistatic_correction, apd_correction, intra_
                 secondary_swath_model, secondary_burst_models,  x, y, alt, crs,
                 burst_ids, pts_in_burst_mask, primary_swath_model,  rows_no_correc_global, 
                 cols_no_correc_global, global_rows_fit=global_rows_fit )
-        debursted_crop = \
+        debursted_crop, read_rois_correc, resamplers = \
             eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
                 read_rois_no_correc, burst_ids, primary_swath_model,
                 secondary_swath_model, burst_resampling_matrices,

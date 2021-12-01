@@ -191,10 +191,18 @@ def warp_rois_read_resample(read_rois_no_correc, burst_ids, swath_model_no_corre
     -------
     List of arrays (imgs)
         Each element is a roi that has been warped, read, resampled.
+    read_rois_correc : List of eos.sar.roi.Roi
+        Each element is an roi in the imperfect (primary or secondary) frame. 
+        It is obtained by warping the input roi and adding a padding within the
+        valid image boundaries. 
+    resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
+        Each resampler can be applied directly on the read array with read_rois_correc.
+
     """
     # this is in the only case you just need to read the rois 
     if burst_resampling_matrices is None: 
-        return io.read_windows(image_reader, read_rois_no_correc, get_complex)
+        return io.read_windows(image_reader, read_rois_no_correc, get_complex),\
+            read_rois_no_correc, None
     read_rois_correc, resamplers = get_read_rois_correc_and_resamplers(
         burst_ids, read_rois_no_correc, swath_model_no_correc, swath_model_correc, 
         burst_resampling_matrices, bursts_metas_correc )
@@ -203,7 +211,7 @@ def warp_rois_read_resample(read_rois_no_correc, burst_ids, swath_model_no_corre
     
     burst_arrays_resamp = [resamp.resample(arr) for arr, resamp in zip(padded_burst_arrays, resamplers)]
     
-    return burst_arrays_resamp
+    return burst_arrays_resamp, read_rois_correc, resamplers
 
 def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
                             secondary_swath_model, burst_resampling_matrices,
@@ -242,16 +250,20 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
     -------
     debursted_crop : ndarray
         The debursted crop.
+    read_rois_correc : List of eos.sar.roi.Roi
+        Each element is an roi in the imperfect (primary or secondary) frame. 
+        It is obtained by warping the input roi and adding a padding within the
+        valid image boundaries. 
+    resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
+        Each resampler can be applied directly on the read array with read_rois_correc.
 
     """
-    burst_arrays_resamp = warp_rois_read_resample(read_rois_no_correc, burst_ids, primary_swath_model,
+    burst_arrays_resamp, read_rois_correc, resamplers = warp_rois_read_resample(read_rois_no_correc, burst_ids, primary_swath_model,
                                 secondary_swath_model, burst_resampling_matrices,
                                 secondary_bursts_metas, image_reader,
                                 get_complex)
-    debursted_crop = stitch_arrays(burst_arrays_resamp,
-                                                                  write_rois,
-                                                                  out_shape)
-    return debursted_crop
+    debursted_crop = stitch_arrays(burst_arrays_resamp, write_rois, out_shape)
+    return debursted_crop, read_rois_correc, resamplers
 
 def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
                     burst_resampling_matrices, bursts_metas, image_reader,
@@ -287,16 +299,24 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
         Each element is a roi were the resampled data was written.
     debursted_crop : ndarray
         The debursted crop.
+    read_rois_correc : List of eos.sar.roi.Roi
+        Each element is an roi in the imperfect (primary or secondary) frame. 
+        It is obtained by warping the input roi and adding a padding within the
+        valid image boundaries. 
+    resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
+        Each resampler can be applied directly on the read array with read_rois_correc.
+
 
     """
     burst_ids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
         roi_in_swath_no_correc)
-    debursted_crop = warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
+    debursted_crop, read_rois_correc, resamplers = warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
                                 primary_swath_model, burst_resampling_matrices,
                                 bursts_metas, image_reader,
                                 write_rois_no_correc, out_shape,
                                 get_complex)
-    return burst_ids, read_rois_no_correc, write_rois_no_correc, debursted_crop
+    return burst_ids, read_rois_no_correc,\
+ write_rois_no_correc, debursted_crop, read_rois_correc, resamplers
     
 def warp_rois_read_resample_ovl(primary_swath_model, secondary_swath_model,
                                 secondary_bursts_metas, burst_resampling_matrices, 
@@ -334,16 +354,23 @@ def warp_rois_read_resample_ovl(primary_swath_model, secondary_swath_model,
     -------
     burst_arrays_resamp : List
         Each element is a resampled overlap img.
+    read_rois_correc : List of eos.sar.roi.Roi
+        Each element is an roi in the imperfect (primary or secondary) frame. 
+        It is obtained by warping the input roi and adding a padding within the
+        valid image boundaries. 
+    resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
+        Each resampler can be applied directly on the read array with read_rois_correc.
 
     """
-    burst_arrays_resamp =  warp_rois_read_resample(read_rois_no_correc, ovl_burst_ids, primary_swath_model,
-                                secondary_swath_model, burst_resampling_matrices,
-                                secondary_bursts_metas, image_reader,
-                                get_complex)
-    return burst_arrays_resamp
+    burst_arrays_resamp, read_rois_correc, resamplers =  warp_rois_read_resample(
+        read_rois_no_correc, ovl_burst_ids, primary_swath_model,
+        secondary_swath_model, burst_resampling_matrices,
+        secondary_bursts_metas, image_reader,
+        get_complex)
     burst_arrays_resamp = [write_array(arr, write_roi, out_shape)\
                            for arr, write_roi, out_shape in zip(
                                    burst_arrays_resamp, write_rois, out_shapes)]
+    return burst_arrays_resamp, read_rois_correc, resamplers
 
 def warp_rois_read_resample_ovl_primary(primary_swath_model, burst_resampling_matrices, 
         primary_burst_metas, image_reader, ovl_ids, get_complex=True):
@@ -379,19 +406,25 @@ def warp_rois_read_resample_ovl_primary(primary_swath_model, burst_resampling_ma
         Each element is a (overalp_height, swath_width) tuple.
     burst_arrays_resamp_prim : List of arrays
         Each elem is a resampled overlap img.
+    read_rois_correc : List of eos.sar.roi.Roi
+        Each element is an roi in the imperfect (primary or secondary) frame. 
+        It is obtained by warping the input roi and adding a padding within the
+        valid image boundaries. 
+    resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
+        Each resampler can be applied directly on the read array with read_rois_correc.
 
     """
     
     ovl_burst_ids, read_rois_no_correc, write_rois, out_shapes = get_overlaps(primary_swath_model, ovl_ids)
     
-    burst_arrays_resamp_prim = warp_rois_read_resample_ovl(
+    burst_arrays_resamp_prim, read_rois_correc, resamplers = warp_rois_read_resample_ovl(
         primary_swath_model, primary_swath_model,
         primary_burst_metas, burst_resampling_matrices, 
         ovl_burst_ids, read_rois_no_correc,
         write_rois, out_shapes, image_reader, get_complex)
     
     return ovl_burst_ids, read_rois_no_correc, write_rois, out_shapes,\
-        burst_arrays_resamp_prim
+        burst_arrays_resamp_prim, read_rois_correc, resamplers
 
 # filter bursts common to all acquisitions in time series 
 def get_bursts_intersection(num_bursts, burst_rel_ids): 
