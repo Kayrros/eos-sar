@@ -120,7 +120,8 @@ def dem_points(geometry, source="SRTM30", datum="ellipsoidal",
 
 def get_registration_dem_pts(primary_model, sampling_ratio=0.01, 
                              dem_source='SRTM30',
-                             dem_datum='ellipsoidal' ): 
+                             dem_datum='ellipsoidal', 
+                             outfile=None): 
     """
     Get pts sampled on the dem to be used for the registration. 
 
@@ -138,7 +139,10 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
     dem_datum : str, optional
         "ellipsoidal" (height above WGS84 ellipsoid), or
         "orthometric" (height above EGM96 geoid). The default is 'ellipsoidal'.
-
+    outfile : string, optional
+         Path to save the dem if passed as argument.
+         The default is None.
+         
     Returns
     -------
     x_sampled : ndarray
@@ -156,7 +160,7 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
     refined_geom, alts, mask = primary_model.get_approx_geom(margin=10)
     # get dem points
     x, y, raster, transform, crs = dem_points(refined_geom, source=dem_source,
-                                                             datum=dem_datum)
+                                              datum=dem_datum, outfile=outfile )
     
     # you can mask some pixels to speed up the projection
     mask = np.random.binomial(n=1, p=sampling_ratio, size=x.shape).astype(bool) 
