@@ -23,7 +23,8 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
         Output mosaic.
 
     """
-    out_img = np.zeros(out_shape, dtype=rect_arrays[0].dtype)
+    out_img = np.empty(out_shape, dtype=rect_arrays[0].dtype)
+    out_img[:] = np.nan
     for arr, write_roi in zip(rect_arrays, write_rois):
         assert arr.shape == write_roi.get_shape(), "array shape must match write roi shape"
         write_roi.assert_valid(out_shape)
