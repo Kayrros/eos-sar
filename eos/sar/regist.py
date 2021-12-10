@@ -122,7 +122,7 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
                              dem_source='SRTM30',
                              dem_datum='ellipsoidal' ): 
     """
-    
+    Get pts sampled on the dem to be used for the registration. 
 
     Parameters
     ----------
