@@ -24,18 +24,13 @@ def test_geom_phase_prediction():
     
     # get the indices of the common bursts
     prim_burst_ids, sec_burst_ids = s1.deburst.get_bursts_intersection(
-        len(primary_bursts_meta),
-        primary_bursts_meta[0]['relative_burst_id'],
-        len(secondary_bursts_meta),
-        secondary_bursts_meta[0]['relative_burst_id']
+        [len(primary_bursts_meta), len(secondary_bursts_meta)], 
+        [primary_bursts_meta[0]['relative_burst_id'], secondary_bursts_meta[0]['relative_burst_id']]
     )
-    
-    def filter_list(iter_list, ids):
-        return list(map(iter_list.__getitem__, ids))
-    
+      
     # keep only the bursts intersecting
-    primary_bursts_meta = filter_list(primary_bursts_meta, prim_burst_ids)
-    secondary_bursts_meta = filter_list(secondary_bursts_meta, sec_burst_ids)
+    primary_bursts_meta = eos.sar.utils.filter_list(primary_bursts_meta, prim_burst_ids)
+    secondary_bursts_meta = eos.sar.utils.filter_list(secondary_bursts_meta, sec_burst_ids)
     
     primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
         primary_bursts_meta)
