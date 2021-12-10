@@ -55,21 +55,15 @@ secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst
 
 # Now estimate the registration matrix
 
-# get dem points
-x, y, raster, transform, crs = eos.sar.regist.dem_points(primary_burst_model.approx_geom,
-                                                         source='SRTM30',
-                                                         datum='ellipsoidal'
-                                                         )
+# get the sampled dem points 
+x, y, raster, crs = eos.sar.regist.get_registration_dem_pts(
+    primary_burst_model, sampling_ratio=0.01, 
+    dem_source='SRTM30', dem_datum='ellipsoidal' )
 
-# you can mask some pixels to speed up the projection
-mask = np.random.binomial(n=1, p=0.1, size=x.shape).astype(bool)
-x = x[mask]
-y = y[mask]
-raster = raster[mask]
 
 # project in primary
 row_primary, col_primary, _ = primary_burst_model.projection(
-    x.ravel(), y.ravel(), raster.ravel(), crs=crs)
+    x, y, raster, crs=crs)
 
 # project in secondary and estimate registration
 A = eos.sar.regist.orbital_registration(row_primary, col_primary,
@@ -82,7 +76,7 @@ col_src, row_src, w_src, h_src = secondary_burst_meta['burst_roi']
 resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(secondary_burst_meta,
                                                                          dst_burst_shape=(
                                                                              h_dst, w_dst),
-                                                                         matrix=A, degree=11)
+                                                                         matrix=A)
 #%%
 # warp the roi to the secondary, and add a margin of 5 pixels on each side
 src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst),
@@ -118,7 +112,6 @@ primary_burst_array = eos.sar.io.read_window(image_readers[0],
 # Do the interferogram
 interf = primary_burst_array * np.conj(resampled_secondary_array)
 #%%
-
 
 ################### If you wish to resample the amplitude 
 

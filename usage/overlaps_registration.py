@@ -113,6 +113,7 @@ intra_pulse_correction = [False, False, False, True]
 
 p_id = 0  
 get_complex=True
+global_rows_fit=True
 primary_swath_model = swath_models[p_id]
 burst_ids = np.arange(len(primary_swath_model.bursts_times))
 x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
@@ -137,7 +138,8 @@ for b_cor, apd_cor, intra_cor in zip(bistatic_correction, apd_correction, intra_
             eos.products.sentinel1.regist.primary_registration_estimation(
             primary_swath_model, primary_burst_models, x, y, alt, crs, burst_ids)
     
-    ovl_burst_ids, read_rois_no_correc, dcols, out_shapes, burst_arrays_resamp_prim = \
+    ovl_burst_ids, read_rois_no_correc, write_rois, out_shapes,\
+    burst_arrays_resamp_prim, read_rois_correc, resamplers = \
         eos.products.sentinel1.deburst.warp_rois_read_resample_ovl_primary(
             primary_swath_model, burst_resampling_matrices, 
             filtered_burst_metas[p_id], image_readers[p_id],
@@ -157,14 +159,14 @@ for b_cor, apd_cor, intra_cor in zip(bistatic_correction, apd_correction, intra_
             eos.products.sentinel1.regist.secondary_registration_estimation(
                 secondary_swath_model, secondary_burst_models,  x, y, alt, crs,
                 burst_ids, pts_in_burst_mask, primary_swath_model,  rows_no_correc_global, 
-                cols_no_correc_global, global_rows_fit=True )
+                cols_no_correc_global, global_rows_fit=global_rows_fit )
         
-        burst_arrays_resamp_sec = \
+        burst_arrays_resamp_sec, read_rois_correc, resamplers = \
             eos.products.sentinel1.deburst.warp_rois_read_resample_ovl(
                 primary_swath_model, secondary_swath_model,
                 filtered_burst_metas[i], burst_resampling_matrices, 
                 ovl_burst_ids, read_rois_no_correc,
-                dcols,  out_shapes, image_readers[i], 
+                write_rois,  out_shapes, image_readers[i], 
                 get_complex)
         
         save_arrays(out_path, burst_arrays_resamp_sec,  get_date(xml_paths[i]))

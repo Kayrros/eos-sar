@@ -51,18 +51,10 @@ secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst
 
 # Now estimate the registration matrix
 
-# get dem points
-x, y, raster, transform, crs = eos.sar.regist.dem_points(
-    primary_burst_model.approx_geom,
-    source='SRTM30',
-    datum='ellipsoidal'
-)
-
-# you can mask some pixels to speed up the projection
-mask = np.random.binomial(n=1, p=0.1, size=x.shape).astype(bool)
-x = x[mask]
-y = y[mask]
-raster = raster[mask]
+# get the sampled dem points 
+x, y, raster, crs = eos.sar.regist.get_registration_dem_pts(
+    primary_burst_model, sampling_ratio=0.01, 
+    dem_source='SRTM30', dem_datum='ellipsoidal' )
 
 # project in primary
 row_primary, col_primary, _ = primary_burst_model.projection(
@@ -83,7 +75,7 @@ h, w = primary_burst_model.burst_roi.get_shape()
 # create a resampler instance
 resampler = eos.products.sentinel1.burst_resamp.burst_resample_from_meta(
     secondary_burst_meta, dst_burst_shape=(h, w),
-    matrix=A, degree=11)
+    matrix=A)
 
 # resample
 resampled_secondary_array = resampler.resample(secondary_burst_array)
