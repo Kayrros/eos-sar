@@ -2,7 +2,7 @@ import numpy as np
 import os
 import eos.products.sentinel1 as s1
 import eos.sar
-
+import pytest
 
 def extract_keys(big_dict, list_keys): 
     o = {}
@@ -19,52 +19,65 @@ def get_ref_metas(ref_xml_paths):
         xml_content, 0), keys) for xml_content in xml_contents]
     return ref_metas
 
+def close_readers(readers):
+    for read in readers:
+        read.close()
+        
+@pytest.fixture(scope="module")
+def inputs():
+
+    xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
+
+    tiff_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/measurement'
+
+    xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
+                         's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
+
+    tiff_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff',
+                      's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
+    
+    ref_basenames = ['s1b-iw2-slc-vv-20190803t164006-20190803t164034-017424-020c57-005.xml',
+                     's1a-iw2-slc-vv-20190809t164051-20190809t164117-028495-033896-005.xml']
+    
+    # list of our xmls
+    xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
+
+    tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
+
+    # read the xmls as strings
+    xml_content = []
+    for xml_path in xml_paths:
+        xml_content.append(eos.sar.io.read_xml_file(xml_path))
+
+    image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
+
+    # Now extract the needed metadata
+    primary_bursts_meta = s1.metadata.extract_bursts_metadata(
+        xml_content[0])
+    secondary_bursts_meta = s1.metadata.extract_bursts_metadata(
+        xml_content[1])
+    
+    ref_metas = get_ref_metas([os.path.join(xml_folder, ref_base) for ref_base in ref_basenames])
+
+    yield image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
+    close_readers(image_readers)
+    
+@pytest.fixture(scope="module")
+def dem(inputs):
+    image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
+    # construct primary swath model
+    primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
+        primary_bursts_meta)
+    # get dem points
+    x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
+    return x, y, alt, crs
+
+
 class Test_Resample_Stitch:
 
-    def get_readers(self):
+    def test_burst_intersection(self, inputs):
 
-        xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
-
-        tiff_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/measurement'
-
-        xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
-                             's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
-
-        tiff_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff',
-                          's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
-        
-        ref_basenames = ['s1b-iw2-slc-vv-20190803t164006-20190803t164034-017424-020c57-005.xml',
-                         's1a-iw2-slc-vv-20190809t164051-20190809t164117-028495-033896-005.xml']
-        
-        # list of our xmls
-        xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
-
-        tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
-
-        # read the xmls as strings
-        xml_content = []
-        for xml_path in xml_paths:
-            xml_content.append(eos.sar.io.read_xml_file(xml_path))
-
-        image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
-
-        # Now extract the needed metadata
-        primary_bursts_meta = s1.metadata.extract_bursts_metadata(
-            xml_content[0])
-        secondary_bursts_meta = s1.metadata.extract_bursts_metadata(
-            xml_content[1])
-        
-        ref_metas = get_ref_metas([os.path.join(xml_folder, ref_base) for ref_base in ref_basenames])
-
-        return image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
-
-    def close_readers(self, readers):
-        for read in readers:
-            read.close()
-
-    def test_burst_intersection(self):
-
-        image_readers, primary_bursts_meta, secondary_bursts_meta, _ = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, _ = inputs
         # simulate a difference in bursts footprints
         # this is to test, we could also choose a pair of images with
         # different burst ids in the products
@@ -78,12 +91,8 @@ class Test_Resample_Stitch:
             )
         assert np.all(sec_burst_ids == np.arange(5))
         assert np.all(prim_burst_ids == np.arange(2,7))
-        self.close_readers(image_readers)
-
-    def mat_estim(self, prim_mod, sec_mod):
-
-        # get dem points
-        x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(prim_mod)
+        
+    def mat_estim(self, prim_mod, sec_mod, x, y, alt, crs):
 
         # project in primary
         row_primary, col_primary, _ = prim_mod.projection(
@@ -94,9 +103,9 @@ class Test_Resample_Stitch:
                                                 sec_mod, x, y, alt, crs)
         return A
 
-    def test_burst_matrix_estimation(self):
+    def test_burst_matrix_estimation(self, inputs, dem):
 
-        image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
 
         # start by testing the burst resampling feature
         b_index = 3
@@ -113,18 +122,17 @@ class Test_Resample_Stitch:
             apd_correction=True,
             intra_pulse_correction=True)
         
-        A = self.mat_estim(primary_burst_model, secondary_burst_model)
+        A = self.mat_estim(primary_burst_model, secondary_burst_model, *dem)
         assert np.any(A != np.eye(3))
-        A_inv = self.mat_estim( secondary_burst_model, primary_burst_model)
+        A_inv = self.mat_estim( secondary_burst_model, primary_burst_model, *dem)
         assert np.any(A_inv != np.eye(3))
 
         assert np.allclose(A.dot(A_inv), np.eye(3), rtol=1e-2 , atol = 1e-2)
 
-        self.close_readers(image_readers)
 
-    def test_burst_registration(self):
+    def test_burst_registration(self, inputs):
 
-        image_readers, primary_bursts_meta, secondary_bursts_meta, _ = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, _ = inputs
 
         # start by testing the burst resampling feature
         b_index = 3
@@ -192,18 +200,16 @@ class Test_Resample_Stitch:
 
         assert np.all(resampler.matrix == resampler.burst_matrix)
 
-        self.close_readers(image_readers)
 
-    def test_debursting(self):
+    def test_debursting(self, inputs, dem):
         
-        image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
 
         # construct primary swath model
         primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
             primary_bursts_meta)
 
-        # get dem points
-        x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
+        x, y, alt, crs = dem 
         
         # If you wish to deburst a "crop" defined by a roi in the swath coordinates
         roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
