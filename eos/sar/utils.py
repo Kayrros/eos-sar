@@ -139,3 +139,43 @@ def check_input_len(input_var, out_len, error_msg='shape mismatch'):
     else: 
         assert len(in_var) == out_len, error_msg
         return in_var
+
+def filter_list(full_list, ids):
+    """
+    Filter list and keep only the ids given in the parameters. 
+
+    Parameters
+    ----------
+    full_list : list
+        List to be filtered.
+    ids : list
+        Ids to select elements in the lists.
+
+    Returns
+    -------
+    list
+        Filtered list.
+
+    """
+    return list(map(full_list.__getitem__, ids))
+
+def arr_in_interval(arr, arr_min, arr_max):
+    """
+    Compute mask of values in array that are within interval(inclusive).
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Array to be checked.
+    arr_min : float
+        lower value of interval.
+    arr_max : float
+        upper value of interval.
+
+    Returns
+    -------
+    ndarray (boolean array)
+        Mask of values in interval.
+
+    """
+    return np.logical_and(arr >= arr_min, arr <= arr_max)

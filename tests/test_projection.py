@@ -14,7 +14,8 @@ def test_projection():
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(
                                                 burst_meta,
                                                 bistatic_correction=True,
-                                                apd_correction=True)
+                                                apd_correction=True, 
+                                                intra_pulse_correction=True)
     # create a grid of points
     x, y, w, h = bmod.burst_roi.to_roi()
     cols_grid, rows_grid = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
