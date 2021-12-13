@@ -2,48 +2,82 @@ import numpy as np
 import os
 import eos.products.sentinel1 as s1
 import eos.sar
+import pytest
+
+def extract_keys(big_dict, list_keys): 
+    o = {}
+    for key in list_keys: 
+        o[key] = big_dict[key]
+    return o
+
+def get_ref_metas(ref_xml_paths):
+    xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in ref_xml_paths]
+    keys = ['slant_range_time',
+    'samples_per_burst',
+    'range_frequency']
+    ref_metas = [extract_keys(eos.products.sentinel1.metadata.extract_burst_metadata(
+        xml_content, 0), keys) for xml_content in xml_contents]
+    return ref_metas
+
+def close_readers(readers):
+    for read in readers:
+        read.close()
+        
+@pytest.fixture(scope="module")
+def inputs():
+
+    xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
+
+    tiff_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/measurement'
+
+    xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
+                         's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
+
+    tiff_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff',
+                      's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
+    
+    ref_basenames = ['s1b-iw2-slc-vv-20190803t164006-20190803t164034-017424-020c57-005.xml',
+                     's1a-iw2-slc-vv-20190809t164051-20190809t164117-028495-033896-005.xml']
+    
+    # list of our xmls
+    xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
+
+    tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
+
+    # read the xmls as strings
+    xml_content = []
+    for xml_path in xml_paths:
+        xml_content.append(eos.sar.io.read_xml_file(xml_path))
+
+    image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
+
+    # Now extract the needed metadata
+    primary_bursts_meta = s1.metadata.extract_bursts_metadata(
+        xml_content[0])
+    secondary_bursts_meta = s1.metadata.extract_bursts_metadata(
+        xml_content[1])
+    
+    ref_metas = get_ref_metas([os.path.join(xml_folder, ref_base) for ref_base in ref_basenames])
+
+    yield image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
+    close_readers(image_readers)
+    
+@pytest.fixture(scope="module")
+def dem(inputs):
+    image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
+    # construct primary swath model
+    primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
+        primary_bursts_meta)
+    # get dem points
+    x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
+    return x, y, alt, crs
+
 
 class Test_Resample_Stitch:
 
-    def get_readers(self):
+    def test_burst_intersection(self, inputs):
 
-        xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
-
-        tiff_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/measurement'
-
-        xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
-                             's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
-
-        tiff_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff',
-                          's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff']
-
-        # list of our xmls
-        xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
-
-        tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
-
-        # read the xmls as strings
-        xml_content = []
-        for xml_path in xml_paths:
-            xml_content.append(eos.sar.io.read_xml_file(xml_path))
-
-        image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
-
-        # Now extract the needed metadata
-        primary_bursts_meta = s1.metadata.extract_bursts_metadata(
-            xml_content[0])
-        secondary_bursts_meta = s1.metadata.extract_bursts_metadata(
-            xml_content[1])
-
-        return image_readers, primary_bursts_meta, secondary_bursts_meta
-
-    def close_readers(self, readers):
-        for read in readers:
-            read.close()
-
-    def test_burst_intersection(self):
-
-        image_readers, primary_bursts_meta, secondary_bursts_meta = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, _ = inputs
         # simulate a difference in bursts footprints
         # this is to test, we could also choose a pair of images with
         # different burst ids in the products
@@ -52,64 +86,53 @@ class Test_Resample_Stitch:
 
         # get the indices of the common bursts
         prim_burst_ids, sec_burst_ids = s1.deburst.get_bursts_intersection(
-            len(primary_bursts_meta),
-            primary_bursts_meta[0]['relative_burst_id'],
-            len(secondary_bursts_meta),
-            secondary_bursts_meta[0]['relative_burst_id']
-        )
+            [len(primary_bursts_meta), len(secondary_bursts_meta)], 
+            [primary_bursts_meta[0]['relative_burst_id'], secondary_bursts_meta[0]['relative_burst_id']]
+            )
         assert np.all(sec_burst_ids == np.arange(5))
         assert np.all(prim_burst_ids == np.arange(2,7))
-        self.close_readers(image_readers)
-
-    def mat_estim(self, prim_mod, sec_mod):
-
-        # get dem points
-        x, y, raster, transform, crs = eos.sar.regist.dem_points(prim_mod.approx_geom,
-                                                                  source='SRTM30',
-                                                                  datum='ellipsoidal'
-                                                                  )
-
-        # you can mask some pixels to speed up the projection
-        mask = np.random.binomial(n=1, p=0.01, size=x.shape).astype(bool)
-        x = x[mask]
-        y = y[mask]
-        raster = raster[mask]
+        
+    def mat_estim(self, prim_mod, sec_mod, x, y, alt, crs):
 
         # project in primary
         row_primary, col_primary, _ = prim_mod.projection(
-            x.ravel(), y.ravel(), raster.ravel(), crs=crs)
+            x, y, alt, crs=crs)
 
         # project in secondary and estimate registration
         A = eos.sar.regist.orbital_registration(row_primary, col_primary,
-                                                sec_mod, x, y, raster, crs)
+                                                sec_mod, x, y, alt, crs)
         return A
 
-    def test_burst_matrix_estimation(self):
+    def test_burst_matrix_estimation(self, inputs, dem):
 
-        image_readers, primary_bursts_meta, secondary_bursts_meta = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
 
         # start by testing the burst resampling feature
         b_index = 3
-        primary_burst_meta = primary_bursts_meta[b_index]
-        secondary_burst_meta = secondary_bursts_meta[b_index]
-
         # Now instantiate burst_model instances for projection/localization
         primary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
-            primary_burst_meta)
+                    primary_bursts_meta[b_index], bistatic_correction=True,
+                    full_bistatic_correction_reference=ref_metas[0],
+                    apd_correction=True,
+                    intra_pulse_correction=True)
+        
         secondary_burst_model = eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
-            secondary_burst_meta)
-        A = self.mat_estim(primary_burst_model, secondary_burst_model)
+            secondary_bursts_meta[b_index], bistatic_correction=True,
+            full_bistatic_correction_reference=ref_metas[1],
+            apd_correction=True,
+            intra_pulse_correction=True)
+        
+        A = self.mat_estim(primary_burst_model, secondary_burst_model, *dem)
         assert np.any(A != np.eye(3))
-        A_inv = self.mat_estim( secondary_burst_model, primary_burst_model)
+        A_inv = self.mat_estim( secondary_burst_model, primary_burst_model, *dem)
         assert np.any(A_inv != np.eye(3))
 
         assert np.allclose(A.dot(A_inv), np.eye(3), rtol=1e-2 , atol = 1e-2)
 
-        self.close_readers(image_readers)
 
-    def test_burst_registration(self):
+    def test_burst_registration(self, inputs):
 
-        image_readers, primary_bursts_meta, secondary_bursts_meta = self.get_readers()
+        image_readers, primary_bursts_meta, secondary_bursts_meta, _ = inputs
 
         # start by testing the burst resampling feature
         b_index = 3
@@ -177,66 +200,69 @@ class Test_Resample_Stitch:
 
         assert np.all(resampler.matrix == resampler.burst_matrix)
 
-        self.close_readers(image_readers)
 
-    def test_primary_debursting(self):
-
-        image_readers, primary_bursts_meta, secondary_bursts_meta = self.get_readers()
+    def test_debursting(self, inputs, dem):
+        
+        image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
 
         # construct primary swath model
         primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
             primary_bursts_meta)
 
+        x, y, alt, crs = dem 
+        
         # If you wish to deburst a "crop" defined by a roi in the swath coordinates
         roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
 
         # deburst
-        for get_complex in [True, False]: 
-            debursted_crop, burst_ids, rois_read, rois_write = eos.products.sentinel1.deburst.deburst_in_primary_swath(
-                   primary_swath_model, image_readers[0], roi_in_swath, get_complex)
-            h, w = debursted_crop.shape
-            assert h == 3000
-            assert w == 40
-        self.close_readers(image_readers)
+        burst_ids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
+            roi_in_swath)
 
-    def test_secondary_regist_deburst(self):
+        # construct burst models with appropriate corrections
+        primary_burst_models = [eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
+                    primary_bursts_meta[bid], bistatic_correction=True,
+                    full_bistatic_correction_reference=ref_metas[0],
+                    apd_correction=True,
+                    intra_pulse_correction=True) for bid in burst_ids]
 
-        image_readers, primary_bursts_meta, secondary_bursts_meta = self.get_readers()
+        rows_no_correc_global, cols_no_correc_global,\
+        rows_correc_global, cols_correc_global, pts_in_burst_mask,\
+            burst_resampling_matrices = \
+             eos.products.sentinel1.regist.primary_registration_estimation(
+                primary_swath_model, primary_burst_models, x, y, alt, crs, burst_ids)
 
+
+        primary_debursted_crop, read_rois_correc, resamplers =  \
+            eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
+                read_rois_no_correc, burst_ids, primary_swath_model,
+                primary_swath_model, burst_resampling_matrices,
+                primary_bursts_meta, image_readers[0],
+                write_rois_no_correc, out_shape,
+                get_complex=True)
+        
         # construct primary swath model
-        primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
-            primary_bursts_meta)
-        # construct secondary swath model
         secondary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
             secondary_bursts_meta)
-        # hardcoded A to reduce runtime
-        A_swath = np.array([[ 9.99998183e-01, -2.37111941e-07, -5.72787168e+00],
-                         [ 9.33229568e-06,  1.00019457e+00,  4.54404670e+01],
-                         [ 0.00000000e+00,  0.00000000e+00,  1.00000000e+00]])
 
-        # define the roi in the primary swath
-        # Here, if you set a region of interest within the swath
-        # in the primary burst, only this region will be considered
-        primary_swath_roi = eos.sar.roi.Roi(5000, 750, 40, 3000)
+        secondary_burst_models = [eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
+                    secondary_bursts_meta[bid], bistatic_correction=True,
+                    full_bistatic_correction_reference=ref_metas[1],
+                    apd_correction=True,
+                    intra_pulse_correction=True) for bid in burst_ids]
 
-        burst_ids, read_rois, write_rois, out_shape = primary_swath_model.get_read_write_rois(
-        primary_swath_roi)
-
-        # Now for the secondary
-        # estimate the rois where we need to read data
-        # and the associated resampler
-        secondary_read_rois, resamplers = s1.deburst.secondary_rois_and_resamplers(
-            primary_swath_model, read_rois,
-            burst_ids, secondary_swath_model,
-            secondary_bursts_meta, A_swath)
-
-        # Secondary reading/resampling/ debursting
-        for get_complex in [True, False]: 
-            secondary_debursted_crop = s1.deburst.read_resample_and_deburst(
-                image_readers[1], secondary_read_rois,
-                resamplers, write_rois, out_shape, get_complex)
-    
-            h, w = secondary_debursted_crop.shape
-            assert h == 3000
-            assert w == 40
-            assert np.isnan(secondary_debursted_crop).sum() / secondary_debursted_crop.size < 0.05
+        burst_resampling_matrices = \
+            eos.products.sentinel1.regist.secondary_registration_estimation(
+                secondary_swath_model, secondary_burst_models,  x, y, alt, crs,
+                burst_ids, pts_in_burst_mask, primary_swath_model,  rows_no_correc_global, 
+                cols_no_correc_global, global_rows_fit=True )
+        secondary_debursted_crop, read_rois_correc, resamplers = \
+            eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
+                read_rois_no_correc, burst_ids, primary_swath_model,
+                secondary_swath_model, burst_resampling_matrices,
+                secondary_bursts_meta, image_readers[1],
+                write_rois_no_correc, out_shape,
+                get_complex=True)
+        
+        assert primary_debursted_crop.shape == roi_in_swath.get_shape(), "crop shape mismatch"
+        assert secondary_debursted_crop.shape == roi_in_swath.get_shape(), "crop shape mismatch"
+        

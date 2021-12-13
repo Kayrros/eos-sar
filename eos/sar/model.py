@@ -36,7 +36,30 @@ class SensorModel(abc.ABC):
     def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None, 
                      x_init=None, y_init=None, z_init=None):
         pass
+    
+    def _apd_correction(self, alt, cos_i):
+        """
+        Compute atmospheric path delay correction. Range shift dependent on\
+            the altitude and the incidence angle.
 
+        Parameters
+        ----------
+        alt : float or array
+            Altitude above the wgs84 ellipsoid.
+        cos_i : float or array
+            Cosine of incidence angle between the LOS and the normal.
+            A spherical approximation can be used to compute it.
+
+        Returns
+        -------
+        drng : float or array
+            Atmospheric path delay, i.e. single path additional range induced by 
+            the passage of the EM wave through the atmosphere.
+
+        """
+        drng = (alt * alt / 8.55e7 - alt / 3411.0 + 2.41) / cos_i
+        return drng 
+    
     def localize_without_alt(self, row, col, max_iter=5, eps=1,
                              alt_min=-1000, alt_max=9000, num_alt=100,
                              verbosity=False, elev=elevation):

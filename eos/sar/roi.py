@@ -1,11 +1,15 @@
 import numpy as np
 import math 
 
+from eos.sar import utils
+
 class Roi: 
     
     def __init__(self, col, row, w, h):
         self.set_from_roi(col, row, w, h)
     
+    def __repr__(self): 
+        return f"ROI (col={self.col}, row={self.row}, w={self.w}, h={self.h})"
 
     def set_from_roi(self, col, row, w, h): 
         self.col = col 
@@ -172,6 +176,15 @@ class Roi:
         out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin) 
         return self.obj_from_roi_tuple(out_roi, inplace=inplace)
     
+    def assert_valid(self, parent_shape): 
+        h_parent, w_parent = parent_shape
+        col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
+        msg = "Roi outside of parent"
+        assert (col_child_max < w_parent), msg
+        assert (row_child_max < h_parent), msg
+        assert (col_child_min>=0), msg
+        assert (row_child_min>=0), msg 
+        
     def make_valid(self, parent_shape, inplace=False): 
         """
         If the child roi is not within the boundaries of the parent image dimension, 
@@ -277,3 +290,28 @@ class Roi:
         cols_grid, rows_grid = np.meshgrid(np.arange(col, col+w),
                                            np.arange(row, row+h))
         return cols_grid, rows_grid
+    
+    def contains(self, cols, rows):
+        """
+        Compute mask on points that are within the roi. 
+
+        Parameters
+        ----------
+        cols : array
+            Colmuns.
+        rows : array
+            Rows.
+
+        Returns
+        -------
+        mask : array(boolean)
+            Mask of points in the roi.
+
+        """
+        col_min, row_min, col_max, row_max = self.to_bounds()
+        
+        # get a mask on the points that are within the roi
+        mask = np.logical_and(utils.arr_in_interval(cols, col_min, col_max), 
+                                    utils.arr_in_interval(rows, row_min, row_max)
+                                   )       
+        return mask
