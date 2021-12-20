@@ -1,7 +1,162 @@
 import numpy as np
-from s1c import read_lut_from_calibration_xml, read_lut_from_noise_xml
+import xmltodict
 
 from . import _calibration as _cal
+
+
+class CalibrationError(Exception):
+    pass
+
+
+class _AzimuthNoise:
+    """
+    /!\\ This comes from the s1c package.
+
+    Noise Azimuth Vector
+    """
+
+    def __init__(
+        self,
+        swath,
+        first_azimuth_line,
+        first_range_sample,
+        last_azimuth_line,
+        last_range_sample,
+        lines,
+        noise_azimuth_LUT,
+    ):
+        self.swath = swath
+        self.first_azimuth_line = first_azimuth_line
+        self.first_range_sample = first_range_sample
+        self.last_azimuth_line = last_azimuth_line
+        self.last_range_sample = last_range_sample
+        self.lines = lines
+        self.noise_azimuth_LUT = noise_azimuth_LUT
+
+def _get_noise_azimuth_blocks(noiseAzimuthVectorList):
+    """
+    /!\\ This comes from the s1c package.
+
+    Instanciate the noise azimuth blocks.
+
+    Args:
+        noiseAzimuthVectorList (OrderedDict): OrderedDict of noiseAzimuthVectorList.
+
+    Returns:
+        list: list of _AzimuthNoise objects.
+    """
+    blocks = []
+    for v in noiseAzimuthVectorList:
+        blocks.append(
+            _AzimuthNoise(
+                v["swath"],
+                float(v["firstAzimuthLine"]),
+                float(v["firstRangeSample"]),
+                float(v["lastAzimuthLine"]),
+                float(v["lastRangeSample"]),
+                list(map(float, v["line"]["#text"].split())),
+                list(map(float, v["noiseAzimuthLut"]["#text"].split())),
+            )
+        )
+    return blocks
+
+def _read_lut_from_noise_xml(xml):
+    """
+    /!\\ This comes from the s1c package.
+
+    Read the noise Look Up Table from a S1 xml noise calibration file.
+
+    Args:
+        xml (str): content of a Sentinel-1 noise xml file (e.g.
+            output of open("/path/to/noise.xml").read())
+
+    Return:
+        list: list of line numbers
+        list: list of lists of column numbers, where each list of column
+            numbers corresponds to one element of the list of line numbers
+        list: list of lists of values matching the list of lists of column
+            numbers
+        list: list of _AzimuthNoise objects
+    """
+    d = xmltodict.parse(xml)["noise"]
+
+    # extract lists of points and values
+    lines = []
+    pixels = []
+    values = []
+
+    # handle pre and post IPF 2.9.0 naming convention
+    if "noiseRangeVectorList" in d:
+        # /!\ this was modified from s1c
+        noise_azimuth_vector_list = d["noiseAzimuthVectorList"]
+        # for some reason, when @count is 1, the list is not considered as such
+        if int(noise_azimuth_vector_list['@count']) == 1:
+            noise_azimuth_vector_list = [noise_azimuth_vector_list["noiseAzimuthVector"],]
+        azimuth_blocks = _get_noise_azimuth_blocks(noise_azimuth_vector_list)
+
+        noise_vector_list = d["noiseRangeVectorList"]["noiseRangeVector"]
+        lut_key = "noiseRangeLut"
+    else:
+        azimuth_blocks = None
+        noise_vector_list = d["noiseVectorList"]["noiseVector"]
+        lut_key = "noiseLut"
+
+    for v in noise_vector_list:
+        lines.append(float(v["line"]))
+        pixels.append(list(map(float, v["pixel"]["#text"].split())))
+        values.append(list(map(float, v[lut_key]["#text"].split())))
+
+    # check lists lengths
+    if (len(lines) != len(pixels) or
+        len(pixels) != len(values) or
+        any(len(p) != len(v) for p, v in zip(pixels, values))):
+        raise Error("Unexpected data format in noise xml")
+
+    return lines, pixels, values, azimuth_blocks
+
+def _read_lut_from_calibration_xml(xml):
+    """
+    /!\\ This comes from the s1c package.
+
+    Read the sigma, beta, gamma and DN samples from a S1 xml calibration file.
+
+    Args:
+        xml (str): content of a Sentinel-1 calibration xml file (e.g.
+            output of open("/path/to/calibration.xml").read())
+
+    Return:
+        list: list of line numbers
+        list: list of lists of column numbers, where each list of column
+            numbers corresponds to one element of the list of line numbers
+        dict: dictionary with four keys, and a list of lists of values matching
+            the list of lists of column numbers
+    """
+    d = xmltodict.parse(xml)["calibration"]
+
+    # extract lists of points and values
+    lines = []
+    pixels = []
+    values = {
+        "sigmaNought": [],
+        "betaNought": [],
+        "gamma": [],
+        "dn": []
+    }
+    for v in d["calibrationVectorList"]["calibrationVector"]:
+        lines.append(float(v["line"]))
+        pixels.append(list(map(float, v["pixel"]["#text"].split())))
+        for k in values:
+            values[k].append(list(map(float, v[k]["#text"].split())))
+
+    # check arrays shapes
+    if len(lines) != len(pixels):
+        raise CalibrationError("Unexpected data format in calibration xml")
+    for k in values:
+        if (len(pixels) != len(values[k]) or
+            any(len(p) != len(v) for p, v in zip(pixels, values[k]))):
+            raise CalibrationError("Unexpected data format in calibration xml")
+
+    return lines, pixels, values
 
 
 def _bilinear_interpolation(window, lines, pixels, values):
@@ -81,14 +236,14 @@ class Sentinel1Calibrator:
         return _apply_radiometric_calibration(image, calib_array, noise_array, dont_clip_noise)
 
     def _load_calibration(self, calibration_xml_content):
-        lines, pixels, values = read_lut_from_calibration_xml(calibration_xml_content)
+        lines, pixels, values = _read_lut_from_calibration_xml(calibration_xml_content)
 
         self._lines = np.array(lines)
         self._pixels = np.array(pixels[0])
         self._values = values
 
     def _load_noise(self, noise_xml_content):
-        lines, pixels, values, azimuth_blocks = read_lut_from_noise_xml(noise_xml_content)
+        lines, pixels, values, azimuth_blocks = _read_lut_from_noise_xml(noise_xml_content)
 
         self._noise_lines = np.array(lines)
         self._noise_pixels = np.array(pixels[0])
