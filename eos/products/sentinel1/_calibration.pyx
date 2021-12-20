@@ -84,18 +84,26 @@ def bilinear_interpolation(tuple window, np.int32_t[::1] lines, np.int32_t[::1] 
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def apply_radiometric_calibration_float32(np.float32_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs):
+def apply_radiometric_calibration_float32(np.float32_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs, bint dont_clip_noise):
     cdef int h = img.shape[0]
     cdef int w = img.shape[1]
 
     cdef np.float32_t* pimg = &img[0,0]
     cdef np.float32_t* pcalib = &calib_coeffs[0,0]
     cdef np.float32_t* pnoise
+    cdef np.float32_t val
 
     if noise_coeffs is not None:
         pnoise = &noise_coeffs[0,0]
-        for i in range(w * h):
-            pimg[i] = max(0, (pimg[i] ** 2 - pnoise[i]) / (pcalib[i] ** 2))
+        if dont_clip_noise:
+            for i in range(w * h):
+                val = pimg[i] ** 2 - pnoise[i]
+                if val < 0:
+                    val = pimg[i] ** 2
+                pimg[i] = val / (pcalib[i] ** 2)
+        else:
+            for i in range(w * h):
+                pimg[i] = max(0, (pimg[i] ** 2 - pnoise[i]) / (pcalib[i] ** 2))
     else:
         for i in range(w * h):
             pimg[i] = (pimg[i] / pcalib[i]) ** 2
@@ -105,7 +113,7 @@ def apply_radiometric_calibration_float32(np.float32_t[:,::1] img, np.float32_t[
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def apply_radiometric_calibration_complex64(np.complex64_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs):
+def apply_radiometric_calibration_complex64(np.complex64_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs, bint dont_clip_noise):
     cdef int h = img.shape[0]
     cdef int w = img.shape[1]
 
@@ -117,10 +125,19 @@ def apply_radiometric_calibration_complex64(np.complex64_t[:,::1] img, np.float3
 
     if noise_coeffs is not None:
         pnoise = &noise_coeffs[0,0]
-        for i in range(w * h):
-            amp = abs(pimg[i])
-            namp = max(0, (amp ** 2 - pnoise[i]) / (pcalib[i] ** 2))
-            pimg[i] = pimg[i] * (namp / max(amp, 1e-10))
+        if dont_clip_noise:
+            for i in range(w * h):
+                amp = abs(pimg[i])
+                namp = amp ** 2 - pnoise[i]
+                if namp < 0:
+                    namp = amp ** 2
+                namp = namp / (pcalib[i] ** 2)
+                pimg[i] = pimg[i] * (namp / max(amp, 1e-10))
+        else:
+            for i in range(w * h):
+                amp = abs(pimg[i])
+                namp = max(0, (amp ** 2 - pnoise[i]) / (pcalib[i] ** 2))
+                pimg[i] = pimg[i] * (namp / max(amp, 1e-10))
     else:
         for i in range(w * h):
             amp = abs(pimg[i])

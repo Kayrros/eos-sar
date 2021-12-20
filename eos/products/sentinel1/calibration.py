@@ -18,18 +18,18 @@ def _bilinear_interpolation(window, lines, pixels, values):
     return res
 
 
-def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs):
+def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_noise):
     if np.iscomplexobj(img):
         assert img.dtype == np.complex64
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
-        _cal.apply_radiometric_calibration_complex64(img, calib_coeffs, noise_coeffs)
+        _cal.apply_radiometric_calibration_complex64(img, calib_coeffs, noise_coeffs, dont_clip_noise)
         return img
     else:
         assert img.dtype == np.float32
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
-        _cal.apply_radiometric_calibration_float32(img, calib_coeffs, noise_coeffs)
+        _cal.apply_radiometric_calibration_float32(img, calib_coeffs, noise_coeffs, dont_clip_noise)
         return img
 
 
@@ -54,7 +54,7 @@ class Sentinel1Calibrator:
         else:
             self.has_noise = False
 
-    def calibrate_inplace(self, image, window, method):
+    def calibrate_inplace(self, image, window, method, dont_clip_noise=False):
         """
             Apply the radiometric calibration on the given raster, at position `window` of the SLC tif image.
 
@@ -62,6 +62,9 @@ class Sentinel1Calibrator:
                 image (np.array): array of shape (h, w), of type float32 or complex64
                 window (tuple): (x, y, w, h), position in the source SLC tif image
                 method (str): 'sigma' | 'gamma' | 'beta'
+                dont_clip_noise (bool, default False):
+                    if true, during noise calibration, values are not clipped to 0 but stay positive
+                    this is what happens in the implementation of SNAP
 
             Returns
                 the calibration is applied in-place, the returned array is the same instance as the input image
@@ -75,7 +78,7 @@ class Sentinel1Calibrator:
 
         calib_array = self._get_calibration_array(window, method)
         noise_array = self._get_noise_array(window) if self.has_noise else None
-        return _apply_radiometric_calibration(image, calib_array, noise_array)
+        return _apply_radiometric_calibration(image, calib_array, noise_array, dont_clip_noise)
 
     def _load_calibration(self, calibration_xml_content):
         lines, pixels, values = read_lut_from_calibration_xml(calibration_xml_content)
