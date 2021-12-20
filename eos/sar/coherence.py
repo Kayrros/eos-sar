@@ -42,14 +42,15 @@ def on_pair(im1, im2, filter_size, eps=1e-10,
             set_borders_to_nan=False,
             might_contain_nans=False,
             spatial_filter='uniform'):
-    '''
+    """
         Compute the coherence on a pair of complex images.
 
-        Accepted types for im1 and im2: np.csingle (faster), np.cdouble
+        im1, im2: complex array of type np.csingle (faster) or np.cdouble (slower).
+        filter_size (int or (int,int)): size of the spatial filter
 
         If one of the input images contains nans, make sure to set might_contain_nans to True (or 'overwrite' to allow to overwrite your arrays). The result will have nans set at the same positions, but values near the nans might be wrong.
         The borders in the resulting coherence map will be wrong, use set_borders_to_nan=True to set them to nan.
-    '''
+    """
     spatial_filter = SPATIAL_FILTERS[spatial_filter]
 
     mask = None
