@@ -242,12 +242,28 @@ class Sentinel1Calibrator:
         self._pixels = np.array(pixels[0])
         self._values = values
 
+        assert self._lines[0] <= 0
+        assert self._pixels[0] <= 0
+        # we kept only the first row of pixels, because they are all the same (it's a grid)
+        assert all((p == self._pixels).all() for p in pixels)
+        # we should have one value per grid node
+        assert len(self._lines) == len(self._values['gamma'])
+        assert len(self._lines) * len(self._pixels) == np.asarray(self._values['gamma']).size
+
     def _load_noise(self, noise_xml_content):
         lines, pixels, values, azimuth_blocks = _read_lut_from_noise_xml(noise_xml_content)
 
         self._noise_lines = np.array(lines)
         self._noise_pixels = np.array(pixels[0])
         self._noise_values = np.array(values)
+
+        assert self._noise_lines[0] <= 0
+        assert self._noise_pixels[0] <= 0
+        # we kept only the first row of pixels, because they are all the same (it's a grid)
+        assert all((p == self._noise_pixels).all() for p in pixels)
+        # we should have one value per grid node
+        assert len(self._noise_lines) == len(self._noise_values)
+        assert len(self._noise_lines) * len(self._noise_pixels) == np.asarray(self._noise_values).size
 
         if azimuth_blocks is not None:
             self._noise_azimuth_block = azimuth_blocks[0]
