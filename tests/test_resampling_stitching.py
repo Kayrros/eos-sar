@@ -181,6 +181,7 @@ class Test_Resample_Stitch:
         assert resamp_h == 100
         assert resamp_w == 150
         assert np.isnan(resampled_secondary_array).sum() / resampled_secondary_array.size < 0.05
+        assert resampled_secondary_array.dtype == np.complex64
 
         ################### If you wish to resample the amplitude
 
@@ -193,6 +194,11 @@ class Test_Resample_Stitch:
         assert resamp_h == 100
         assert resamp_w == 150
         assert np.isnan(resampled_secondary_amplitude).sum() / resampled_secondary_amplitude.size < 0.05
+        assert resampled_secondary_amplitude.dtype == np.float32
+
+        # make sure that the abs of the resampled array is close to the resampling of the abs
+        #   the difference is actually quite large, because of the deramping/reramping
+        assert np.abs(np.abs(resampled_secondary_array) - resampled_secondary_amplitude).mean() < 10
 
 
         # you can reset the resampler in case burst resampling is needed
