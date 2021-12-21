@@ -14,8 +14,9 @@ test:
   before_script:
     - pip install cython numpy
     - pip install -e ".[test]"
+    - pip install pytest-parallel
   script:
-    - pytest .
+    - pytest . --workers auto
 
 deploy:
   stage: deploy
