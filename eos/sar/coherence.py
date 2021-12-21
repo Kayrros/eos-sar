@@ -21,7 +21,6 @@ SPATIAL_FILTERS = {
 
 
 def _compute_filtered_magnitude(im, filter_size, spatial_filter):
-    assert im.dtype in (np.csingle, np.cdouble)
     return spatial_filter(np.abs(im) ** 2, filter_size)
 
 
@@ -45,12 +44,22 @@ def on_pair(im1, im2, filter_size, eps=1e-10,
     """
         Compute the coherence on a pair of complex images.
 
-        im1, im2: complex array of type np.csingle (faster) or np.cdouble (slower).
-        filter_size (int or (int,int)): size of the spatial filter
+        Parameters
+            im1, im2: complex array of type np.csingle (faster) or np.cdouble (slower).
+            filter_size (int or (height int, width int)): size of the spatial filter, should be odd
 
-        If one of the input images contains nans, make sure to set might_contain_nans to True (or 'overwrite' to allow to overwrite your arrays). The result will have nans set at the same positions, but values near the nans might be wrong.
-        The borders in the resulting coherence map will be wrong, use set_borders_to_nan=True to set them to nan.
+            If one of the input images contains nans, make sure to set might_contain_nans to True
+            (or 'overwrite' to allow to overwrite your arrays).
+            The result will have nans set at the same positions, but values near the nans might be wrong.
+            If might_contain_nans is left to False, the result will be full of nans.
+
+            The borders in the resulting coherence map will be wrong, use set_borders_to_nan=True to set them to nan.
     """
+    assert im1.dtype in (np.csingle, np.cdouble)
+    assert im2.dtype in (np.csingle, np.cdouble)
+    assert (np.asarray(filter_size) % 2 == 1).all(), 'filter_size values should be odd'
+    assert np.asarray(filter_size).size in (1, 2), 'filter_size a floor or a tuple of two floats'
+
     spatial_filter = SPATIAL_FILTERS[spatial_filter]
 
     mask = None
