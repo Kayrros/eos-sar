@@ -630,7 +630,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  range_frequency,
                  azimuth_frequency,
                  slant_range_time,
-                 lines_per_burst,
                  wavelength,
                  bursts_times,
                  bursts_rois,
@@ -652,8 +651,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             Azimuth time sampling frequency.
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
-        lines_per_burst : int
-            Number of lines per burst in the sentinel1 raster.
         wavelength: float
             wavelength in m
         bursts_times : list of (3,) tuple (start_time, start_valid, end_valid)
@@ -726,8 +723,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          False,  
                          max_iterations,
                          tolerance)
-
-        self.lines_per_burst = lines_per_burst
 
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times
@@ -956,7 +951,6 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     assert alleq('range_frequency')
     assert alleq('azimuth_frequency')
     assert alleq('slant_range_time')
-    assert alleq('lines_per_burst')
     assert alleq('wave_length')
     assert alleq('pri')
     assert alleq('rank')
@@ -964,7 +958,6 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'],
                                bursts_metadata[0]['azimuth_frequency'],
                                bursts_metadata[0]['slant_range_time'],
-                               bursts_metadata[0]['lines_per_burst'],
                                bursts_metadata[0]['wave_length'],
                                bursts_times,
                                bursts_rois,
@@ -978,7 +971,7 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
 #not be constant for the whole swath for ex. samples per burst
 # ( which is btw weird to include in the basemodel)
 # so basically, do sliceAssembly later,
-# -> JA: I removed samples_per_burst, it wasn't used outside of the Sentinel1BurstModel
+# -> JA: I removed samples_per_burst and lines_per_burst, it wasn't used for the swath model
 
 
 
