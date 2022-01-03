@@ -12,15 +12,18 @@ variables:
 test:
   stage: test
   before_script:
+    - pip install cython numpy
     - pip install -e ".[test]"
+    - pip install pytest-parallel
   script:
-    - pytest .
+    - pytest . --workers auto
 
 deploy:
   stage: deploy
   before_script:
     - pip install twine
   script:
+    - pip install cython numpy
     - python setup.py sdist
     - python setup.py bdist_wheel
     - pip install dist/*.tar.gz

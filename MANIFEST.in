@@ -1,7 +1,5 @@
-include docs/*
-include examples/*
-include scripts/*
-include tests/*
+recursive-exclude tests *
+recursive-exclude usage *
 
 include CHANGELOG.md
 include LICENCE
