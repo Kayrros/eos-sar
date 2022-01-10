@@ -12,11 +12,16 @@ logger = logging.Logger(__name__)
 
 # time taken to go over one orbit
 # repeat cycle is 12 days, with 175 orbits per cycle
-T_orb = 12 * 24 * 3600 / 175
+N_orbits_per_cycle = 175
+T_orb = 12 * 24 * 3600 / N_orbits_per_cycle
 
 # These two constants were provided by (ESA)
 T_beam = 2.758273
 T_pre = 2.299849
+
+# compute a T_orb2 for which the number of bursts is an integer
+N_bursts_per_cycle = 375887
+T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
 def string_to_timestamp(s):
@@ -179,7 +184,7 @@ def compute_burst_id(burst, first_burst_xml):
 
     # time distance between t_b and the first ANX time in the current mission cycle
     delta_t_b_rel = t_b - anx_time + (relative_orbit_number - 1) * T_orb
-    delta_t_b_abs = t_b - anx_time + (absolute_orbit_number - 1) * T_orb
+    delta_t_b_abs = delta_t_b_rel + (absolute_orbit_number - relative_orbit_number) * T_orb2
 
     # subtract the preamble and divide by the beam cycle time to obtain the burst ids
     relative_burst_id = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam)
@@ -362,13 +367,10 @@ def extract_bursts_metadata(xml, burst_ids=None):
 
         if 'burstId' in b:  # True for IPF >= 3.40
             esa_relative_burst_id = int(b['burstId']['#text'])
-            esa_absolute_burst_id = int(b['burstId']['@absolute'])
             if relative_burst_id != esa_relative_burst_id:
                 logger.warning('relative_burst_id mismatch (xml:{}, computed:{})'
                         .format(esa_relative_burst_id, relative_burst_id))
-            if absolute_burst_id != esa_absolute_burst_id:
-                logger.warning('absolute_burst_id mismatch (xml:{}, computed:{})'
-                        .format(esa_absolute_burst_id, absolute_burst_id))
+            # don't compare the absolute burst id since our definition is different than ESA's one
 
         burst['relative_burst_id'] = relative_burst_id
         burst['absolute_burst_id'] = absolute_burst_id
