@@ -187,7 +187,7 @@ def compute_burst_id(burst, first_burst_xml):
     delta_t_b_abs = delta_t_b_rel + (absolute_orbit_number - relative_orbit_number) * T_orb2
 
     # subtract the preamble and divide by the beam cycle time to obtain the burst ids
-    relative_burst_id = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam)
+    relative_burst_id = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam) % N_bursts_per_cycle
     absolute_burst_id = 1 + math.floor((delta_t_b_abs - T_pre) / T_beam)
 
     return relative_burst_id, absolute_burst_id
