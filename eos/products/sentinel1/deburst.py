@@ -449,8 +449,8 @@ def get_bursts_intersection(num_bursts, burst_rel_ids):
     rel_min = np.amax(burst_rel_ids)
     rel_max = np.amin(b_rel_ids + n_bursts -1)
     if rel_min > rel_max:
-        print('no intersection')
-        return [], []
-    else: 
+        print('no intersection', rel_min, rel_max)
+        return []
+    else:
         list_rel_ids = np.arange(rel_min, rel_max + 1).reshape(1, -1)
         return list_rel_ids - b_rel_ids
