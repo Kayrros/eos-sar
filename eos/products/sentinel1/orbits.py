@@ -1,5 +1,6 @@
 import os
 import io
+import glob
 import functools
 
 from lxml import etree
@@ -69,12 +70,6 @@ def _list_files_from_s3(client_s3, bucket, prefix):
     return files
 
 
-def select_orbit_files_from_s3(client_s3, bucket, prefix, date, missionid):
-    files = _list_files_from_s3(client_s3, bucket, prefix)
-    files = select_orbit_files_from_filelist(files, date, missionid)
-    return files
-
-
 def apply_new_statevectors_to_burst(xml_content, burst, orbtype):
     apply_new_statevectors_to_bursts(xml_content, [burst], orbtype)
 
@@ -114,7 +109,7 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
         b['state_vectors_origin'] = orbtype
 
 
-def search_valid_orbit_files(client_s3, product_info, type, return_all=False, fullsearch=False):
+def search_valid_orbit_files_from_s3(client_s3, product_info, type, return_all=False, fullsearch=False):
     if isinstance(product_info, tuple):
         # ('20210216T151206', 'S1A')
         date, missionid = product_info
@@ -150,7 +145,8 @@ def search_valid_orbit_files(client_s3, product_info, type, return_all=False, fu
     allfiles = []
     for prefix in prefixes:
         try:
-            files = select_orbit_files_from_s3(client_s3, S1_ORBITS_BUCKET, prefix, date, missionid)
+            files = _list_files_from_s3(client_s3, S1_ORBITS_BUCKET, prefix)
+            files = select_orbit_files_from_filelist(files, date, missionid)
             if not return_all and files:
                 return files[-1]
             allfiles += files
@@ -158,6 +154,51 @@ def search_valid_orbit_files(client_s3, product_info, type, return_all=False, fu
             pass
 
     return sorted(allfiles)
+
+
+def search_valid_orbit_files_from_local_folder(path, product_info, type):
+    date, missionid = product_info
+
+    files = glob.glob(f'{path}/{missionid.upper()}_OPER_AUX_{type.upper()}ORB_OPOD_*.EOF')
+    try:
+        files = select_orbit_files_from_filelist(files, date, missionid)
+    except FileNotFoundError:
+        pass
+
+    return files[-1]
+
+
+def _update_statevectors_from_source(product_info, burst, *, force_type, source):
+    if isinstance(product_info, tuple):
+        # ('20210216T151206', 'S1A')
+        date, missionid = product_info
+    else:
+        # 'S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650'
+        assert isinstance(product_info, str)
+        missionid = product_info[:3]
+        date = product_info[17:32]
+
+    def try_for_orbit_type(type):
+        xml = source(date, missionid, type)
+        if not xml:
+            return None
+
+        orbtype = f'orb{type}'
+        if isinstance(burst, dict):
+            apply_new_statevectors_to_burst(xml, burst, orbtype)
+        else:
+            apply_new_statevectors_to_bursts(xml, burst, orbtype)
+
+        return orbtype
+
+    if force_type:
+        type = try_for_orbit_type(force_type.replace('orb', ''))
+    else:
+        type = try_for_orbit_type('poe') or try_for_orbit_type('res')
+    if type:
+        return type
+
+    raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
 
 def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, force_type=None, fullsearch=False):
@@ -176,17 +217,8 @@ def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, forc
     Raises
         FileNotFoundError: if no orbit file is found for the product_info
     '''
-    if isinstance(product_info, tuple):
-        # ('20210216T151206', 'S1A')
-        date, missionid = product_info
-    else:
-        # 'S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650'
-        assert isinstance(product_info, str)
-        missionid = product_info[:3]
-        date = product_info[17:32]
-
-    def try_for_orbit_type(type):
-        file = search_valid_orbit_files(client_s3, (date, missionid), type, fullsearch=fullsearch)
+    def source(date, missionid, type):
+        file = search_valid_orbit_files_from_s3(client_s3, (date, missionid), type, fullsearch=fullsearch)
         if not file:
             return None
 
@@ -196,20 +228,32 @@ def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, forc
             Bucket=S1_ORBITS_BUCKET,
             Key=file)
         xml.seek(0)
+        return xml
 
-        orbtype = f'orb{type}'
-        if isinstance(burst, dict):
-            apply_new_statevectors_to_burst(xml, burst, orbtype)
-        else:
-            apply_new_statevectors_to_bursts(xml, burst, orbtype)
+    return _update_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
 
-        return orbtype
 
-    if force_type:
-        type = try_for_orbit_type(force_type.replace('orb', ''))
-    else:
-        type = try_for_orbit_type('poe') or try_for_orbit_type('res')
-    if type:
-        return type
+def update_statevectors_using_local_folder(path, product_info, burst, *, force_type=None):
+    '''Retrieve the orbit statevectors of the given bursts using a local folder.
 
-    raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
+    Args
+        path: filesystem path to a folder containing .EOF files
+        product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
+        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
+        force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
+
+    Returns
+        str: the type of orbit found ('orbres' or 'orbpre')
+
+    Raises
+        FileNotFoundError: if no orbit file is found for the product_info
+    '''
+
+    def source(date, missionid, type):
+        file = search_valid_orbit_files_from_local_folder(path, (date, missionid), type)
+        if not file:
+            return None
+
+        return open(file, 'rb')
+
+    return _update_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
