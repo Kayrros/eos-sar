@@ -14,12 +14,10 @@ def test_S1_metadata():
     b = metadatas[0]
     assert b['swath'] == 'IW1'
     assert b['relative_burst_id'] == 309576
-    assert b['absolute_burst_id'] == 78648801
 
     b = metadatas[8]
     assert b['swath'] == 'IW1'
     assert b['relative_burst_id'] == 309584
-    assert b['absolute_burst_id'] == 78648809
 
 
 xmls_with_reference_bid = glob.glob('./tests/data/samples_ipf_39/*/*/*.xml')
@@ -33,9 +31,7 @@ def test_reference_burstids(xml):
     parsed = xmltodict.parse(xml_content)['product']['swathTiming']['burstList']['burst']
     for i, b in enumerate(metadatas):
         true_b = parsed[i]
-        true_absolute = int(true_b['burstId']['@absolute'])
         true_relative = int(true_b['burstId']['#text'])
-        assert b['absolute_burst_id'] == true_absolute
         assert b['relative_burst_id'] == true_relative
 
 
