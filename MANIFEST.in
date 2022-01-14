@@ -5,3 +5,4 @@ include CHANGELOG.md
 include LICENCE
 include README.md
 include requirements.txt
+include eos/products/sentinel1/_calibration.pyx

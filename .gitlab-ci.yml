@@ -1,5 +1,5 @@
 default:
-  image: python:3.8
+  image: python:3.9
 
 stages:
   - test
@@ -18,12 +18,23 @@ test:
   script:
     - pytest . --workers auto
 
+fakedeploy:
+  stage: test
+  before_script:
+    - pip install twine
+    - pip install cython numpy
+  script:
+    - python setup.py sdist
+    - python setup.py bdist_wheel
+    - pip install dist/*.tar.gz
+    - pip install dist/*.whl
+
 deploy:
   stage: deploy
   before_script:
     - pip install twine
-  script:
     - pip install cython numpy
+  script:
     - python setup.py sdist
     - python setup.py bdist_wheel
     - pip install dist/*.tar.gz
@@ -35,3 +46,4 @@ deploy:
       dist/*
   only:
     - tags
+
