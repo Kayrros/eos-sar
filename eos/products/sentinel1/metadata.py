@@ -4,7 +4,24 @@ import dateutil.parser
 import datetime
 import xmltodict
 import numpy as np
+import logging
+
 from eos.sar import const
+
+logger = logging.Logger(__name__)
+
+# time taken to go over one orbit
+# repeat cycle is 12 days, with 175 orbits per cycle
+N_orbits_per_cycle = 175
+T_orb = 12 * 24 * 3600 / N_orbits_per_cycle
+
+# These two constants were provided by (ESA)
+T_beam = 2.758273
+T_pre = 2.299849
+
+# compute a T_orb2 for which the number of bursts is an integer
+N_bursts_per_cycle = 375887
+T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
 def string_to_timestamp(s):
@@ -31,77 +48,9 @@ def corners_of_geolocation_grid_points_list(l, only_burst_id):
     return a, b, c, d
 
 
-def _compute_burst_id(o, i, b, first_burst):
-    """Compute the absolute/relative burst id and adds theses entries to the
-       provided dictionary.
-    The absolute burst id (+ subswath) provides a unique identifier for a
-    Sentinel 1 burst, while the relative burst id (+ subswath) provides an
-    identifier that is the same for each burst looking at similar footprints.
-
-    Parameters
-    ----------
-    o: dict
-       Metadata computed for the current burst.
-    i: dict
-       Data from the xml annotation file.
-    b: dict
-       Data of the current burst directly extracted from the xml annotation file.
-
-    Raises
-    ------
-    ValueError
-        In case mission_id in the provided dict is not S1A/S1B.
-    ValueError
-        In case the swath in the provided dict is not IW1/IW2/IW3.
-
-    Returns
-    -------
-    None.
+def _mid_burst_sensing_time_correction(o, first_burst_xml):
     """
-    # compute the orbit numbers
-    absolute_orbit_number = int(i['adsHeader']['absoluteOrbitNumber'])
-    mission_id = i['adsHeader']['missionId']
-    if mission_id == 'S1A':
-        relative_orbit_number = (absolute_orbit_number - 73) % 175 + 1
-    elif mission_id == 'S1B':
-        relative_orbit_number = (absolute_orbit_number - 27) % 175 + 1
-    else:
-        raise ValueError(f'Invalid mission_id {mission_id}')
-
-    # time taken to go over one orbit
-    # repeat cycle is 12 days, with 175 orbits per cycle
-    T_orb = 12 * 24 * 3600 / 175
-
-    # T_beam is sensing time between two bursts
-    # this value was obtained by subtracting the sensing time of two consecutive bursts
-    # and tweaking to fit the ground-truth burst id data
-    T_beam = 2.75827302
-
-    # T_pre is a time offset to account for the fact that the
-    # first burst of each swaths crosses the ascending node
-    # at different times (and might not at t=0)
-    if o['swath'] == 'IW1':
-        T_pre = 0.9
-    elif o['swath'] == 'IW2':
-        # > 0.9260
-        T_pre = 1.5
-    elif o['swath'] == 'IW3':
-        # > 1.89
-        # < 2.55
-        T_pre = 2.53
-    else:
-        raise ValueError(f"Invalid subswath {o['swath']}")
-
-    # compute the mid-burst sensing time
-    N = o['lines_per_burst']
-    PRF = o['azimuth_frequency']
-    # difference between the mid-burst time and the time at which the orbit crossed the ascending node
-    t_anx = float(b['azimuthAnxTime'])
-    # time at the middle of the burst
-    delta_b = t_anx + (N - 1) / (2 * PRF)
-    # subtract a short delay to align the swaths
-    delta_b -= T_pre
-
+    """
     # in the following, we have 3 slices (= 3 products), 3 bursts per slice
     # the second slice crosses the equator, somewhere inside the second burst
     # ================
@@ -168,11 +117,12 @@ def _compute_burst_id(o, i, b, first_burst):
     lon_at_anx = lambda orbit: (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
     # since the longitude difference between the swaths is +/-1° the longitude of swath 2,
     # we don't have to correct it since the margin of error will be around 10°
-    expected_lon = lon_at_anx(relative_orbit_number)
+    expected_lon = lon_at_anx(o['relative_orbit_number'])
 
     # the current orbit is wrong if
     # 1. we are close to the next ANX
     # 2. the orbit number was not yet incremented (= expected_lon is way off)
+    t_anx = o['azimuth_anx_time']
     close_to_next_anx = abs(t_anx - T_orb) < 50
     orbit_looks_off = abs(current_lon - expected_lon) > angle_per_orbit / 2
 
@@ -188,21 +138,60 @@ def _compute_burst_id(o, i, b, first_burst):
     # - then we can check case 1. by checking whether the first burst of the product
     #   was already after the next anx
     # this strategy avoid having to rely on precise timings (with timings from other swaths to consider)
-    fanx = float(first_burst['azimuthAnxTime'])
+    fanx = float(first_burst_xml['azimuthAnxTime'])
     if not (close_to_next_anx and orbit_looks_off) and fanx > T_orb:
-        delta_b -= T_orb
+        return -T_orb
+    else:
+        return 0
 
     # NOTE: if we completed an orbit during the acquisition, we would need to adjust the orbit numbers
     #       this is only required because of the relative_orbit_number
     #       however, the start of orbit 1 is above the sea so we can ignore this case for now
 
-    # add the time taken to arrive to the current orbit
-    delta_t_b_rel = delta_b + (relative_orbit_number - 1) * T_orb
-    delta_t_b_abs = delta_b + (absolute_orbit_number - 1) * T_orb
+
+def compute_burst_id(burst, first_burst_xml):
+    """Compute relative and absolute burst IDs.
+
+    The absolute burst id (+ subswath) provides a unique identifier for a
+    Sentinel-1 burst, while the relative burst id (+ subswath) provides an
+    identifier that is the same for each burst looking at similar footprints.
+
+    This function implements the formulas described in section 9.25 of the
+    Sentinel-1 Level 1 Detailed Algorithm Definition (page 9-39).
+
+    https://sentinels.copernicus.eu/documents/247904/4629273/Sentinel-1-Level-1-Detailed-Algorithm-Definition-v2-3.pdf/3ca88b95-770a-37c3-1b45-0031869d344a
+
+    Parameters
+    ----------
+    burst: dict
+       Metadata of the burst.
+
+    Returns
+    -------
+    int: relative burst id
+    int: absolute burst id
+    """
+    # orbit numbers, ANX time and burst parameters
+    relative_orbit_number = burst['relative_orbit_number']
+    absolute_orbit_number = burst['absolute_orbit_number']
+    anx_time = burst['anx_time']
+    n = burst['lines_per_burst']
+    pri = burst['pri']
+    burst_sensing_time = burst['burst_sensing_time'] + _mid_burst_sensing_time_correction(burst, first_burst_xml)
+
+    # mid-burst sensing time
+    t_b = burst_sensing_time + pri * (n - 1) / 2
+
+    # time distance between t_b and the first ANX time in the current mission cycle
+    delta_t_b_rel = t_b - anx_time + (relative_orbit_number - 1) * T_orb
+    delta_t_b_abs = delta_t_b_rel + (absolute_orbit_number - relative_orbit_number) * T_orb2
 
     # subtract the preamble and divide by the beam cycle time to obtain the burst ids
-    o['relative_burst_id'] = 1 + math.floor(delta_t_b_rel / T_beam)
-    o['absolute_burst_id'] = 1 + math.floor(delta_t_b_abs / T_beam)
+    relative_burst_id = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam) % N_bursts_per_cycle
+    absolute_burst_id = 1 + math.floor((delta_t_b_abs - T_pre) / T_beam)
+
+    return relative_burst_id, absolute_burst_id
+
 
 def extract_common_metadata(xml):
     """Extract common metadata for all the swath.
@@ -223,15 +212,32 @@ def extract_common_metadata(xml):
     i = xmltodict.parse(xml)['product']  # input full dictionary (huge)
     o = {}  # output dictionary with only the stuff we need (tiny)
 
+    # compute orbit numbers
+    mission_id = i['adsHeader']['missionId']
+    absolute_orbit_number = int(i['adsHeader']['absoluteOrbitNumber'])
+
+    if mission_id == 'S1A':
+        relative_orbit_number = (absolute_orbit_number - 73) % 175 + 1
+    elif mission_id == 'S1B':
+        relative_orbit_number = (absolute_orbit_number - 27) % 175 + 1
+    else:
+        raise ValueError(f'Invalid mission_id {mission_id}')
+
+    o['mission_id'] = mission_id
+    o['absolute_orbit_number'] = absolute_orbit_number
+    o['relative_orbit_number'] = relative_orbit_number
+
+
     d = i['imageAnnotation']['imageInformation']
     o['azimuth_frequency'] = float(d['azimuthFrequency'])
     o['slant_range_time'] = float(d['slantRangeTime'])
+    o['anx_time'] = string_to_timestamp(d['ascendingNodeTime'])
 
     d = i['swathTiming']
     o['lines_per_burst'] = int(d['linesPerBurst'])
     o['samples_per_burst'] = int(d['samplesPerBurst'])
 
-    # subswath of the burst
+    # subswath
     o['swath'] = i['adsHeader']['swath']
 
     d = i['generalAnnotation']['productInformation']
@@ -343,26 +349,38 @@ def extract_bursts_metadata(xml, burst_ids=None):
         end_valid = start_valid + h / o['azimuth_frequency']
         burst['burst_times'] = (start, start_valid, end_valid)
 
-        # make the burst roi coordinates relative the the full tiff image
+        # make the burst roi coordinates relative the the full swath
         y += bid * o['lines_per_burst']
         burst['burst_roi'] = (x, y, w, h)
 
         burst['azimuth_anx_time'] = float(b['azimuthAnxTime'])
+        burst['burst_sensing_time'] = string_to_timestamp(b['sensingTime'])
 
-        corners = corners_of_geolocation_grid_points_list(
-            gcp, only_burst_id=bid)
+        corners = corners_of_geolocation_grid_points_list(gcp,
+                                                          only_burst_id=bid)
         burst['approx_geom'] = [(float(c['longitude']),
                                  float(c['latitude'])) for c in corners]
         burst['approx_altitude'] = [float(c['height']) for c in corners]
 
         # compute the burst id
-        _compute_burst_id(burst, i, b, dictbursts[0])
+        relative_burst_id, absolute_burst_id = compute_burst_id(burst, first_burst_xml=dictbursts[0])
 
-        burst['bsid'] = f'{burst["relative_burst_id"]}_{burst["swath"]}'
+        if 'burstId' in b:  # True for IPF >= 3.40
+            esa_relative_burst_id = int(b['burstId']['#text'])
+            if relative_burst_id != esa_relative_burst_id:
+                logger.warning('relative_burst_id mismatch (xml:{}, computed:{})'
+                        .format(esa_relative_burst_id, relative_burst_id))
+            # don't compare the absolute burst id since our definition is different than ESA's one
+
+        burst['relative_burst_id'] = relative_burst_id
+        burst['absolute_burst_id'] = absolute_burst_id
+        swath = burst['swath']
+        burst['bsid'] = f'{relative_burst_id}_{swath}'
 
         bursts.append(burst)
 
     return bursts
+
 
 def extract_burst_metadata(xml, burst_id):
     """Extract metadata for a single burst.
