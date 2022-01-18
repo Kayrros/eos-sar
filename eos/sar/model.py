@@ -185,7 +185,6 @@ def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
         alt - dem at localized point Loc(row, col, alt) .
 
     """
-    # TODO remove dependency on multidem elevation (io will be faster)
     lon, lat, _ = sensor_model.localization(row, col, alt)
     return alt - elev(lon, lat)
 
