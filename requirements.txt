@@ -5,7 +5,6 @@ xmltodict
 lxml
 pyproj
 opencv-python-headless
-multidem
 shapely
 scipy
 cython
