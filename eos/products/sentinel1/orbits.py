@@ -1,7 +1,6 @@
 import os
 import io
 import glob
-import functools
 
 from lxml import etree
 
@@ -55,9 +54,13 @@ def select_orbit_files_from_filelist(files, date, missionid):
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
 
-@functools.lru_cache
+files_cache = {}
+
 def _list_files_from_s3(client_s3, bucket, prefix):
     paginator = client_s3.get_paginator("list_objects_v2")
+
+    if prefix in files_cache:
+        return files_cache[prefix]
 
     files = []
     for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
@@ -67,6 +70,7 @@ def _list_files_from_s3(client_s3, bucket, prefix):
             key = obj['Key']
             files.append(key)
 
+    files_cache[prefix] = files
     return files
 
 
