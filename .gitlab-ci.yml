@@ -16,6 +16,7 @@ test:
     - pip install -e ".[test]"
     - pip install pytest-parallel
   script:
+    - pip install multidem
     - pytest . --workers auto
 
 fakedeploy:
