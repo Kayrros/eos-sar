@@ -181,6 +181,7 @@ class Test_Resample_Stitch:
         assert resamp_h == 100
         assert resamp_w == 150
         assert np.isnan(resampled_secondary_array).sum() / resampled_secondary_array.size < 0.05
+        assert resampled_secondary_array.dtype == np.complex64
 
         ################### If you wish to resample the amplitude
 
@@ -193,6 +194,11 @@ class Test_Resample_Stitch:
         assert resamp_h == 100
         assert resamp_w == 150
         assert np.isnan(resampled_secondary_amplitude).sum() / resampled_secondary_amplitude.size < 0.05
+        assert resampled_secondary_amplitude.dtype == np.float32
+
+        # make sure that the abs of the resampled array is close to the resampling of the abs
+        #   the difference is actually quite large, because of the deramping/reramping
+        assert np.abs(np.abs(resampled_secondary_array) - resampled_secondary_amplitude).mean() < 10
 
 
         # you can reset the resampler in case burst resampling is needed
@@ -205,30 +211,33 @@ class Test_Resample_Stitch:
         
         image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
 
-        # construct primary swath model
-        primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
-            primary_bursts_meta)
+        corrections = {
+            'bistatic_correction': True,
+            'apd_correction': True,
+            'intra_pulse_correction': True,
+        }
 
-        x, y, alt, crs = dem 
-        
+        x, y, alt, crs = dem
+
+        # construct primary swath model
+        primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(primary_bursts_meta)
+
         # If you wish to deburst a "crop" defined by a roi in the swath coordinates
         roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
 
-        # deburst
+        # compute read/write rois
         burst_ids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
             roi_in_swath)
 
         # construct burst models with appropriate corrections
-        primary_burst_models = [eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
-                    primary_bursts_meta[bid], bistatic_correction=True,
-                    full_bistatic_correction_reference=ref_metas[0],
-                    apd_correction=True,
-                    intra_pulse_correction=True) for bid in burst_ids]
+        primary_burst_models = [s1.proj_model.burst_model_from_burst_meta(
+                    primary_bursts_meta[bid], full_bistatic_correction_reference=ref_metas[0],
+                    **corrections) for bid in burst_ids]
 
-        rows_no_correc_global, cols_no_correc_global,\
-        rows_correc_global, cols_correc_global, pts_in_burst_mask,\
-            burst_resampling_matrices = \
-             eos.products.sentinel1.regist.primary_registration_estimation(
+        # estimate the matrices and resample
+        rows_no_correc_global, cols_no_correc_global, \
+            rows_correc_global, cols_correc_global, pts_in_burst_mask, \
+            burst_resampling_matrices = s1.regist.primary_registration_estimation(
                 primary_swath_model, primary_burst_models, x, y, alt, crs, burst_ids)
 
 
@@ -237,24 +246,22 @@ class Test_Resample_Stitch:
                 read_rois_no_correc, burst_ids, primary_swath_model,
                 primary_swath_model, burst_resampling_matrices,
                 primary_bursts_meta, image_readers[0],
-                write_rois_no_correc, out_shape,
-                get_complex=True)
-        
-        # construct primary swath model
-        secondary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
-            secondary_bursts_meta)
+                write_rois_no_correc, out_shape)
 
-        secondary_burst_models = [eos.products.sentinel1.proj_model.burst_model_from_burst_meta(
-                    secondary_bursts_meta[bid], bistatic_correction=True,
-                    full_bistatic_correction_reference=ref_metas[1],
-                    apd_correction=True,
-                    intra_pulse_correction=True) for bid in burst_ids]
+        # construct secondary swath model and burst models
+        secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(secondary_bursts_meta)
 
+        secondary_burst_models = [s1.proj_model.burst_model_from_burst_meta(
+                    secondary_bursts_meta[bid], full_bistatic_correction_reference=ref_metas[1],
+                    **corrections) for bid in burst_ids]
+
+        # estimate the matrices and resample
         burst_resampling_matrices = \
-            eos.products.sentinel1.regist.secondary_registration_estimation(
-                secondary_swath_model, secondary_burst_models,  x, y, alt, crs,
-                burst_ids, pts_in_burst_mask, primary_swath_model,  rows_no_correc_global, 
-                cols_no_correc_global, global_rows_fit=True )
+            s1.regist.secondary_registration_estimation(
+                secondary_swath_model, secondary_burst_models, x, y, alt, crs,
+                burst_ids, pts_in_burst_mask, primary_swath_model, rows_no_correc_global,
+                cols_no_correc_global, global_rows_fit=True)
+
         secondary_debursted_crop, read_rois_correc, resamplers = \
             eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
                 read_rois_no_correc, burst_ids, primary_swath_model,
