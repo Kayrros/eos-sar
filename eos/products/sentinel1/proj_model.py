@@ -53,9 +53,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  azimuth_frequency,
                  width,
                  height,
-                 wavelength, 
+                 wavelength,
                  slant_range_time,
-                 samples_per_burst,
                  state_vectors,
                  degree=11,
                  pri=None,
@@ -89,8 +88,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             wavelength in m 
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
-        samples_per_burst : int
-            Number of columns per burst in the sentinel1 raster.
         state_vectors : Iterable of dict
             List of state vectors (time, position, velocity).
         degree : int, optional
@@ -133,7 +130,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.wavelength = wavelength  # for TopoCorrection
 
         self.slant_range_time = slant_range_time
-        self.samples_per_burst = samples_per_burst
         self.orbit = orbit.Orbit(state_vectors, degree)
         # processing params
         self.pri = pri
@@ -156,7 +152,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         # set some params necessary for processing
         self.azt_init = first_row_time
         self.approx_geom = approx_geom
-            
+
     def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None):
         """Projects a 3D point into the image coordinates.
 
@@ -504,11 +500,10 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                          approx_geom,
                          range_frequency,
                          azimuth_frequency,
-                         burst_roi[2], 
-                         burst_roi[3], 
-                         wavelength, 
+                         burst_roi[2],
+                         burst_roi[3],
+                         wavelength,
                          slant_range_time,
-                         samples_per_burst,
                          state_vectors,
                          degree,
                          pri,
@@ -523,6 +518,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         # specific to current burst
         self.burst_times = burst_times
         self.burst_roi = roi.Roi.from_roi_tuple(burst_roi)
+        self.samples_per_burst = samples_per_burst
 
         # for _intra_pulse
         self.chirp_rate = chirp_rate
@@ -634,8 +630,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  range_frequency,
                  azimuth_frequency,
                  slant_range_time,
-                 samples_per_burst,
-                 lines_per_burst,
                  wavelength,
                  bursts_times,
                  bursts_rois,
@@ -657,12 +651,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             Azimuth time sampling frequency.
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
-        samples_per_burst : int
-            Number of columns per burst in the sentinel1 raster.
-        lines_per_burst : int
-            Number of lines per burst in the sentinel1 raster. 
         wavelength: float
-            wavelength in m 
+            wavelength in m
         bursts_times : list of (3,) tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
             start/end_valid denote the azimuth time of the
@@ -723,7 +713,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          h, 
                          wavelength, 
                          slant_range_time,
-                         samples_per_burst,
                          state_vectors,
                          degree,
                          pri,
@@ -734,8 +723,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          False,  
                          max_iterations,
                          tolerance)
-
-        self.lines_per_burst = lines_per_burst
 
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times
@@ -953,7 +940,7 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
         Model for projection and localization inside the swath.
 
     """
-    # TODO samples per burst is not constant for different acquisitions  
+    # TODO: aggregate state_vectors as well
     bursts_times = [b['burst_times'] for b in bursts_metadata]
     bursts_rois = [b['burst_roi'] for b in bursts_metadata]
     bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]
@@ -964,16 +951,13 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     assert alleq('range_frequency')
     assert alleq('azimuth_frequency')
     assert alleq('slant_range_time')
-    assert alleq('lines_per_burst')
     assert alleq('wave_length')
     assert alleq('pri')
     assert alleq('rank')
-    
+
     return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'],
                                bursts_metadata[0]['azimuth_frequency'],
                                bursts_metadata[0]['slant_range_time'],
-                               bursts_metadata[0]['samples_per_burst'],
-                               bursts_metadata[0]['lines_per_burst'],
                                bursts_metadata[0]['wave_length'],
                                bursts_times,
                                bursts_rois,
@@ -983,10 +967,11 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
                                rank=bursts_metadata[0].get('rank'),
                                **kwargs)
 
-#TODO rethink models structure, taking into account that some things might 
-#not be constant for the whole swath for ex. samples per burst 
+#TODO rethink models structure, taking into account that some things might
+#not be constant for the whole swath for ex. samples per burst
 # ( which is btw weird to include in the basemodel)
-# so basically, do sliceAssembly later, 
+# so basically, do sliceAssembly later,
+# -> JA: I removed samples_per_burst and lines_per_burst, it wasn't used for the swath model
 
 
 
