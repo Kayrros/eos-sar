@@ -83,7 +83,7 @@ class SRTM4Source(DEMSource):
         return srtm4.srtm4(lons, lats)
 
     def crop(self, bounds):
-        raise NotImplementedError # TODO
+        return srtm4.crop(bounds, datum="ellipsoidal")
 
 
 class MultidemSource(DEMSource):
