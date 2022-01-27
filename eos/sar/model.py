@@ -2,10 +2,12 @@
 
 import abc
 import numpy as np
-from multidem import elevation
 from eos.sar.orbit import Orbit
 from eos.sar import utils, roi
+import eos.dem
 
+# TODO: change the functions so that they take a DemSource as parameter
+elevation = eos.dem.get_any_source().elevation
 
 class SensorModel(abc.ABC):
     """SensorModel is an abstract class that defines the expected method of\
@@ -183,7 +185,6 @@ def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
         alt - dem at localized point Loc(row, col, alt) .
 
     """
-    # TODO remove dependency on multidem elevation (io will be faster)
     lon, lat, _ = sensor_model.localization(row, col, alt)
     return alt - elev(lon, lat)
 
