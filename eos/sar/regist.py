@@ -2,8 +2,8 @@
 import numpy as np
 import cv2
 import abc
-import multidem
 from eos.sar import utils
+import eos.dem
 
 def affine_transformation(src, dst):
     """Estimate a 2D affine transform from a list of point correspondences.
@@ -65,19 +65,15 @@ def affine_transformation(src, dst):
     return A
 
 
-def dem_points(geometry, source="SRTM30", datum="ellipsoidal",
-               outfile=None):
+def dem_points(geometry, dem=None, outfile=None):
     """Query dem points.
 
     Parameters
     ----------
     geometry : list of tuple (lon,lat)
         Geometry of the primary image, one point per corner of the image
-    source : str
-        DEM source "SRTM30" (default), "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI"
-    datum : str
-        "ellipsoidal" (height above WGS84 ellipsoid, default), or
-        "orthometric" (height above EGM96 geoid).
+    dem : eos.dem.DemSource
+        DEM source (if None, then eos.dem.get_any_source is used)
     outfile : string, optional
         Path to save the dem if passed as argument.
         The default is None.
@@ -94,34 +90,24 @@ def dem_points(geometry, source="SRTM30", datum="ellipsoidal",
         Raster transform to crs coordinates
     crs : Any crs type accepted by pyproj
         crs of the returned points.
-
-    Notes
-    -----
-    Due to multidem current implementation, only datum == "ellipsoidal"
-    is accepted at the moment
-
     """
-    assert datum == "ellipsoidal", "Multidem\
-        only supports crs for ellipsoidal datum"
+    if dem is None:
+        dem = eos.dem.get_any_source()
     # geometry of the query
     lons = [P[0] for P in geometry]
     lats = [P[1] for P in geometry]
     bounds = (min(lons), min(lats), max(lons), max(lats))
     # query for dem
-    raster, transform, crs = multidem.crop(bounds,
-                                           source=source,
-                                           datum=datum)
+    raster, transform, crs = dem.crop(bounds)
     if outfile:
         # save dem
-        multidem.write_crop_to_file(raster, transform, crs, outfile)
+        eos.dem.write_crop_to_file(raster, transform, crs, outfile)
 
     x, y = utils.raster_xy_grid(raster.shape, transform, px_is_area=True)
     return x, y, raster, transform, crs
 
 def get_registration_dem_pts(primary_model, sampling_ratio=0.01, 
-                             dem_source='SRTM30',
-                             dem_datum='ellipsoidal', 
-                             outfile=None): 
+                             dem=None, outfile=None): 
     """
     Get pts sampled on the dem to be used for the registration. 
 
@@ -133,12 +119,8 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
         The sampling ratio used to sample points from the dem.
         Only the sampled points will be used for the registration.
         The default is 0.01.
-    dem_source : str, optional
-        DEM source "SRTM30", "TDM90", "SRTM90" or "SRTM90-CGIAR-CSI".
-        The default is 'SRTM30'.
-    dem_datum : str, optional
-        "ellipsoidal" (height above WGS84 ellipsoid), or
-        "orthometric" (height above EGM96 geoid). The default is 'ellipsoidal'.
+    dem : eos.dem.DemSource
+        DEM source (if None, then eos.dem.get_any_source is used)
     outfile : string, optional
          Path to save the dem if passed as argument.
          The default is None.
@@ -159,8 +141,7 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
     
     refined_geom, alts, mask = primary_model.get_approx_geom(margin=10)
     # get dem points
-    x, y, raster, transform, crs = dem_points(refined_geom, source=dem_source,
-                                              datum=dem_datum, outfile=outfile )
+    x, y, raster, transform, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
     
     # you can mask some pixels to speed up the projection
     mask = np.random.binomial(n=1, p=sampling_ratio, size=x.shape).astype(bool) 

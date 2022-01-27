@@ -54,9 +54,7 @@ margin=10
 refined_geom, alts, mask = primary_swath_model.get_approx_geom(margin=margin)
 
 # get dem points
-x, y, raster, transform, crs = eos.sar.regist.dem_points(refined_geom,
-                                                         source='SRTM30',
-                                                         datum='ellipsoidal')
+x, y, raster, transform, crs = eos.sar.regist.dem_points(refined_geom)
 #%% define the roi in the swath 
 # define the roi in the primary swath
 # Here, if you set a region of interest within the swath
