@@ -12,7 +12,7 @@ with open('requirements.txt') as f:
 
 setuptools.setup(
     name='kayrros-eos-sar',
-    version='0.5.1',
+    version='0.6.0',
     description='',
     long_description=long_description,
     author='Kayrros',
