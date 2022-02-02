@@ -284,3 +284,63 @@ class Sentinel1Calibrator:
             range_noise *= azimuth_noise[:, None]
 
         return range_noise
+
+
+class CalibrationReader:
+    """Class to calibrate after reading the data"""
+
+    def __init__(self, reader, calibrator: Sentinel1Calibrator,
+                 method='sigma', dont_clip_noise=False):
+        """
+        Constructor.
+
+        Parameters
+        ----------
+        reader : any reader object (has .read(index, window))
+            Reader to the tiff of the product.
+        calibrator : Sentinel1Calibrator
+            Calibrator on the same product (same swath/polarization).
+        method : str, optional
+            Calibration method (either "sigma", "gamma", "beta"). The default is 'sigma'.
+        dont_clip_noise : boolean, optional
+            if true, during noise calibration, values are not clipped to 0 but stay positive
+            this is what happens in the implementation of SNAP. The default is False.
+
+        Returns
+        -------
+        None.
+
+        """
+        self.reader = reader
+        self.calibrator = calibrator
+        self.method = method
+        self.dont_clip_noise = dont_clip_noise
+
+    def read(self, index, window):
+        """
+        Read and calibrate the data.
+
+        Parameters
+        ----------
+        index : int
+            Band index.
+        window : tuple
+            ((row, row+h), (col, col+w)).
+
+        Returns
+        -------
+        ndarray
+            Array read and calibrated.
+
+        """
+        array = self.reader.read(index, window=window)
+
+        (y, yh), (x, xw) = window
+        h = yh - y
+        w = xw - x
+        window = y, x, h, w
+        self.calibrator.calibrate_inplace(array, window, self.method,
+                                          self.dont_clip_noise)
+
+        # undo the pow2 from the calibration
+        return array / np.sqrt(1e-9 + np.abs(array))
