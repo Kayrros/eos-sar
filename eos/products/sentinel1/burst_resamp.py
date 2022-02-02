@@ -1,7 +1,7 @@
 """Resamples a complex Sentinel1 burst."""
 import numpy as np
 
-from eos.sar import regist, roi
+from eos.sar import regist, roi, io
 from . import doppler_info
 
 def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
@@ -274,3 +274,112 @@ class Sentinel1BurstResample(regist.SarResample):
 
         return dst_array * reramping_func.reshape(self.dst_shape)
 
+
+def get_read_roi_src_and_resampler(
+        burst_resampling_matrix, burst_roi_dst, read_roi_dst, burst_roi_src,
+        burst_meta_src, margin=5):
+    """
+    Use the burst resampling matrix to get the roi in the source where we need to read\
+    and the associated resampler. src and dst refer to source and destination,\
+        because the function is called in a context where a source region needs
+        to be resampled onto a destination region.
+
+    Parameters
+    ----------
+    burst_resampling_matrix : np.ndarray 3x3
+        3x3 affine (inverse, i.e. from destination to source) resampling matrix of the burst.
+    burst_roi_dst : eos.sar.roi.Roi
+        Roi containing the location of the burst in the tiff for the destination grid.
+    read_roi_dst : eos.sar.roi.Roi
+        Roi containing coordinates of the region under study in the tiff of the destination grid.
+    burst_roi_src : eos.sar.roi.Roi
+        Roi containing the location of the burst in the tiff for the source grid.
+    burst_meta_src : dict
+        Metadata of the burst in the source product.
+    margin : int, optional
+        Pixel safety margin to be applied after warping the destination region. The default is 5.
+
+    Returns
+    -------
+    read_roi_src : eos.sar.roi.Roi
+        Roi containing coordinates of the region under study in the tiff of the source grid. It
+        is obtained after warping read_roi_dst and adding a safety margin.
+    resampler : Sentinel1BurstResample
+        Resampler that can be directly applied on the array read using read_roi_src.
+
+    """
+    # get the roi w.r.t. burst origin
+    col_dst, row_dst, w_dst, h_dst = burst_roi_dst.to_roi()
+    dst_roi_in_burst = read_roi_dst.translate_roi(-col_dst, -row_dst)
+
+    # warp the roi
+    col_src, row_src, w_src, h_src = burst_roi_src.to_roi()
+    src_roi_in_burst = dst_roi_in_burst.warp_valid_roi(
+        (h_dst, w_dst), (h_src, w_src), burst_resampling_matrix, margin=margin)
+
+    # burst resampler
+    resampler = burst_resample_from_meta(
+        burst_meta_src, dst_burst_shape=(h_dst, w_dst),
+        matrix=burst_resampling_matrix
+    )
+
+    # set to resample within the burst
+    resampler.set_inside_burst(dst_roi_in_burst, src_roi_in_burst)
+
+    # read_roi in src burst
+    read_roi_src = src_roi_in_burst.translate_roi(col_src, row_src)
+
+    return read_roi_src, resampler
+
+
+def warp_roi_read_resample(
+        burst_resampling_matrix, burst_roi_dst, read_roi_dst, burst_roi_src,
+        burst_meta_src, image_reader, get_complex=True, margin=5):
+    """
+    Warp the roi to the source frame, read, then resample to the destination frame.
+
+    Parameters
+    ----------
+    burst_resampling_matrix : np.ndarray 3x3
+        3x3 affine (inverse, i.e. from destination to source) resampling matrix of the burst.
+    burst_roi_dst : eos.sar.roi.Roi
+        Roi containing the location of the burst in the tiff for the destination grid.
+    read_roi_dst : eos.sar.roi.Roi
+        Roi containing coordinates of the region under study in the tiff of the destination grid.
+    burst_roi_src : eos.sar.roi.Roi
+        Roi containing the location of the burst in the tiff for the source grid.
+    burst_meta_src : dict
+        Metadata of the burst in the source product.
+    image_reader : opened rasterio dataset or any object supporting windowed reading \
+        `image_reader.read(1, window=((row, row+h), (col, col+w)))`
+        Reader on the source tiff.
+    get_complex : boolean, optional
+        If True, the complex array is read and resampled. The default is True.
+    margin : int, optional
+        Pixel safety margin to be applied after warping the destination region. The default is 5.
+
+    Returns
+    -------
+    burst_array_resamp : ndarray
+        Resampled source array onto the destination region.
+    read_roi_src : eos.sar.roi.Roi
+        Roi containing coordinates of the region under study in the tiff of the source grid. It
+        is obtained after warping read_roi_dst and adding a safety margin.
+    resampler : Sentinel1BurstResample
+        Resampler that was applied on the array read using read_roi_src.
+    """
+    # this is in the only case you just need to read the rois
+    if burst_resampling_matrix is None:
+        return io.read_window(image_reader, read_roi_dst, get_complex),\
+            read_roi_dst, None
+
+    read_roi_src, resampler = get_read_roi_src_and_resampler(
+        burst_resampling_matrix, burst_roi_dst, read_roi_dst, burst_roi_src,
+        burst_meta_src, margin)
+
+    padded_burst_array = io.read_window(
+        image_reader, read_roi_src, get_complex)
+
+    burst_array_resamp = resampler.resample(padded_burst_array)
+
+    return burst_array_resamp, read_roi_src, resampler
