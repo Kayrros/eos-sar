@@ -167,7 +167,7 @@ def search_valid_orbit_files_from_local_folder(path, product_info, type):
     try:
         files = select_orbit_files_from_filelist(files, date, missionid)
     except FileNotFoundError:
-        pass
+        return None
 
     return files[-1]
 
