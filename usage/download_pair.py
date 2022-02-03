@@ -577,7 +577,9 @@ class bulk_downloader:
         for success_file in self.success:
             fname = success_file['file']
             if os.path.splitext(fname)[-1] == ".zip":
-                unzip(os.path.basename(fname), ".")
+                unzip(os.path.join(self.out_dir, os.path.basename(fname))
+                        , self.out_dir)
+                
 
 def remove_file(path_to_file):
     if os.path.exists(path_to_file):
