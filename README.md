@@ -1,23 +1,46 @@
 # eos-sar
 
-This package provides access to some generic sar processing algorithms. 
+This package provides access to some generic SAR (Synthetic Aperture Radar) processing algorithms. 
 
-Currently, algorithms specific to **Sentinel1** bursts have been implemented. 
+Currently, algorithms specific to **Sentinel1 SLC** in **IW** mode have been implemented. 
 
-Check the usage folder for some examples. 
+### Requirements & Installation
+To install the package, first install `cython` and `numpy`. You can run: 
+	
+	pip install cython numpy
+	pip install -e .
 
-In order to run the examples in the usage folder, you need to set the follwing 
-environment variables: 
+Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. Therefore, make sure that you either install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4), which is an open source alternative providing acess to SRTM90 data.  If you wish to use another dem source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a dem.
 
-* AWS_ACCESS_KEY_ID = "YOUR CREDENTIALS"
-* AWS_SECRET_ACCESS_KEY = "YOUR CREDENTIALS"
-* AWS_DEFAULT_REGION = kayrros
-* AWS_S3_ENDPOINT = s3.kayrros.org
+Automatic download of Sentinel-1 SLC data is not provided in this package. You can use [ASF](https://search.asf.alaska.edu/#/) to find and download the data.
 
-Each file in the usage folder demonstrates a different application: 
+As for the precise or restituted orbit files, automatic querying and download for a product is not provided in this package. Another Kayrros package for handling orbit files may be made public. 
 
-* burst_physical_sensor_model.py: Shows the usage of the physical sensor model for projection and localization in a Sentinel-1 burst. 
-* burst_registration.py: Shows the registration of a secondary image burst onto a primary image burst. 
-* burst_registration_inside.py: Shows the registration of a crop inside a secondary image burst onto a corresponding crop inside a primary image burst. 
-* single_image_debursting.py: Shows the debursting of a single primary image. It is possible to define a region of interest (a crop) inside the swath, and only this region will be read and debursted. 
-* secondary_image_debursting.py: Shows the debursting of a secondary image after it has been resampled burst by burst onto a primary image. This processing can also be restricted on a region of interest(a crop). 
+### Usage
+
+Check the usage folder for a tutorial. The tutorial corresponds to performing an interferogram (among other things) on data spanning an earthquake taking place at [January 7 2022: M 6.6 - 113 km SW of Jinchang, China](https://sarviews-hazards.alaska.edu/Event/e2dfcb22-e1a4-43d8-a17e-c6b175849463).
+
+Before running the tutorial, the necessary data must first be downloaded, so you can simply run this in a shell: 
+	
+	cd usage
+	mkdir tutorial
+	cd tutorial
+	python ../download_pair.py
+
+A *data* folder will be created containing the safes and the associated orbit files. 
+
+Then, you can check the file `tutorial.ipynb` or `tutorial.py`. The file is divided in code cells (similar to Matlab).
+
+The features shown in the tutorial are listed below: 
+
+- Physical sensor model for projection and localization in a Sentinel-1 image. 
+- Reading/ Calibration of S-1 data.
+- Registration/ resampling/ debursting of a secondary image onto a primary image. The processing can be restricted to a region of interest.
+- Interferogram formation, orbital and topographic phase estimation and removal, coherence estimation.
+
+### Tests 
+
+Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests.  Currently, only local tests will run and others will fail if you don't have these credentials. To run the tests locally, we use `pytest`: 
+
+	pip install pytest 
+	pytest .

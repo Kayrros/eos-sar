@@ -1,9 +1,6 @@
 import os
 import re
-import warnings
 import rasterio
-import botocore
-import boto3
 from urllib.parse import urlparse
 import numpy as np
 
@@ -32,33 +29,45 @@ def open_image(path, profile_name=None, endpoint_url=None,
         opened image.
 
     """
-    # try to use the given profile_name
-    if profile_name:
-        session = rasterio.session.AWSSession(profile_name=profile_name,
-                                              requester_pays=requester_pays)
+    if path.startswith('s3://'):
+        # try except statement to avoid weird rasterio error
+        # in the absence of boto3
+        try:
+            import boto3
+        except ImportError:
+            print("You need to have boto3 installed to read from s3 bucket")
+            return None
+        # try to use the given profile_name
+        if profile_name:
+            session = rasterio.session.AWSSession(profile_name=profile_name,
+                                                  requester_pays=requester_pays)
+    
+        # if the profile is not given, rely on environment variables
+        elif 'AWS_ACCESS_KEY_ID' in os.environ:
+            session = rasterio.session.AWSSession(
+                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                    region_name=os.environ["AWS_DEFAULT_REGION"],
+                    requester_pays=requester_pays)
+            endpoint_url = endpoint_url or os.environ["AWS_S3_ENDPOINT"]
+    
+        # last chance
+        else:
+            session = rasterio.session.AWSSession(requester_pays=requester_pays)
 
-    # if the profile is not given, rely on environment variables
-    elif 'AWS_ACCESS_KEY_ID' in os.environ:
-        session = rasterio.session.AWSSession(
-                aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-                aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                region_name=os.environ["AWS_DEFAULT_REGION"],
-                requester_pays=requester_pays)
-        endpoint_url = endpoint_url or os.environ["AWS_S3_ENDPOINT"]
+        env = rasterio.Env(session=session)
+        if endpoint_url:
+            if endpoint_url.startswith(('http://', 'https://')):
+                expr = re.match('^https?://', endpoint_url).group()
+                endpoint_url = endpoint_url.replace(expr, '')
+            env.options['AWS_S3_ENDPOINT'] = endpoint_url
 
-    # last chance
     else:
-        session = rasterio.session.AWSSession(requester_pays=requester_pays)
-
-    env = rasterio.Env(session=session)
-    if endpoint_url:
-        if endpoint_url.startswith(('http://', 'https://')):
-            expr = re.match('^https?://', endpoint_url).group()
-            endpoint_url = endpoint_url.replace(expr, '')
-        env.options['AWS_S3_ENDPOINT'] = endpoint_url
+        env = rasterio.Env()
 
     with env:
         image_reader = rasterio.open(path)
+
     return image_reader
 
 def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
@@ -87,6 +96,7 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
 
     """
     if xml_path.startswith('s3://'):
+        import boto3
         s3_client = None
 
         # try to use the given profile_name

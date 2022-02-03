@@ -8,4 +8,4 @@ opencv-python-headless
 shapely
 scipy
 cython
-scipy
+rasterio
