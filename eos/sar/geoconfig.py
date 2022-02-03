@@ -141,7 +141,7 @@ def get_geom_config(primary_model, secondary_models, grid_size_col=20,
     num_points = len(rows)
 
     # coordinates in image to az time and range (for later)
-    azt, rng = primary_model.to_azt_rng(rows, cols)
+    azt, _ = primary_model.to_azt_rng(rows, cols)
 
     # geometric config parameters estim start
     # localize points on ellipsoid
@@ -173,15 +173,16 @@ def get_geom_config(primary_model, secondary_models, grid_size_col=20,
     for sid, secondary_model in enumerate(secondary_models):
         # use projection to get position of closest approach on secondary orbit
         rows_sec, cols_sec, _ = secondary_model.projection(lons, lats, alts)
-        azt_sec, rng_sec = secondary_model.to_azt_rng(rows_sec, cols_sec)
+        azt_sec, _ = secondary_model.to_azt_rng(rows_sec, cols_sec)
 
         sat_pos_sec = secondary_model.orbit.evaluate(azt_sec, order=0)
+        ps_sec = np.linalg.norm(sat_pos_sec - points_3D, axis=1)
 
         # Calculation of baseline for each defined pixel
         _, _perp_baseline, _ = compute_baseline(
             sat_pos_prim, sat_pos_sec, points_3D, sat_speed_prim)
         perp_baseline[sid] = _perp_baseline
-        delta_r[sid] = ps.ravel() - rng_sec.ravel()
+        delta_r[sid] = ps.ravel() - ps_sec.ravel()
 
     return points, theta_inc, perp_baseline, delta_r
 

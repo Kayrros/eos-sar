@@ -106,8 +106,9 @@ def dem_points(geometry, dem=None, outfile=None):
     x, y = utils.raster_xy_grid(raster.shape, transform, px_is_area=True)
     return x, y, raster, transform, crs
 
-def get_registration_dem_pts(primary_model, sampling_ratio=0.01, 
-                             dem=None, outfile=None): 
+def get_registration_dem_pts(primary_model, roi=None, margin=500,
+                             sampling_ratio=0.01,
+                             dem=None, outfile=None):
     """
     Get pts sampled on the dem to be used for the registration. 
 
@@ -115,6 +116,10 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
     ----------
     primary_model : eos.sar.model.SensorModel 
         Sensor model (used for proj/localize) of the primary image onto which we register.
+    roi : eos.sar.roi.Roi, optional
+        Defines the region of study. The default is None (the whole image is considered).
+    margin : int, optional
+        Margin in px to buffer the roi. The default is 500.
     sampling_ratio : float, optional
         The sampling ratio used to sample points from the dem.
         Only the sampled points will be used for the registration.
@@ -139,7 +144,7 @@ def get_registration_dem_pts(primary_model, sampling_ratio=0.01,
     """
     assert sampling_ratio > 0 and sampling_ratio <= 1, "sampling ratio out of range"
     
-    refined_geom, alts, mask = primary_model.get_approx_geom(margin=10)
+    refined_geom, alts, mask = primary_model.get_approx_geom(roi,margin)
     # get dem points
     x, y, raster, transform, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
     

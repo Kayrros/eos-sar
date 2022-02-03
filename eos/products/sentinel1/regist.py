@@ -129,7 +129,7 @@ def primary_registration_estimation(primary_swath_model, primary_burst_models,
         burst_ids, primary_burst_models)
     
     if np.all([b.corrections_deactivated() for b in primary_burst_models]): 
-        burst_resampling_matrices = None
+        burst_resampling_matrices = {key: None for key in burst_ids}
     else: 
         burst_resampling_matrices = get_burst_resampling_matrices(
             primary_swath_model, primary_swath_model, rows_no_correc_global, cols_no_correc_global, 

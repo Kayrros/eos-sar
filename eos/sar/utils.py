@@ -179,3 +179,56 @@ def arr_in_interval(arr, arr_min, arr_max):
 
     """
     return np.logical_and(arr >= arr_min, arr <= arr_max)
+
+
+def stitch_arrays(rect_arrays, write_rois, out_shape):
+    """
+    Stitch individual rectangular arrays into an image of known shape, by
+    writing the arrays into the given locations.
+
+    Parameters
+    ----------
+    rect_arrays : list of ndarray
+        Each element is a rectangular imagette to be used in the mosaic.
+    write_rois : list of eos.sar.roi.Roi
+        Each instance indicates where we should write the
+        rectangular array in the output image.
+    out_shape : tuple
+        (h, w) Shape of output image.
+
+    Returns
+    -------
+    out_img : ndarray
+        Output mosaic.
+
+    """
+    out_img = np.empty(out_shape, dtype=rect_arrays[0].dtype)
+    out_img[:] = np.nan
+    for arr, write_roi in zip(rect_arrays, write_rois):
+        assert arr.shape == write_roi.get_shape(), "array shape must match write roi shape"
+        write_roi.assert_valid(out_shape)
+        col_min, row_min, w, h = write_roi.to_roi()
+        out_img[row_min:row_min+h, col_min:col_min+w] = arr
+    return out_img
+
+
+def write_array(arr, write_roi, out_shape):
+    """
+    Write an array inside another of shape out_shape using the roi location.
+
+    Parameters
+    ----------
+    arr : ndarray
+        Array to be written.
+    write_roi : eos.sar.roi.Roi
+        Roi where array needs to be written.
+    out_shape : tuple
+        Output array shape.
+
+    Returns
+    -------
+    out_arr : ndarray
+        Shifted output array.
+
+    """
+    return stitch_arrays([arr], [write_roi], out_shape)

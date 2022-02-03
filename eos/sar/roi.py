@@ -203,15 +203,17 @@ class Roi:
         """""
         h_parent, w_parent = parent_shape
         col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
-        assert (col_child_min < w_parent) and (row_child_min < h_parent), "Roi outside of parent"
-            
-        # take min, max with image boundary 
-        col_min = max(col_child_min, 0) 
-        col_max = min(col_child_max , w_parent - 1) 
-        row_min = max(0, row_child_min) 
+
+        # take min, max with image boundary
+        col_min = max(col_child_min, 0)
+        col_max = min(col_child_max , w_parent - 1)
+        row_min = max(0, row_child_min)
         row_max = min(row_child_max , h_parent - 1)
-        
-        out_bounds = (col_min, row_min, col_max, row_max)
+
+        if (row_max < row_min) or (col_max < col_min):
+            out_bounds = (0,0,0,0)
+        else:
+            out_bounds = (col_min, row_min, col_max, row_max)
         # reset or get new Roi instance 
         return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
         

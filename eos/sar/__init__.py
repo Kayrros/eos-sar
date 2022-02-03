@@ -12,3 +12,4 @@ from eos.sar import geoconfig
 from eos.sar import utils
 from eos.sar import dem_to_radar
 from eos.sar import geom_phase
+from eos.sar import coherence

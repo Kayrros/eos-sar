@@ -173,7 +173,7 @@ def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
         The default is None.
     approx_geometry : list of (lon, lat) tuples, optional
          Points in the list define the geometry of the roi.
-         If none, the geometry of the model is taken (slower run).
+         If none, the model will be used to determine the roi geometry.
          The default is None.
     margin: int 
         The margin to buffer our roi during the approximate geometry estimation, 
