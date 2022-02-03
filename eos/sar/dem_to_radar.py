@@ -1,5 +1,5 @@
 import numpy as np
-from shapely.geometry import asPolygon, asMultiPoint
+from shapely.geometry import Polygon, MultiPoint
 from scipy.interpolate import LinearNDInterpolator
 import eos.sar
 
@@ -33,14 +33,16 @@ def poly_vs_dem_intersect(approx_geometry, x, y, raster):
     """
 
     # construct polygon
-    polygon = asPolygon(approx_geometry)
+    polygon = Polygon(approx_geometry)
     
     # Get the bounding dem as shapely multipoint
-    dem_points = asMultiPoint(np.column_stack(
+    dem_points = MultiPoint(np.column_stack(
             [x, y, raster]))
-    
-    x, y, raster =  np.array(polygon.intersection(dem_points)).T
-    
+
+    intersection = polygon.intersection(dem_points)
+
+    x, y, raster =  np.array([pt.coords for pt in intersection.geoms]).squeeze().T
+
     return x, y, raster 
 
 def get_radar_dem_interpolator(model, x, y, raster, 
