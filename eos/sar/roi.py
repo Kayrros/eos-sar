@@ -211,12 +211,13 @@ class Roi:
         row_max = min(row_child_max , h_parent - 1)
 
         if (row_max < row_min) or (col_max < col_min):
-            out_bounds = (0,0,0,0)
+            return self.obj_from_roi_tuple((0,0,0,0), inplace=inplace)
+
         else:
             out_bounds = (col_min, row_min, col_max, row_max)
-        # reset or get new Roi instance 
-        return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
-        
+            # reset or get new Roi instance
+            return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
+            
     def warp_valid_roi(self, input_parent_shape, output_parent_shape,  
                         matrix, margin=0, inplace=False): 
         """
