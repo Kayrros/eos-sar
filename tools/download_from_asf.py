@@ -6,6 +6,8 @@ import sys, csv
 import os, os.path
 import tempfile, shutil
 import re
+import fire
+
 
 import base64
 import time
@@ -100,8 +102,7 @@ class bulk_downloader:
                                 download_files.append( file_url )
                     else:
                          print (" > I cannot find the input file you specified: {0}".format(arg))
-                else:
-                    print (" > Command line argument '{0}' makes no sense, ignoring.".format(arg))
+
 
             if len(input_files) > 0:
                 if len(download_files) > 0:
@@ -593,26 +594,20 @@ def unzip(path_to_zip_file, directory_to_extract_to):
         print("Finished unzipping {0}".format(path_to_zip_file))
     remove_file(path_to_zip_file)
 
-if __name__ == "__main__":
+
+def download(file_url, out_dir, unzip=False):
     # Setup a signal trap for SIGINT (Ctrl+C)
     signal.signal(signal.SIGINT, signal_handler)
-    # orbit files to download
-    orbit_files = [
-            "https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20211230T024411_V20211229T224022_20211230T015752.EOF",
-            "https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20220111T024731_V20220110T224022_20220111T015752.EOF",
-            ]
-
-    safe_files = [
-        "https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20211229T231926_20211229T231953_041230_04E66A_3DBE.zip",
-        "https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20220110T231926_20220110T231953_041405_04EC57_103E.zip"
-        ]
-
-    out_directories = [
-        "data/safes",
-        "data/orb"
-        ]
-    for file_list, out_dir in zip([safe_files, orbit_files], out_directories):
-        downloader = bulk_downloader(file_list, out_dir)
-        downloader.download_files()
-        downloader.print_summary()
+    downloader = bulk_downloader([file_url], out_dir)
+    downloader.download_files()
+    downloader.print_summary()
+    if unzip:
         downloader.unzip_downloaded()
+
+
+def main():
+    fire.Fire(download)
+
+
+if __name__ == "__main__":
+    main()
