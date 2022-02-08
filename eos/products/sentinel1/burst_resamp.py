@@ -171,6 +171,43 @@ class Sentinel1BurstResample(regist.SarResample):
         self.dst_shape = self.dst_burst_shape
         self.matrix = self.burst_matrix
     
+    def original_doppler(self):
+        """
+        Compute the doppler quantities on the original (as given in the esa tiff)\
+        burst regular grid that has not undergone any resampling.
+
+        Returns
+        -------
+        eta : 2d array of shape (Nlines_roi, 1)
+            Azimuth time referenced to burst mid time.
+        ref_time : 2d array of shape (1, Ncolumns_roi)
+            Azimuth doppler reference time.
+        dop_centroid : 2d array (1, Ncolumns_roi)
+            Doppler centroid.
+        dop_rate : 2d array (1, Ncolumns_roi)
+            Doppler rate.
+
+        """
+        col0, row0, w, h = self.src_roi_in_burst.to_roi()
+        
+        eta, slrt = self.to_eta_slrt(np.arange(row0, row0 + h),
+                                     np.arange(col0, col0 + w))
+
+        # all Doppler quantities
+        rg_dpt_dop_rate = self.doppler.get_rg_dpt_dop_rate(slrt)
+        dop_centroid = self.doppler.get_dop_centroid(slrt)
+        del slrt
+        ref_time = self.doppler.get_ref_time(dop_centroid, rg_dpt_dop_rate)
+        dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
+        del rg_dpt_dop_rate
+
+        # reshape the 1D vectors for broadcasting
+        dop_centroid = dop_centroid[None, :]
+        ref_time = ref_time[None, :]
+        dop_rate = dop_rate[None, :]
+        eta = eta[:, None]
+        return eta, ref_time, dop_centroid, dop_rate
+    
     def deramp(self, src_array) :
         """Deramp on the regular grid of the src array.
 
@@ -188,25 +225,11 @@ class Sentinel1BurstResample(regist.SarResample):
             done after this step.
 
         """
-        col0, row0, w, h = self.src_roi_in_burst.to_roi()
-        assert src_array.shape == (h, w), "src array is not of the expected shape"
-        eta, slrt = self.to_eta_slrt(np.arange(row0, row0 + h),
-                                     np.arange(col0, col0 + w))
-
-        # all Doppler quantities
-        rg_dpt_dop_rate = self.doppler.get_rg_dpt_dop_rate(slrt)
-        dop_centroid = self.doppler.get_dop_centroid(slrt)
-        del slrt
-        ref_time = self.doppler.get_ref_time(dop_centroid, rg_dpt_dop_rate)
-        dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
-        del rg_dpt_dop_rate
-
-        # reshape the 1D vectors for broadcasting
-        dop_centroid = dop_centroid[None, :]
-        ref_time = ref_time[None, :]
-        dop_rate = dop_rate[None, :]
-        eta = eta[:, None]
-
+        assert src_array.shape == self.src_roi_in_burst.get_shape(), "src array is not of the expected shape"
+        
+        # get params necessary for deramping computation
+        eta, ref_time, dop_centroid, dop_rate = self.original_doppler()
+        
         # Compute Deramping func
         deta = eta - ref_time
         del eta, ref_time
@@ -215,7 +238,59 @@ class Sentinel1BurstResample(regist.SarResample):
         deramping_func = np.exp(1j * phi, dtype=np.complex64)
 
         return src_array * deramping_func
+    
+    def resampled_doppler(self, row_dst, col_dst):
+        """
+        Compute the doppler quantities on a set of points in the destination \
+            coordinate system (i.e. after resampling).
 
+        Parameters
+        ----------
+        row_dst : 1darray
+            Rows in the new coord system within the dst roi.
+        col_dst : 1d array
+            Cols in the new coord system within the dst roi.
+
+        Returns
+        -------
+        eta : 1darray
+            Azimuth time referenced to burst mid time.
+        ref_time : 1darray
+            Azimuth doppler reference time.
+        dop_centroid : 1darray
+            Doppler centroid.
+        dop_rate : 1darray
+            Doppler rate.
+
+        """
+        # homogeneous coordinates
+        dst_points = np.vstack(
+            [row_dst, col_dst, np.ones(row_dst.size)])
+        del col_dst, row_dst
+
+        # irregular grid at src
+        row_src, col_src = self.matrix.dot(dst_points)[:2]
+        del dst_points
+
+        # reference row_src and col_src w.r.t. the burst origin
+        col_roi, row_roi = self.src_roi_in_burst.to_roi()[:2]
+        row_src += row_roi
+        col_src += col_roi
+
+        eta, slrt = self.to_eta_slrt(row_src, col_src)
+        del row_src, col_src
+
+        # all Doppler quantities
+        rg_dpt_dop_rate = self.doppler.get_rg_dpt_dop_rate(slrt)
+        dop_centroid = self.doppler.get_dop_centroid(slrt)
+        del slrt
+
+        ref_time = self.doppler.get_ref_time(dop_centroid, rg_dpt_dop_rate)
+        dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
+        del rg_dpt_dop_rate
+        
+        return eta, ref_time, dop_centroid, dop_rate
+        
     def reramp(self, dst_array):
         """Reramp on the regular grid of the destination array\
         after resampling. Therefore, this corresponds to an irregular grid in\
@@ -238,31 +313,8 @@ class Sentinel1BurstResample(regist.SarResample):
         col_dst, row_dst = np.meshgrid(
             np.arange(self.dst_shape[1]), np.arange(self.dst_shape[0]))
 
-        # homogeneous coordinates
-        dst_points = np.vstack(
-            [row_dst.ravel(), col_dst.ravel(), np.ones(row_dst.size)])
-        del col_dst, row_dst
-
-        # irregular grid at src
-        row_src, col_src = self.matrix.dot(dst_points)[:2]
-        del dst_points
-
-        # reference row_src and col_src w.r.t. the burst origin
-
-        col_roi, row_roi, _, _ = self.src_roi_in_burst.to_roi()
-        row_src += row_roi
-        col_src += col_roi
-
-        eta, slrt = self.to_eta_slrt(row_src, col_src)
-        del row_src, col_src
-
-        # all Doppler quantities
-        rg_dpt_dop_rate = self.doppler.get_rg_dpt_dop_rate(slrt)
-        dop_centroid = self.doppler.get_dop_centroid(slrt)
-        del slrt
-        ref_time = self.doppler.get_ref_time(dop_centroid, rg_dpt_dop_rate)
-        dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
-        del rg_dpt_dop_rate
+        eta, ref_time, dop_centroid, dop_rate = self.resampled_doppler(
+            row_dst.ravel(), col_dst.ravel())    
 
         # Compute reramping func
         deta = eta - ref_time
