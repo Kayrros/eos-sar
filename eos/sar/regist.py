@@ -5,6 +5,7 @@ import abc
 from eos.sar import utils
 import eos.dem
 
+
 def affine_transformation(src, dst):
     """Estimate a 2D affine transform from a list of point correspondences.
 
@@ -106,15 +107,16 @@ def dem_points(geometry, dem=None, outfile=None):
     x, y = utils.raster_xy_grid(raster.shape, transform, px_is_area=True)
     return x, y, raster, transform, crs
 
+
 def get_registration_dem_pts(primary_model, roi=None, margin=500,
                              sampling_ratio=0.01,
                              dem=None, outfile=None):
     """
-    Get pts sampled on the dem to be used for the registration. 
+    Get pts sampled on the dem to be used for the registration.
 
     Parameters
     ----------
-    primary_model : eos.sar.model.SensorModel 
+    primary_model : eos.sar.model.SensorModel
         Sensor model (used for proj/localize) of the primary image onto which we register.
     roi : eos.sar.roi.Roi, optional
         Defines the region of study. The default is None (the whole image is considered).
@@ -129,7 +131,7 @@ def get_registration_dem_pts(primary_model, roi=None, margin=500,
     outfile : string, optional
          Path to save the dem if passed as argument.
          The default is None.
-         
+
     Returns
     -------
     x_sampled : ndarray
@@ -143,18 +145,19 @@ def get_registration_dem_pts(primary_model, roi=None, margin=500,
 
     """
     assert sampling_ratio > 0 and sampling_ratio <= 1, "sampling ratio out of range"
-    
-    refined_geom, alts, mask = primary_model.get_approx_geom(roi,margin)
+
+    refined_geom, alts, mask = primary_model.get_approx_geom(roi, margin)
     # get dem points
     x, y, raster, transform, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
-    
+
     # you can mask some pixels to speed up the projection
-    mask = np.random.binomial(n=1, p=sampling_ratio, size=x.shape).astype(bool) 
+    mask = np.random.binomial(n=1, p=sampling_ratio, size=x.shape).astype(bool)
     mask = np.logical_and(mask, ~np.isnan(raster))
     x_sampled = x[mask]
     y_sampled = y[mask]
     raster_sampled = raster[mask]
     return x_sampled, y_sampled, raster_sampled, crs
+
 
 def orbital_registration(row_primary, col_primary, secondary_model,
                          x, y, raster, crs):
@@ -239,7 +242,7 @@ def apply_affine(src_array, matrix, destination_array_shape):
         resampled = cv2.warpAffine(img, M, dsize, flags=flags, borderValue=np.nan)
 
         h, w = destination_array_shape
-        resampled.reshape((h, w*2))
+        resampled.reshape((h, w * 2))
         resampled = resampled.view(dtype=np.complex64).squeeze()
 
     else:
@@ -272,8 +275,8 @@ class SarResample(abc.ABC):
     def resample(self, src_array):
         """
         Resample a SAR image. If the image is complex, deramping and reramping
-        must be applied. 
-        
+        must be applied.
+
         Parameters
         ----------
         src_array : ndarray
@@ -288,13 +291,14 @@ class SarResample(abc.ABC):
             # deramp, resample, reramp
             dst_array = self.reramp(apply_affine(self.deramp(src_array),
                                                  self.matrix, self.dst_shape))
-        else: 
+        else:
             dst_array = apply_affine(src_array, self.matrix, self.dst_shape)
         return dst_array
-        
+
+
 def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
     """
-    Adapts a resampling matrix to new origins at the source and the destination. 
+    Adapts a resampling matrix to new origins at the source and the destination.
 
     Parameters
     ----------
@@ -316,9 +320,9 @@ def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
 
     """
     T_dst_inv = np.eye(3)
-    T_dst_inv[0,2] = row_dst
-    T_dst_inv[1,2] = col_dst
+    T_dst_inv[0, 2] = row_dst
+    T_dst_inv[1, 2] = col_dst
     T_src = np.eye(3)
-    T_src[0,2] = - row_src
-    T_src[1,2] = - col_src 
+    T_src[0, 2] = - row_src
+    T_src[1, 2] = - col_src
     return T_src.dot(A.dot(T_dst_inv))

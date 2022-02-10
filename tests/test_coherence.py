@@ -19,12 +19,14 @@ def test_coherence_dtypes():
     assert v1.shape == v2.shape == (h, w)
     assert np.allclose(v1, v2)
 
+
 def test_coherence_wrong_dtype():
     h, w = 50, 100
     u1 = np.random.randn(h, w)
     u2 = np.random.randn(h, w)
     with pytest.raises(AssertionError):
         coherence.on_pair(u1, u2, filter_size=3)
+
 
 def test_coherence_filter_size():
     h, w = 20, 30
@@ -43,6 +45,7 @@ def test_coherence_filter_size():
     # the vertical TV should be lower than the horizontal TV if the filter was horizontal
     assert np.abs(np.diff(v2, axis=0)).sum() < np.abs(np.diff(v2, axis=1)).sum()
 
+
 def test_coherence_wrong_filter_size():
     h, w = 20, 30
     u1 = np.random.randn(h, w, 2).view(np.cdouble).squeeze()
@@ -51,6 +54,7 @@ def test_coherence_wrong_filter_size():
         coherence.on_pair(u1, u2, filter_size=4)
     with pytest.raises(AssertionError):
         coherence.on_pair(u1, u2, filter_size=(5, 3, 5))
+
 
 def test_coherence_might_contain_nans_without_nan():
     h, w = 20, 30
@@ -63,6 +67,7 @@ def test_coherence_might_contain_nans_without_nan():
 
     assert np.isnan(v1).sum() == 0
     assert np.isnan(v2).sum() == 0
+
 
 def test_coherence_might_contain_nans_with_nan():
     h, w = 20, 30
@@ -85,6 +90,7 @@ def test_coherence_might_contain_nans_with_nan():
     assert np.isnan(v2).sum() == 1
     assert np.isnan(v3).sum() == 1
 
+
 def test_coherence_set_borders_to_nan():
     h, w = 20, 30
 
@@ -96,8 +102,9 @@ def test_coherence_set_borders_to_nan():
 
     assert not np.allclose(v1, v2, equal_nan=True)
     assert np.isnan(v1).sum() == 0
-    assert np.isnan(v2).sum() == v1.size - v1[1:-1,1:-1].size
-    assert np.allclose(v1[1:-1,1:-1], v2[1:-1,1:-1])
+    assert np.isnan(v2).sum() == v1.size - v1[1:-1, 1:-1].size
+    assert np.allclose(v1[1:-1, 1:-1], v2[1:-1, 1:-1])
+
 
 def test_coherence_spatial_filter():
     h, w = 20, 30
@@ -109,4 +116,3 @@ def test_coherence_spatial_filter():
     # spatial_filter='gaussian' is not really meant to be used anyway
     coherence.on_pair(u1, u2, filter_size=3, spatial_filter='uniform')
     coherence.on_pair(u1, u2, filter_size=3, spatial_filter='gaussian')
-

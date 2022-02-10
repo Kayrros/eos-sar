@@ -3,15 +3,16 @@ import numpy as np
 
 from eos.sar import orbit
 
+
 def doppler_from_meta(burst_meta, **kwargs):
     """
-    Construct a Sentinel1Doppler object from burst metadata. 
+    Construct a Sentinel1Doppler object from burst metadata.
 
     Parameters
     ----------
     burst_meta : dict
         Dict of burst metadata.
-    **kwargs : key word arguments 
+    **kwargs : key word arguments
         Additional key word args for the constructor of Sentinel1Doppler.
 
     Returns
@@ -21,34 +22,35 @@ def doppler_from_meta(burst_meta, **kwargs):
 
     """
     return Sentinel1Doppler(
-            burst_times=burst_meta['burst_times'],
-            lines_per_burst=burst_meta['lines_per_burst'],
-            samples_per_burst=burst_meta['samples_per_burst'],
-            azimuth_frequency=burst_meta['azimuth_frequency'],
-            range_frequency=burst_meta['range_frequency'],
-            slant_range_time=burst_meta['slant_range_time'],
-            az_fm_times=burst_meta['az_fm_times'],
-            az_fm_info=burst_meta['az_fm_info'],
-            dc_estimate_time=burst_meta['dc_estimate_time'],
-            dc_estimate_t0=burst_meta['dc_estimate_t0'],
-            dc_estimate_poly=burst_meta['dc_estimate_poly'],
-            steering_rate=burst_meta['steering_rate'],
-            wave_length=burst_meta['wave_length'],
-            state_vectors=burst_meta['state_vectors'],
-            **kwargs,
-            )
+        burst_times=burst_meta['burst_times'],
+        lines_per_burst=burst_meta['lines_per_burst'],
+        samples_per_burst=burst_meta['samples_per_burst'],
+        azimuth_frequency=burst_meta['azimuth_frequency'],
+        range_frequency=burst_meta['range_frequency'],
+        slant_range_time=burst_meta['slant_range_time'],
+        az_fm_times=burst_meta['az_fm_times'],
+        az_fm_info=burst_meta['az_fm_info'],
+        dc_estimate_time=burst_meta['dc_estimate_time'],
+        dc_estimate_t0=burst_meta['dc_estimate_t0'],
+        dc_estimate_poly=burst_meta['dc_estimate_poly'],
+        steering_rate=burst_meta['steering_rate'],
+        wave_length=burst_meta['wave_length'],
+        state_vectors=burst_meta['state_vectors'],
+        **kwargs,
+    )
+
 
 class Sentinel1Doppler:
 
     def __init__(self,
-            lines_per_burst, samples_per_burst,
-            azimuth_frequency, range_frequency, slant_range_time,
-            burst_times,
-            az_fm_times, az_fm_info,
-            dc_estimate_time, dc_estimate_t0, dc_estimate_poly,
-            steering_rate, wave_length,
-            state_vectors, degree=11,
-            ):
+                 lines_per_burst, samples_per_burst,
+                 azimuth_frequency, range_frequency, slant_range_time,
+                 burst_times,
+                 az_fm_times, az_fm_info,
+                 dc_estimate_time, dc_estimate_t0, dc_estimate_poly,
+                 steering_rate, wave_length,
+                 state_vectors, degree=11,
+                 ):
         """Instantiate a Sentinel1Doppler object.
 
         Parameters
@@ -206,6 +208,7 @@ class Sentinel1Doppler:
 
     def get_burst_mid_time(self):
         return self.burst_mid_time
+
 
 def find_nearest_index(l, x):
     """Find the index of the item closest to a point in a list of floats.

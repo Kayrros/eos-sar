@@ -33,6 +33,7 @@ class _AzimuthNoise:
         self.lines = lines
         self.noise_azimuth_LUT = noise_azimuth_LUT
 
+
 def _get_noise_azimuth_blocks(noiseAzimuthVectorList):
     """
     /!\\ This comes from the s1c package.
@@ -59,6 +60,7 @@ def _get_noise_azimuth_blocks(noiseAzimuthVectorList):
             )
         )
     return blocks
+
 
 def _read_lut_from_noise_xml(xml):
     """
@@ -91,7 +93,7 @@ def _read_lut_from_noise_xml(xml):
         noise_azimuth_vector_list = d["noiseAzimuthVectorList"]
         # for some reason, when @count is 1, the list is not considered as such
         if int(noise_azimuth_vector_list['@count']) == 1:
-            noise_azimuth_vector_list = [noise_azimuth_vector_list["noiseAzimuthVector"],]
+            noise_azimuth_vector_list = [noise_azimuth_vector_list["noiseAzimuthVector"], ]
         azimuth_blocks = _get_noise_azimuth_blocks(noise_azimuth_vector_list)
 
         noise_vector_list = d["noiseRangeVectorList"]["noiseRangeVector"]
@@ -109,10 +111,11 @@ def _read_lut_from_noise_xml(xml):
     # check lists lengths
     if (len(lines) != len(pixels) or
         len(pixels) != len(values) or
-        any(len(p) != len(v) for p, v in zip(pixels, values))):
+            any(len(p) != len(v) for p, v in zip(pixels, values))):
         raise Error("Unexpected data format in noise xml")
 
     return lines, pixels, values, azimuth_blocks
+
 
 def _read_lut_from_calibration_xml(xml):
     """
@@ -153,7 +156,7 @@ def _read_lut_from_calibration_xml(xml):
         raise CalibrationError("Unexpected data format in calibration xml")
     for k in values:
         if (len(pixels) != len(values[k]) or
-            any(len(p) != len(v) for p, v in zip(pixels, values[k]))):
+                any(len(p) != len(v) for p, v in zip(pixels, values[k]))):
             raise CalibrationError("Unexpected data format in calibration xml")
 
     return lines, pixels, values

@@ -4,8 +4,9 @@ import numpy as np
 from eos.sar import regist, roi, io
 from . import doppler_info
 
+
 def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
-        doppler=None, doppler_kwargs={}, **kwargs):
+                             doppler=None, doppler_kwargs={}, **kwargs):
     """Create a Sentinel1BurstResample instance from a Sentinel1Model\
     instance and additional parameters.
 
@@ -19,7 +20,7 @@ def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
         Affine registration matrix.
     doppler: eos.products.sentinel1.Sentinel1Doppler
         Object used to compute the Doppler info within a burst
-    doppler_kwargs: dict 
+    doppler_kwargs: dict
         Keywords used to instantiate the doppler object if not given
     **kwargs :
         Additional key word arguments to
@@ -86,13 +87,13 @@ class Sentinel1BurstResample(regist.SarResample):
         # set the abstract variables
         # burst level quantities
         self.src_burst_roi = roi.Roi.from_roi_tuple(src_burst_roi)
-        self.dst_burst_shape = dst_burst_shape 
+        self.dst_burst_shape = dst_burst_shape
         self.burst_matrix = matrix
         self.doppler = doppler
 
         # replicate these quantities
         # as resampling params
-        # by default, the resampling in the burst is set as the whole burst      
+        # by default, the resampling in the burst is set as the whole burst
         self.set_to_default_roi()
 
         # set the product variables
@@ -130,14 +131,14 @@ class Sentinel1BurstResample(regist.SarResample):
 
         """
         eta = (self.burst_times[1] - self.burst_times[0]) \
-            + (row - (self.lines_per_burst - 1)/2) / self.azimuth_frequency
-        slrt = (self.src_burst_roi.col + col)/self.range_frequency \
+            + (row - (self.lines_per_burst - 1) / 2) / self.azimuth_frequency
+        slrt = (self.src_burst_roi.col + col) / self.range_frequency \
             + self.slant_range_time
         return eta, slrt
 
-    def set_inside_burst(self, dst_roi_in_burst, src_roi_in_burst): 
+    def set_inside_burst(self, dst_roi_in_burst, src_roi_in_burst):
         """
-        Set the resampling region source and destination within the bursts. 
+        Set the resampling region source and destination within the bursts.
 
         Parameters
         ----------
@@ -151,26 +152,26 @@ class Sentinel1BurstResample(regist.SarResample):
         None.
 
         """
-        # change self.matrix 
+        # change self.matrix
         col_src, row_src, _, _ = src_roi_in_burst.to_roi()
         col_dst, row_dst, w_dst, h_dst = dst_roi_in_burst.to_roi()
-        
-        self.matrix = regist.change_resamp_mat_orig(row_dst, col_dst, 
-                                                   row_src, col_src,
-                                                   self.burst_matrix)
+
+        self.matrix = regist.change_resamp_mat_orig(row_dst, col_dst,
+                                                    row_src, col_src,
+                                                    self.burst_matrix)
         # change self.src_roi_in_burst
         self.src_roi_in_burst = src_roi_in_burst
-        
+
         # change self.dst_shape
         self.dst_shape = (h_dst, w_dst)
-    
-    def set_to_default_roi(self): 
+
+    def set_to_default_roi(self):
         """Reset the resampling to the whole burst."""
         h, w = self.src_burst_roi.get_shape()
         self.src_roi_in_burst = roi.Roi(0, 0, w, h)
         self.dst_shape = self.dst_burst_shape
         self.matrix = self.burst_matrix
-    
+
     def original_doppler(self):
         """
         Compute the doppler quantities on the original (as given in the esa tiff)\
@@ -189,7 +190,7 @@ class Sentinel1BurstResample(regist.SarResample):
 
         """
         col0, row0, w, h = self.src_roi_in_burst.to_roi()
-        
+
         eta, slrt = self.to_eta_slrt(np.arange(row0, row0 + h),
                                      np.arange(col0, col0 + w))
 
@@ -207,8 +208,8 @@ class Sentinel1BurstResample(regist.SarResample):
         dop_rate = dop_rate[None, :]
         eta = eta[:, None]
         return eta, ref_time, dop_centroid, dop_rate
-    
-    def deramp(self, src_array) :
+
+    def deramp(self, src_array):
         """Deramp on the regular grid of the src array.
 
         Parameters
@@ -226,10 +227,10 @@ class Sentinel1BurstResample(regist.SarResample):
 
         """
         assert src_array.shape == self.src_roi_in_burst.get_shape(), "src array is not of the expected shape"
-        
+
         # get params necessary for deramping computation
         eta, ref_time, dop_centroid, dop_rate = self.original_doppler()
-        
+
         # Compute Deramping func
         deta = eta - ref_time
         del eta, ref_time
@@ -238,7 +239,7 @@ class Sentinel1BurstResample(regist.SarResample):
         deramping_func = np.exp(1j * phi, dtype=np.complex64)
 
         return src_array * deramping_func
-    
+
     def resampled_doppler(self, row_dst, col_dst):
         """
         Compute the doppler quantities on a set of points in the destination \
@@ -288,9 +289,9 @@ class Sentinel1BurstResample(regist.SarResample):
         ref_time = self.doppler.get_ref_time(dop_centroid, rg_dpt_dop_rate)
         dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
         del rg_dpt_dop_rate
-        
+
         return eta, ref_time, dop_centroid, dop_rate
-        
+
     def reramp(self, dst_array):
         """Reramp on the regular grid of the destination array\
         after resampling. Therefore, this corresponds to an irregular grid in\
@@ -314,7 +315,7 @@ class Sentinel1BurstResample(regist.SarResample):
             np.arange(self.dst_shape[1]), np.arange(self.dst_shape[0]))
 
         eta, ref_time, dop_centroid, dop_rate = self.resampled_doppler(
-            row_dst.ravel(), col_dst.ravel())    
+            row_dst.ravel(), col_dst.ravel())
 
         # Compute reramping func
         deta = eta - ref_time

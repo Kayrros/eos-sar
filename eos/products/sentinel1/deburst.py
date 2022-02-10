@@ -2,11 +2,12 @@ import numpy as np
 from eos.sar import utils
 from eos.products.sentinel1 import burst_resamp
 
+
 def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
-                            secondary_swath_model, burst_resampling_matrices,
-                            secondary_bursts_metas, image_reader,
-                            write_rois, out_shape,
-                            get_complex=True, margin=5):
+                                    secondary_swath_model, burst_resampling_matrices,
+                                    secondary_bursts_metas, image_reader,
+                                    write_rois, out_shape,
+                                    get_complex=True, margin=5):
     """
     Warp the rois, read then resample, and deburst.
 
@@ -17,7 +18,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
     burst_ids : Iterable
         Burst ids in the swath (0 based) associated with each roi.
     primary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
-        Primary swath model. 
+        Primary swath model.
     secondary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
         Secondary swath model.
     burst_resampling_matrices : dict
@@ -42,9 +43,9 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
     debursted_crop : ndarray
         The debursted crop.
     read_rois_correc : List of eos.sar.roi.Roi
-        Each element is an roi in the imperfect (primary or secondary) frame. 
+        Each element is an roi in the imperfect (primary or secondary) frame.
         It is obtained by warping the input roi and adding a padding within the
-        valid image boundaries. 
+        valid image boundaries.
     resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
         Each resampler can be applied directly on the read array with read_rois_correc.
 
@@ -58,8 +59,8 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
         burst_roi_src = secondary_swath_model.bursts_rois[bid]
 
         burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
-                burst_resampling_matrices[bid], burst_roi_dst, read_roi_dst, burst_roi_src,
-                secondary_bursts_metas[bid], image_reader, get_complex, margin)
+            burst_resampling_matrices[bid], burst_roi_dst, read_roi_dst, burst_roi_src,
+            secondary_bursts_metas[bid], image_reader, get_complex, margin)
 
         burst_arrays_resamp.append(burst_array_resamp)
         read_rois_correc.append(read_roi_src)
@@ -67,6 +68,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
 
     debursted_crop = utils.stitch_arrays(burst_arrays_resamp, write_rois, out_shape)
     return debursted_crop, read_rois_correc, resamplers
+
 
 def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
                     burst_resampling_matrices, bursts_metas, image_reader,
@@ -79,7 +81,7 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
     roi_in_swath_no_correc : eos.sar.roi.Roi
         Region of interest to be deburst defined in the swath.
     primary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
-        Primary swath model. 
+        Primary swath model.
     burst_resampling_matrices : dict
         Dict where the key is the burst id and the value is a 3x3 affine inverse
         resampling matrix of the burst.
@@ -103,9 +105,9 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
     debursted_crop : ndarray
         The debursted crop.
     read_rois_correc : List of eos.sar.roi.Roi
-        Each element is an roi in the imperfect (primary or secondary) frame. 
+        Each element is an roi in the imperfect (primary or secondary) frame.
         It is obtained by warping the input roi and adding a padding within the
-        valid image boundaries. 
+        valid image boundaries.
     resamplers : List of eos.products.sentinel1.Sentinel1BurstResample
         Each resampler can be applied directly on the read array with read_rois_correc.
 
@@ -114,18 +116,18 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
     burst_ids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
         roi_in_swath_no_correc)
     debursted_crop, read_rois_correc, resamplers = warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
-                                primary_swath_model, burst_resampling_matrices,
-                                bursts_metas, image_reader,
-                                write_rois_no_correc, out_shape,
-                                get_complex)
+                                                                                   primary_swath_model, burst_resampling_matrices,
+                                                                                   bursts_metas, image_reader,
+                                                                                   write_rois_no_correc, out_shape,
+                                                                                   get_complex)
     return burst_ids, read_rois_no_correc,\
         write_rois_no_correc, debursted_crop, read_rois_correc, resamplers
 
 
 # filter bursts common to all acquisitions in time series
-def get_bursts_intersection(num_bursts, burst_rel_ids): 
+def get_bursts_intersection(num_bursts, burst_rel_ids):
     """
-    Compute the burst id intersection of two swaths containing multiple bursts. 
+    Compute the burst id intersection of two swaths containing multiple bursts.
 
     Parameters
     ----------
@@ -136,13 +138,13 @@ def get_bursts_intersection(num_bursts, burst_rel_ids):
 
     Returns
     -------
-    (Nswath, Ncommonbursts) ndarray 
+    (Nswath, Ncommonbursts) ndarray
         ids of common bursts in the swath per swath
     """
     b_rel_ids = np.array(burst_rel_ids).reshape(-1, 1)
-    n_bursts =  np.array(num_bursts).reshape(-1, 1)
+    n_bursts = np.array(num_bursts).reshape(-1, 1)
     rel_min = np.amax(burst_rel_ids)
-    rel_max = np.amin(b_rel_ids + n_bursts -1)
+    rel_max = np.amin(b_rel_ids + n_bursts - 1)
     if rel_min > rel_max:
         print('no intersection', rel_min, rel_max)
         return []

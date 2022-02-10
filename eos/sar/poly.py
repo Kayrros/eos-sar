@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class polymodel:
     """2D polynomial model"""
 
@@ -17,13 +18,13 @@ class polymodel:
         None.
 
         """
-        self.num_coeffs = int((degree + 1)*(degree+2)/2)
+        self.num_coeffs = int((degree + 1) * (degree + 2) / 2)
         self.d = degree
         pow_x = np.zeros((self.num_coeffs,), dtype=int)
         pow_y = np.zeros((self.num_coeffs,), dtype=int)
         k = 0
-        for i in range(self.d+1):
-            for j in range(i+1):
+        for i in range(self.d + 1):
+            for j in range(i + 1):
                 pow_x[k] = i - j
                 pow_y[k] = j
                 k += 1
@@ -52,7 +53,7 @@ class polymodel:
         for deg in range(1, deg + 1):
             powers[:, deg] = powers[:, deg - 1] * vec.ravel()
         return powers
-        
+
     def _design_mat(self, x, y):
         """Computes the design matrix containing all the powers of the polynomial
         x^(i-j) y^(j) for i 0 -> deg, j 0 -> i
@@ -67,7 +68,7 @@ class polymodel:
         Returns
         -------
         design_mat : ndarray (numpts, numPolycoeffs)
-            Design matrix to predict the polynomial (only need to multiply it by the 
+            Design matrix to predict the polynomial (only need to multiply it by the
                                                      poly coeffs).
 
         """
@@ -81,7 +82,7 @@ class polymodel:
 
     def _normalization(self, vec):
         '''
-        normalize between -2 & 2 
+        normalize between -2 & 2
         '''
         a = np.amin(vec, axis=0)
         b = np.amax(vec, axis=0)
@@ -90,7 +91,7 @@ class polymodel:
         return off, scale
 
     def set_normalization(self, x, y, z):
-        '''Initialize the normalization offset and scale; 
+        '''Initialize the normalization offset and scale;
         '''
         self.xoff, self.xscale = self._normalization(x)
         self.yoff, self.yscale = self._normalization(y)
@@ -98,7 +99,7 @@ class polymodel:
 
     def _normalize(self, vec, off, scale):
         '''normalize the vector with offset and scale '''
-        return (vec - off)/scale
+        return (vec - off) / scale
 
     def _unnormalize(self, vec, off, scale, indices=None):
         '''un-normalize vector with offset and scale '''
@@ -107,7 +108,7 @@ class polymodel:
         return vec * scale[indices] + off[indices]
 
     def fit_poly(self, x, y, z):
-        """Fit a 2D polynomial that predicts z from x, y. 
+        """Fit a 2D polynomial that predicts z from x, y.
 
 
         Parameters
@@ -117,7 +118,7 @@ class polymodel:
         y : ndarray (n, )
             y coordinate.
         z : (n, zdim)
-            Predicted quantity, can be multidimentionnal (zdim) , this 
+            Predicted quantity, can be multidimentionnal (zdim) , this
             way, we predict many quantities at the same time.
 
         Returns
@@ -140,8 +141,8 @@ class polymodel:
         d_UT_z = d * UTz
         coeffs = np.dot(Vt.T, d_UT_z)
         self.coeffs = coeffs
-        
-    def get_reshaped_coeffs(self): 
+
+    def get_reshaped_coeffs(self):
         """
         Reshape the coeffs matrix to make it compatible with np.polynomial
 
@@ -153,36 +154,36 @@ class polymodel:
         """
         c = np.zeros((self.d + 1, self.d + 1, self.coeffs.shape[1]))
         # loop on predicted quantities
-        for pred_id in range(c.shape[2]): 
-            # loop on number of coeffs per polynomial 
-            for k in range(self.num_coeffs): 
-                 c[self.pow_x[k], self.pow_y[k], pred_id] = self.coeffs[k, pred_id]
+        for pred_id in range(c.shape[2]):
+            # loop on number of coeffs per polynomial
+            for k in range(self.num_coeffs):
+                c[self.pow_x[k], self.pow_y[k], pred_id] = self.coeffs[k, pred_id]
         return c
-        
+
     def eval_poly(self, x, y, zindices=None, grid_eval=False):
-        """Evaluate the prediction at the provided x, y coordinates. 
+        """Evaluate the prediction at the provided x, y coordinates.
 
 
         Parameters
         ----------
         x : ndarray (n, )
             x coordinate where we need to evaluate the polynomial.
-        y : ndarray (n', )  
+        y : ndarray (n', )
             y coordinate where we need to evaluate the polynomial.
             if grid_eval=False, n = n'
         zindices : ndarray, optional
-            Indices of the columns of z on which we would like a prediction 
-            if we performed a fit on a multidimensionnal z. If None, 
-            the prediction is performed on all the columns. 
+            Indices of the columns of z on which we would like a prediction
+            if we performed a fit on a multidimensionnal z. If None,
+            the prediction is performed on all the columns.
             The default is None.
         grid_eval : bool, optional
-            If set to True, the polynomial is evaluated at the cartesian 
-            product of x and y. Otherwise, the polynomial is evaluated at 
+            If set to True, the polynomial is evaluated at the cartesian
+            product of x and y. Otherwise, the polynomial is evaluated at
             the points defined by [x, y].
-            
+
         Returns
         -------
-        ndarray (nresult, len(zindices))  
+        ndarray (nresult, len(zindices))
             The prediction.
             if grid_eval=False, nresult = n ( the dimension of x or y)
             if grid_eval=True, nresutl = n x n'
@@ -193,15 +194,15 @@ class polymodel:
             zindices = np.arange(self.coeffs.shape[1])
         x = self._normalize(x, self.xoff, self.xscale)
         y = self._normalize(y, self.yoff, self.yscale)
-        
-        c = self.get_reshaped_coeffs()[:, : , zindices]
-        
-        if grid_eval: 
+
+        c = self.get_reshaped_coeffs()[:, :, zindices]
+
+        if grid_eval:
             znormed = np.polynomial.polynomial.polygrid2d(x, y, c)
             # shape is now (num_pred, len(x), len(y))
-            znormed = np.transpose(znormed, (2,1,0)).reshape((len(y) * len(x),
-                                                              c.shape[2]))
-        else: 
+            znormed = np.transpose(znormed, (2, 1, 0)).reshape((len(y) * len(x),
+                                                                c.shape[2]))
+        else:
             znormed = np.polynomial.polynomial.polyval2d(x, y, c).T
-        
+
         return self._unnormalize(znormed, self.zoff, self.zscale, zindices)
