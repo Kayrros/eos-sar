@@ -76,8 +76,8 @@ def matrix_T(N, samples):
 
     for i in range(K):
         for j in range(N + 1):
-            T[2 * i, j] = np.polyval(chebpolys[j], samples[K-i-1])
-            T[2 * i + 1, j] = np.polyval(chebderpolys[j], samples[K-i-1])
+            T[2 * i, j] = np.polyval(chebpolys[j], samples[K - i - 1])
+            T[2 * i + 1, j] = np.polyval(chebderpolys[j], samples[K - i - 1])
 
     return T
 
@@ -251,7 +251,7 @@ def poly_B(A, N):
         a_n = A[i, :][..., np.newaxis]
         coeffs_n = chebpolys[i][::-1][np.newaxis, ...]
 
-        coeffs[:i+1, :] += (a_n @ coeffs_n).T
+        coeffs[:i + 1, :] += (a_n @ coeffs_n).T
 
     return coeffs
 
@@ -338,4 +338,4 @@ def get_diff_coeffs(coeffs, domain, der):
     """
     t0, t1 = domain
     return np.polynomial.polynomial.polyder(
-        coeffs, m=der, scl=2/(t1 - t0))
+        coeffs, m=der, scl=2 / (t1 - t0))

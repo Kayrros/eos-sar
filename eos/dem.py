@@ -99,7 +99,7 @@ class MultidemSource(DEMSource):
 
     def elevation(self, lons, lats, interpolation="bilinear"):
         return multidem.elevation(lons, lats, interpolation=interpolation,
-                source=self.demsource, datum="ellipsoidal")
+                                  source=self.demsource, datum="ellipsoidal")
 
     def crop(self, bounds):
         return multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
@@ -111,4 +111,3 @@ def get_any_source():
     if has_srtm4:
         return SRTM4Source()
     raise RuntimeError("couldn't find a DEM source; please install multidem or srtm4")
-

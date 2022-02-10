@@ -10,11 +10,11 @@ def normalize(vec):
     '''
     norm = np.linalg.norm(vec, axis=1).reshape(-1, 1)
     norm[norm == 0] = 1
-    return vec/norm
+    return vec / norm
 
 
 def compute_baseline(prim, sec, points, speed):
-    """Compute the geometric baseline. 
+    """Compute the geometric baseline.
 
 
     Parameters
@@ -58,7 +58,7 @@ def compute_baseline(prim, sec, points, speed):
 
 
 def get_grid(width, height, grid_size_col, grid_size_row, train=True):
-    """Compute a meshgrid for training and testing purposes. 
+    """Compute a meshgrid for training and testing purposes.
 
 
     Parameters
@@ -73,7 +73,7 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
         number of points in the height direction.
     train : bool, optional
         If True, a training meshgrid is returned.
-        Otherwise, the translated (by half a step) testing meshgrid is returned. 
+        Otherwise, the translated (by half a step) testing meshgrid is returned.
         The default is True.
 
     Returns
@@ -85,18 +85,18 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
 
     """
     if train:
-        cols = np.linspace(0, width-1, grid_size_col)
-        rows = np.linspace(0, height-1, grid_size_row)
+        cols = np.linspace(0, width - 1, grid_size_col)
+        rows = np.linspace(0, height - 1, grid_size_row)
     else:
         # estimate the gap between two samples
-        col_step = width/(grid_size_col - 1)
+        col_step = width / (grid_size_col - 1)
         # translate train samples by half a step
-        cols = np.linspace(col_step/2, width-1 + col_step/2, grid_size_col)
+        cols = np.linspace(col_step / 2, width - 1 + col_step / 2, grid_size_col)
         # remove the last sample that goes out of the image
         cols = cols[:-1]
         # do the same for the lines
-        row_step = height/(grid_size_row - 1)
-        rows = np.linspace(row_step/2, height - 1 + row_step/2, grid_size_row)
+        row_step = height / (grid_size_row - 1)
+        rows = np.linspace(row_step / 2, height - 1 + row_step / 2, grid_size_row)
         rows = rows[:-1]
     col, row = np.meshgrid(cols, rows)
     return col, row
@@ -104,7 +104,7 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
 
 def get_geom_config(primary_model, secondary_models, grid_size_col=20,
                     grid_size_row=20, train=True):
-    """Get the geometric configuration at a meshgrid train/test set. 
+    """Get the geometric configuration at a meshgrid train/test set.
 
 
     Parameters
@@ -203,11 +203,11 @@ class GeometryPredictor:
         secondary_models : List of eos.sar.model.SensorModel
             Secondary models list.
         grid_size : int, optional
-            Defines sparse grid of points on which geometric quantities are 
+            Defines sparse grid of points on which geometric quantities are
             estimated, and on which we will fit a 2D polynomial later on.
             The default is 20.
         degree : int, optional
-            Degree of 2D polynomial that fits the geometric quantities as a 
+            Degree of 2D polynomial that fits the geometric quantities as a
             function of their (row, col) position in the swath. The default is 7.
         Returns
         -------
@@ -226,7 +226,7 @@ class GeometryPredictor:
         # fit a 2d polynomial of degree
         polynom = poly.polymodel(degree)
         ztrue = np.column_stack(
-            [perp_baseline_train.T,  delta_r_train.T, theta_inc_train])
+            [perp_baseline_train.T, delta_r_train.T, theta_inc_train])
 
         polynom.fit_poly(points_train[:, 0], points_train[:, 1], ztrue)
         self.polynom = polynom
@@ -242,24 +242,24 @@ class GeometryPredictor:
         return ids
 
     def predict_perp_baseline(self, rows, cols, secondary_ids=None, grid_eval=False):
-        """Predicts the perpendicular baseline on a set of debursted points. 
+        """Predicts the perpendicular baseline on a set of debursted points.
 
 
         Parameters
         ----------
         rows: ndarray
-            rows on which to predict 
+            rows on which to predict
         cols: ndarray
             cols on which to predict
         secondary_ids : list of int, optional
             List of ids for which to predict the baseline.
-            If None, predict everywhere. 
+            If None, predict everywhere.
             The default is None.
         grid_eval : bool, optional
-            If set to True, the polynomial is evaluated at the cartesian 
-            product of rows, cols. Otherwise, the polynomial is evaluated at 
+            If set to True, the polynomial is evaluated at the cartesian
+            product of rows, cols. Otherwise, the polynomial is evaluated at
             the points defined by [rows, cols].
-            
+
         Returns
         -------
         ndarray
@@ -267,29 +267,29 @@ class GeometryPredictor:
 
         """
         secondary_ids = self.check_ids(secondary_ids)
-        return self.polynom.eval_poly(cols, rows, 
+        return self.polynom.eval_poly(cols, rows,
                                       secondary_ids,
                                       grid_eval)
 
     def predict_par_baseline(self, rows, cols, secondary_ids=None, grid_eval=False):
-        """Compute the parallel baseline on a set of debursted points. 
+        """Compute the parallel baseline on a set of debursted points.
 
 
         Parameters
         ----------
         rows: ndarray
-            rows on which to predict 
+            rows on which to predict
         cols: ndarray
             cols on which to predict
         secondary_ids : list of int, optional
             List of ids for which to predict the baseline.
-            If None, predict everywhere. 
+            If None, predict everywhere.
             The default is None.
         grid_eval : bool, optional
-            If set to True, the polynomial is evaluated at the cartesian 
-            product of rows, cols. Otherwise, the polynomial is evaluated at 
+            If set to True, the polynomial is evaluated at the cartesian
+            product of rows, cols. Otherwise, the polynomial is evaluated at
             the points defined by [rows, cols].
-            
+
 
         Returns
         -------
@@ -298,25 +298,25 @@ class GeometryPredictor:
 
         """
         secondary_ids = self.check_ids(secondary_ids)
-        return self.polynom.eval_poly(cols, rows, 
-                                self.len_secon + np.array(secondary_ids), 
-                                grid_eval)
+        return self.polynom.eval_poly(cols, rows,
+                                      self.len_secon + np.array(secondary_ids),
+                                      grid_eval)
 
     def predict_incidence(self, rows, cols, grid_eval=False):
-        """Compute the incidence angle for a set of debursted points. 
+        """Compute the incidence angle for a set of debursted points.
 
 
         Parameters
         ----------
         rows: ndarray
-            rows on which to predict 
+            rows on which to predict
         cols: ndarray
             cols on which to predict
         grid_eval : bool, optional
-            If set to True, the polynomial is evaluated at the cartesian 
-            product of rows, cols. Otherwise, the polynomial is evaluated at 
+            If set to True, the polynomial is evaluated at the cartesian
+            product of rows, cols. Otherwise, the polynomial is evaluated at
             the points defined by [rows, cols].
-        
+
         Returns
         -------
         ndarray

@@ -15,7 +15,9 @@ test:
     - pip install cython numpy
     - pip install -e ".[test]"
     - pip install pytest-parallel
+    - pip install flake8
   script:
+    - flake8 . --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
     - pip install multidem
     - pytest . --workers auto
 

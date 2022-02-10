@@ -4,6 +4,7 @@ import rasterio
 from urllib.parse import urlparse
 import numpy as np
 
+
 def open_image(path, profile_name=None, endpoint_url=None,
                requester_pays=False):
     """
@@ -17,7 +18,7 @@ def open_image(path, profile_name=None, endpoint_url=None,
         Name of the profile in AWS CLI config.
     endpoint_url : str, optional
         URL of the endpoint if different from AWS, None if AWS.
-         The default is None. 
+         The default is None.
     requester_pays : bool, optional
         Set this to True for AWS requester-pays buckets.
         The requester will be charged by AWS for the request.
@@ -41,16 +42,16 @@ def open_image(path, profile_name=None, endpoint_url=None,
         if profile_name:
             session = rasterio.session.AWSSession(profile_name=profile_name,
                                                   requester_pays=requester_pays)
-    
+
         # if the profile is not given, rely on environment variables
         elif 'AWS_ACCESS_KEY_ID' in os.environ:
             session = rasterio.session.AWSSession(
-                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                    region_name=os.environ["AWS_DEFAULT_REGION"],
-                    requester_pays=requester_pays)
+                aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                region_name=os.environ["AWS_DEFAULT_REGION"],
+                requester_pays=requester_pays)
             endpoint_url = endpoint_url or os.environ["AWS_S3_ENDPOINT"]
-    
+
         # last chance
         else:
             session = rasterio.session.AWSSession(requester_pays=requester_pays)
@@ -69,6 +70,7 @@ def open_image(path, profile_name=None, endpoint_url=None,
         image_reader = rasterio.open(path)
 
     return image_reader
+
 
 def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
                   requester_pays=False):
@@ -113,11 +115,11 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
         # if the profile is not given, rely on environment variables
         elif 'AWS_ACCESS_KEY_ID' in os.environ:
             s3_client = boto3.client('s3',
-                    aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-                    aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                    endpoint_url="https://" + (endpoint_url or os.environ["AWS_S3_ENDPOINT"]),
-                    region_name=os.environ["AWS_DEFAULT_REGION"],
-            )
+                                     aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
+                                     aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
+                                     endpoint_url="https://" + (endpoint_url or os.environ["AWS_S3_ENDPOINT"]),
+                                     region_name=os.environ["AWS_DEFAULT_REGION"],
+                                     )
 
         # last chance
         else:
@@ -148,7 +150,7 @@ def read_window(image_reader, roi, get_complex=True):
     get_complex : bool
         If True, the complex image is returned. Otherwise, only the amplitude
         is returned.
-    
+
     Returns
     -------
     array : ndarray (np.complex64 or np.float32)
@@ -157,24 +159,25 @@ def read_window(image_reader, roi, get_complex=True):
     """
     col, row, w, h = roi.to_roi()
     img = image_reader.read(1, window=(
-            (row, row+h), (col, col+w)))
+        (row, row + h), (col, col + w)))
     complex_flg = np.iscomplexobj(img)
-    if get_complex: 
+    if get_complex:
         # check if reader returned a complex image
         assert complex_flg, "Reader should return a complex type"
-        if img.dtype == np.complex64: 
+        if img.dtype == np.complex64:
             return img
-        else: 
+        else:
             return img.astype(np.complex64)
     else:
-        if complex_flg: 
+        if complex_flg:
             amp = np.abs(img)
-        else: 
+        else:
             amp = img
-        if amp.dtype == np.float32: 
+        if amp.dtype == np.float32:
             return amp
-        else: 
+        else:
             return amp.astype(np.float32)
+
 
 def read_windows(image_reader, rois, get_complex=True):
     """Read windows inside the tiff of a complex image.
@@ -188,7 +191,7 @@ def read_windows(image_reader, rois, get_complex=True):
     get_complex : bool
         If True, the complex imagettes are returned. Otherwise, only the amplitude
         are returned.
-        
+
     Returns
     -------
     arrays : list of np.complex64 or np.float32

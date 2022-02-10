@@ -7,10 +7,11 @@ from eos.sar.roi import Roi
 # TODO: from a old and a new product, pre and post IPF 2.9.0
 
 windows = (
-    (1000,  100,   100, 50),  # top left
+    (1000, 100, 100, 50),  # top left
     (18100, 12270, 50, 100),  # middle center
-    (10000, 6000,  50, 100),  # bottom right
+    (10000, 6000, 50, 100),  # bottom right
 )
+
 
 def get_infos(swath, pol, method, with_noise):
     pid = 'S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5'
@@ -33,6 +34,7 @@ def get_infos(swath, pol, method, with_noise):
 
     return calibrator, reader, snap_reader
 
+
 def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex, snap=None):
     # make sure that compute the magnitude of the calibrated complex gives the same as the calibration of the magnitude
     assert np.allclose(np.abs(calibrated_complex), calibrated_abs)
@@ -47,6 +49,7 @@ def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex, sna
         assert np.allclose(calibrated_abs, snap, atol=1e-2, rtol=1e-4)
         # but at least impose that the median is very similar
         assert np.allclose(np.median(calibrated_abs), np.median(snap), atol=1e-5, rtol=1e-4)
+
 
 @pytest.mark.parametrize('with_noise', (False, True))
 @pytest.mark.parametrize('method', ('gamma', 'beta', 'sigma'))
@@ -80,10 +83,10 @@ def test_calibration_without_noise(window, pol, swath, method, with_noise):
 
         compare_arrays(arr, arrc, imagec, snap)
 
+
 def test_inplaceness():
     calibrator, _, _ = get_infos('iw1', 'vv', 'sigma', False)
     arr = np.ones((20, 20), dtype=np.float32)
     window = (1000, 100, 20, 20)
     arr2 = calibrator.calibrate_inplace(arr, window, 'sigma')
     assert arr2 is arr
-

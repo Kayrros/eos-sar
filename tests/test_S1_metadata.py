@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 from eos.products import sentinel1
 
+
 def test_S1_metadata():
     # this annotation file is a sample from the 3.9 IPF draft
     # https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-1-sar/document-library/-/asset_publisher/1dO7RF5fJMbd/content/id/4623849
@@ -22,6 +23,7 @@ def test_S1_metadata():
 
 xmls_with_reference_bid = glob.glob('./tests/data/samples_ipf_39/*/*/*.xml')
 
+
 @pytest.mark.parametrize("xml", xmls_with_reference_bid)
 def test_reference_burstids(xml):
     import xmltodict
@@ -37,6 +39,7 @@ def test_reference_burstids(xml):
 
 bid_hard_cases = glob.glob('./tests/data/bid-hard-cases/*.xml')
 
+
 @pytest.mark.parametrize("xml", bid_hard_cases)
 def test_bid_hard_case(xml):
     xml_content = open(xml).read()
@@ -46,4 +49,3 @@ def test_bid_hard_case(xml):
     relative_bids = [b['relative_burst_id'] for b in metadatas]
     assert (np.diff(absolute_bids) == 1).all()
     assert (np.diff(relative_bids) == 1).all()
-

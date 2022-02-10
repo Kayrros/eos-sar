@@ -5,13 +5,13 @@ from eos.sar import utils, roi
 
 class TopoCorrection:
     '''
-    class to predict the Topographic and the Flatearth component 
-    for a set of models 
+    class to predict the Topographic and the Flatearth component
+    for a set of models
     '''
 
     def __init__(self, primary_model, secondary_models, grid_size=50, degree=7):
         """
-        Constructor. 
+        Constructor.
 
         Parameters
         ----------
@@ -20,7 +20,7 @@ class TopoCorrection:
         secModelList : List of eos.sar.model.SensorModel
             secondary models list.
         grid_size : int, optional
-            Geometric quantities (Baseline, incidence) are computed on a meshgrid 
+            Geometric quantities (Baseline, incidence) are computed on a meshgrid
             of size grid_size x grid_size on the whole primary model image extent.
             A polynomial is used to fit those quantities and interpolated everywhere else.
             Increasing the grid size might improve the accuracy of the corrections.
@@ -48,16 +48,16 @@ class TopoCorrection:
         Parameters
         ----------
         rows: ndarray
-            rows on which to predict 
+            rows on which to predict
         cols: ndarray
             cols on which to predict
         grid_eval : bool, optional
-            If set to True, the polynomial is evaluated at the cartesian 
-            product of rows, cols. Otherwise, the polynomial is evaluated at 
+            If set to True, the polynomial is evaluated at the cartesian
+            product of rows, cols. Otherwise, the polynomial is evaluated at
             the points defined by [rows, cols].
         secondary_ids : list of int, optional
-            List of the secondary_models on which to predict the correction. If None, 
-            the prediction is done for all elements. 
+            List of the secondary_models on which to predict the correction. If None,
+            the prediction is done for all elements.
             The default is None.
         wrapped : bool, optional
             If True, the phase is wraped to [-pi , pi] . The default is False.
@@ -80,7 +80,7 @@ class TopoCorrection:
     def sparse_flat_earth(self, rows, cols,
                           secondary_ids=None, wrapped=False):
         """
-        Predict the flat earth phase on a sparse set of points. 
+        Predict the flat earth phase on a sparse set of points.
 
         Parameters
         ----------
@@ -89,8 +89,8 @@ class TopoCorrection:
         cols: ndarray
             cols on which to predict (npts)
         secondary_ids : list of int, optional
-            List of the secondary_models on which to predict the correction. If None, 
-            the prediction is done for all elements. 
+            List of the secondary_models on which to predict the correction. If None,
+            the prediction is done for all elements.
             The default is None.
         wrapped : bool, optional
             If True, the phase is wraped to [-pi , pi] . The default is False.
@@ -108,17 +108,17 @@ class TopoCorrection:
     def flat_earth_image(self, primary_roi=None, secondary_ids=None,
                          wrapped=False):
         """
-        Flat earth prediction on image. 
+        Flat earth prediction on image.
 
         Parameters
         ----------
         primary_roi : eos.sar.roi.Roi, optional
             If given, restrict the prediction on this region
-            inside the primary image. Otherwise, predict on the whole image. 
+            inside the primary image. Otherwise, predict on the whole image.
             The default is None.
         secondary_ids : list of int, optional
-            List of the secondary_models on which to predict the correction. If None, 
-            the prediction is done for all elements. 
+            List of the secondary_models on which to predict the correction. If None,
+            the prediction is done for all elements.
             The default is None.
         wrapped : bool, optional
             If True, the phase is wraped to [-pi , pi] . The default is False.
@@ -132,11 +132,11 @@ class TopoCorrection:
         if primary_roi is None:
             primary_roi = roi.Roi(0, 0, self.primary_model.w, self.primary_model.h)
         col, row, w, h = primary_roi.to_roi()
-        flat_earth = self.__flat_earth(np.arange(row, row+h), np.arange(col, col+w),
+        flat_earth = self.__flat_earth(np.arange(row, row + h), np.arange(col, col + w),
                                        grid_eval=True, secondary_ids=secondary_ids,
                                        wrapped=wrapped)
         return flat_earth.reshape(flat_earth.shape[0], h, w)
-        
+
     def topo_phase_image(self, heights, primary_roi=None, secondary_ids=None,
                          wrapped=False):
         """
@@ -144,15 +144,15 @@ class TopoCorrection:
 
         Parameters
         ----------
-        heights : ndarray (h, w) 
+        heights : ndarray (h, w)
             Heights of each pixel in the primary radar coordinates.
         primary_roi : eos.sar.roi.Roi
             If given, restrict the prediction on this region
-            inside the primary image. Otherwise, predict on the whole image. 
+            inside the primary image. Otherwise, predict on the whole image.
             The default is None.
         secondary_ids : list of int, optional
-            List of the secondary_models on which to predict the correction. If None, 
-            the prediction is done for all elements. 
+            List of the secondary_models on which to predict the correction. If None,
+            the prediction is done for all elements.
             The default is None.
         wrapped : bool, optional
             If True, the phase is wraped to [-pi , pi] . The default is False.
@@ -166,28 +166,28 @@ class TopoCorrection:
         if primary_roi is None:
             primary_roi = roi.Roi(0, 0, self.primary_model.w, self.primary_model.h)
         col, row, w, h = primary_roi.to_roi()
-        
+
         assert heights.shape == (h, w), "heights array is not consistent with primary_roi"
-    
+
         # perp_baseline prediction
         perp_baseline = self.geom_pred.predict_perp_baseline(
-            np.arange(row, row+h), np.arange(col, col+w),
+            np.arange(row, row + h), np.arange(col, col + w),
             grid_eval=True,
-            secondary_ids = secondary_ids).T.reshape(-1, h, w) # N, h, w
-        
+            secondary_ids=secondary_ids).T.reshape(-1, h, w)  # N, h, w
+
         # incidence prediction
         incidence = self.geom_pred.predict_incidence(
-            np.arange(row, row+h), np.arange(col, col+w),
+            np.arange(row, row + h), np.arange(col, col + w),
             grid_eval=True,
-            ).reshape(h, w) # (h, w)
-        
-        _, rng = self.primary_model.to_azt_rng(0, np.arange(col, col+w)) # (w,)
-        
+        ).reshape(h, w)  # (h, w)
+
+        _, rng = self.primary_model.to_azt_rng(0, np.arange(col, col + w))  # (w,)
+
         return self.height_to_phase(heights, rng, incidence, perp_baseline, wrapped)
-   
+
     def height_to_phase(self, heights, rng, incidence, perp_baseline, wrapped=False):
         """
-        Convert height values to topographic phase. 
+        Convert height values to topographic phase.
 
         Parameters
         ----------
@@ -209,12 +209,12 @@ class TopoCorrection:
 
         """
         phase = - 4 * np.pi / self.wavelength
-        phase *=   heights / (rng * np.sin(incidence))
+        phase *= heights / (rng * np.sin(incidence))
         phase = phase * perp_baseline
         if wrapped:
             phase = utils.wrap(phase)
-        return phase     
-                
+        return phase
+
     def sparse_topo_phase(self, heights, rows, cols,
                           secondary_ids=None, wrapped=False):
         """
@@ -229,8 +229,8 @@ class TopoCorrection:
         cols : ndarray
             col position of the points.
         secondary_ids : list of int, optional
-            List of the secondary_models on which to predict the correction. If None, 
-            the prediction is done for all elements. 
+            List of the secondary_models on which to predict the correction. If None,
+            the prediction is done for all elements.
             The default is None.
         wrapped : bool, optional
             If True, the phase is wraped to [-pi , pi] . The default is False.
@@ -245,14 +245,14 @@ class TopoCorrection:
         perp_baseline = self.geom_pred.predict_perp_baseline(
             rows, cols,
             grid_eval=False,
-            secondary_ids = secondary_ids).T # nImgs, npts
-        
+            secondary_ids=secondary_ids).T  # nImgs, npts
+
         # incidence prediction
         incidence = self.geom_pred.predict_incidence(
             rows, cols,
             grid_eval=False,
-            ).ravel() # (npts, )
-        
-        _, rng = self.primary_model.to_azt_rng(0, cols) # (npts,)
-        
+        ).ravel()  # (npts, )
+
+        _, rng = self.primary_model.to_azt_rng(0, cols)  # (npts,)
+
         return self.height_to_phase(heights, rng, incidence, perp_baseline, wrapped)
