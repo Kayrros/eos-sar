@@ -64,4 +64,20 @@ For the future, all tests should be able to run locally, but test data should be
 	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20190708T032532_20190708T032559_028020_032A14_33CA.zip tests/data/pair/safes --unzip
 
 
+### Code formatting
+
+The CI validates the code against pep8 rules, except following: `E501,E702,E703,E704,E711,E712,F401,E741,W503,W504`.
+
+You can check your code locally before commiting using:
+```bash
+pip install flake8
+flake8 . --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
+```
+
+You can use autopep8 to autoformat your code:
+```bash
+autopep8 --in-place -r --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
+```
+
+Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.
 
