@@ -5,7 +5,7 @@ from eos.sar import const
 
 
 def iterative_projection(orbit, gx, gy, gz, azt_init=None,
-                         max_iterations=20, tol=1.2*1e-7):
+                         max_iterations=20, tol=1.2 * 1e-7):
     """Solves the point of closest approach using the Newton-Raphson algorithm.
 
     Parameters
@@ -36,7 +36,7 @@ def iterative_projection(orbit, gx, gy, gz, azt_init=None,
         start = min(sv_times)
         end = max(sv_times)
         # initial guess
-        azt_curr = (start + end)/2 * np.ones((len(points),))
+        azt_curr = (start + end) / 2 * np.ones((len(points),))
     else:
         azt_curr = np.array(azt_init)
     # mask on points on which to iterate

@@ -1,24 +1,28 @@
-import numpy as np 
-import eos.sar 
+import numpy as np
+import eos.sar
+
 
 def hrepeat(arr, w):
     """Flip a 1D array vertically and repeat horizontally w times."""
     return np.repeat(arr.reshape(-1, 1), repeats=w, axis=1)
 
+
 def vrepeat(arr, h):
     """Flip a 1D array horizontally, and repeat vertically h times."""
     return np.repeat(arr.reshape(1, -1), repeats=h, axis=0)
 
+
 def first_nonzero(arr, axis, invalid_val=-1):
-    """Compute the index of the first non zero entry along an axis. If all 
+    """Compute the index of the first non zero entry along an axis. If all
     entries are zeroes, invalid_val is returned"""
     mask = arr != 0
     return np.where(mask.any(axis=axis), mask.argmax(axis=axis), invalid_val)
 
+
 def geom_to_raster(approx_geom, transform, px_is_area=True):
     """
     Get the (col, row) coordinates of an approximate geometry in a raster
-    defined by a transform. 
+    defined by a transform.
 
     Parameters
     ----------
@@ -38,18 +42,19 @@ def geom_to_raster(approx_geom, transform, px_is_area=True):
     """
     lons = np.array([g[0] for g in approx_geom])
     lats = np.array([g[1] for g in approx_geom])
-        
-    col, row = ~transform * (lons, lats) 
-    
-    if px_is_area: 
-        # PIXEL_IS_AREA 
+
+    col, row = ~transform * (lons, lats)
+
+    if px_is_area:
+        # PIXEL_IS_AREA
         col -= 0.5
         row -= 0.5
-    return [(c, r) for c,r in zip(col, row)]
+    return [(c, r) for c, r in zip(col, row)]
 
-def geom_to_raster_roi(approx_geom, transform, raster_shape, px_is_area=True): 
+
+def geom_to_raster_roi(approx_geom, transform, raster_shape, px_is_area=True):
     """
-    Get the bounding box of an approximate geometry inside a raster defined 
+    Get the bounding box of an approximate geometry inside a raster defined
     by a transform.
 
     Parameters
@@ -76,14 +81,15 @@ def geom_to_raster_roi(approx_geom, transform, raster_shape, px_is_area=True):
     # deduce the bouding box
     raster_bounds = eos.sar.roi.Roi.points_to_bbox(row, col)
     raster_roi = eos.sar.roi.Roi.from_bounds_tuple(raster_bounds)
-    
+
     raster_roi.make_valid(parent_shape=raster_shape, inplace=True)
-    
+
     return raster_roi
 
-def raster_xy_grid(raster_shape, transform, px_is_area=True): 
+
+def raster_xy_grid(raster_shape, transform, px_is_area=True):
     """
-    Get the x, y (often longitude and latitude) grid of the raster. 
+    Get the x, y (often longitude and latitude) grid of the raster.
 
     Parameters
     ----------
@@ -108,12 +114,12 @@ def raster_xy_grid(raster_shape, transform, px_is_area=True):
         np.arange(raster_shape[1]), np.arange(raster_shape[0]))
     col = col.ravel()
     row = row.ravel()
-    
-    if px_is_area: 
+
+    if px_is_area:
         # Add 0.5 for pixel is area
         col = col + 0.5
         row = row + 0.5
-        
+
     # to earth coordinates
     x, y = transform * (col, row)
     # reshape
@@ -121,28 +127,32 @@ def raster_xy_grid(raster_shape, transform, px_is_area=True):
     y = y.reshape(raster_shape)
     return x, y
 
+
 def compare(phi1, phi2):
     ''' Compare two phases by their coherence'''
-    return np.abs(np.sum(np.exp(1j*(phi1 - phi2))))/phi1.size
+    return np.abs(np.sum(np.exp(1j * (phi1 - phi2)))) / phi1.size
+
 
 def wrap(phi):
     ''' Wrap phi to [-pi, pi]'''
-    return (phi + np.pi)%(2*np.pi) - np.pi
+    return (phi + np.pi) % (2 * np.pi) - np.pi
+
 
 def check_input_len(input_var, out_len, error_msg='shape mismatch'):
     """Check that the length of the input array is compatible with a certain\
         desired length. If a scalar is given, create a constant array with\
         desired length."""
     in_var = np.atleast_1d(input_var)
-    if len(in_var) == 1: 
-        return in_var * np.ones(out_len) 
-    else: 
+    if len(in_var) == 1:
+        return in_var * np.ones(out_len)
+    else:
         assert len(in_var) == out_len, error_msg
         return in_var
 
+
 def filter_list(full_list, ids):
     """
-    Filter list and keep only the ids given in the parameters. 
+    Filter list and keep only the ids given in the parameters.
 
     Parameters
     ----------
@@ -158,6 +168,7 @@ def filter_list(full_list, ids):
 
     """
     return list(map(full_list.__getitem__, ids))
+
 
 def arr_in_interval(arr, arr_min, arr_max):
     """
@@ -208,7 +219,7 @@ def stitch_arrays(rect_arrays, write_rois, out_shape):
         assert arr.shape == write_roi.get_shape(), "array shape must match write roi shape"
         write_roi.assert_valid(out_shape)
         col_min, row_min, w, h = write_roi.to_roi()
-        out_img[row_min:row_min+h, col_min:col_min+w] = arr
+        out_img[row_min:row_min + h, col_min:col_min + w] = arr
     return out_img
 
 

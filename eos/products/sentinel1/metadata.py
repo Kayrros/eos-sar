@@ -35,7 +35,7 @@ def corners_of_geolocation_grid_points_list(l, only_burst_id):
     only_burst_id (int): restrict to a particular burst."""
     lines = sorted(list(set(int(c['line']) for c in l)))
     first_line_position = lines[only_burst_id]
-    last_line_position = lines[only_burst_id+1]
+    last_line_position = lines[only_burst_id + 1]
     l = [c for c in l if int(c['line']) in (
         first_line_position, last_line_position)]
     line_indices = [int(c['line']) for c in l]
@@ -114,7 +114,7 @@ def _mid_burst_sensing_time_correction(o, first_burst_xml):
     # approximative longitude of the current burst (it's ok if it is a few degrees of)
     current_lon = np.mean([c[0] for c in o['approx_geom']])
     # expected longitude for a given orbit number
-    lon_at_anx = lambda orbit: (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
+    def lon_at_anx(orbit): return (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
     # since the longitude difference between the swaths is +/-1° the longitude of swath 2,
     # we don't have to correct it since the margin of error will be around 10°
     expected_lon = lon_at_anx(o['relative_orbit_number'])
@@ -226,7 +226,6 @@ def extract_common_metadata(xml):
     o['mission_id'] = mission_id
     o['absolute_orbit_number'] = absolute_orbit_number
     o['relative_orbit_number'] = relative_orbit_number
-
 
     d = i['imageAnnotation']['imageInformation']
     o['azimuth_frequency'] = float(d['azimuthFrequency'])
@@ -369,7 +368,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
             esa_relative_burst_id = int(b['burstId']['#text'])
             if relative_burst_id != esa_relative_burst_id:
                 logger.warning('relative_burst_id mismatch (xml:{}, computed:{})'
-                        .format(esa_relative_burst_id, relative_burst_id))
+                               .format(esa_relative_burst_id, relative_burst_id))
             # don't compare the absolute burst id since our definition is different than ESA's one
 
         burst['relative_burst_id'] = relative_burst_id

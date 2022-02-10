@@ -51,7 +51,7 @@ def get_overlaps(swath_model, ovl_ids):
 def warp_rois_read_resample_ovl(primary_swath_model, secondary_swath_model,
                                 secondary_bursts_metas, burst_resampling_matrices,
                                 ovl_burst_ids, read_rois_no_correc,
-                                write_rois,  out_shapes, image_reader,
+                                write_rois, out_shapes, image_reader,
                                 get_complex=True, margin=5):
     """
     Warp overlap rois, read, resample.

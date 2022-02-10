@@ -6,19 +6,19 @@ from eos.sar import range_doppler
 
 def test_projection():
     xml_path =\
-      './tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
+        './tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
     with open(xml_path) as f:
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(
-                                                burst_meta,
-                                                bistatic_correction=True,
-                                                apd_correction=True, 
-                                                intra_pulse_correction=True)
+        burst_meta,
+        bistatic_correction=True,
+        apd_correction=True,
+        intra_pulse_correction=True)
     # create a grid of points
     x, y, w, h = bmod.burst_roi.to_roi()
-    cols_grid, rows_grid = np.meshgrid(np.linspace(0, w-1, 10), np.linspace(0, h-1, 10))
+    cols_grid, rows_grid = np.meshgrid(np.linspace(0, w - 1, 10), np.linspace(0, h - 1, 10))
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 
@@ -47,11 +47,11 @@ def test_projection():
 
     # check iterative_projection
     transform = pyproj.Transformer.from_crs(
-                'epsg:4326', 'epsg:4978', always_xy=True)
+        'epsg:4326', 'epsg:4978', always_xy=True)
     gx, gy, gz = transform.transform(lon, lat, alt)
     azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx, gy, gz)
     assert isinstance(
-     azt, np.ndarray), "vectorized iterative projection func failed on array input"
+        azt, np.ndarray), "vectorized iterative projection func failed on array input"
 
     gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng,
                                                       np.zeros_like(alt),
