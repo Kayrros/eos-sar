@@ -112,7 +112,7 @@ def _read_lut_from_noise_xml(xml):
     if (len(lines) != len(pixels) or
         len(pixels) != len(values) or
             any(len(p) != len(v) for p, v in zip(pixels, values))):
-        raise Error("Unexpected data format in noise xml")
+        raise RuntimeError("Unexpected data format in noise xml")
 
     return lines, pixels, values, azimuth_blocks
 

@@ -91,7 +91,7 @@ def get_radar_dem_interpolator(model, x, y, raster,
     col_mask = np.logical_and(cols >= col_interval[0] - margin,
                               cols <= col_interval[1] + margin)
     mask = np.logical_and(row_mask, col_mask)
-   # project DEM in crop
+    # project DEM in crop
     irreg_points = np.column_stack([rows[mask], cols[mask]])
 
     if get_xy:

@@ -32,7 +32,7 @@ try:
     from cookielib import MozillaCookieJar
     from StringIO import StringIO
 
-except ImportError as e:
+except ImportError:
 
     # Python 3.x Libs
     from urllib.request import build_opener, install_opener, Request, urlopen
@@ -248,7 +248,7 @@ class bulk_downloader:
                 print("Your user appears to lack permission to download data from the ASF Datapool.")
                 print("\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov")
                 exit(-1)
-        except URLError as e:
+        except URLError:
             print("\nIMPORTANT: There was a problem communicating with URS, unable to obtain cookie. ")
             print("Try cookie generation later.")
             exit(-1)
@@ -444,7 +444,7 @@ class bulk_downloader:
         while 1:
             try:
                 chunk = response.read(chunk_size)
-            except:
+            except Exception:
                 sys.stdout.write("\n > There was an error reading data. \n")
                 break
 
@@ -511,7 +511,7 @@ class bulk_downloader:
             except csv.Error as e:
                 print("WARNING: Could not parse file %s, line %d: %s. Skipping." % (csv_file, csvr.line_num, e))
                 return None
-            except KeyError as e:
+            except KeyError:
                 print("WARNING: Could not find URL column in file %s. Skipping." % (csv_file))
 
         if len(dl_urls) > 0:
