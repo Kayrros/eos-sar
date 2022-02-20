@@ -8,7 +8,7 @@ from eos.products import sentinel1
 import eos.dem
 
 
-def main(roi_path, output, shadows=False, extends_roi=True):
+def main(roi_path, output, shadows=False, extends_roi=True, fx=4, fy=4):
     roiinfo = json.load(open(roi_path))
 
     product_id = roiinfo['product_id']
@@ -21,7 +21,8 @@ def main(roi_path, output, shadows=False, extends_roi=True):
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id)
     proj_model = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta)
     dem_source = eos.dem.MultidemSource()
-    terrain_flattening = TerrainFlatteningOp(proj_model, dem_source, detectShadow=shadows)
+    f = (fx, fy)
+    terrain_flattening = TerrainFlatteningOp(proj_model, dem_source, detectShadow=shadows, oversamplingMultiple=f)
 
     image = terrain_flattening.generateSimulatedImage(x0, y0, w, h, extends_roi=extends_roi)
     tifffile.imsave(output, image)

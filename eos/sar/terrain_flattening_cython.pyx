@@ -218,7 +218,7 @@ class TerrainFlatteningOp:
 
     def __init__(self, proj_model: eos.sar.model.SensorModel,
                  dem_source: eos.dem.DEMSource=None,
-                 oversamplingMultiple=.5,
+                 oversamplingMultiple=(4, 4),
                  detectShadow=True):
         self.proj_model = proj_model
 
@@ -228,17 +228,6 @@ class TerrainFlatteningOp:
 
         self.overSamplingFactor = oversamplingMultiple
         self.detectShadow = detectShadow
-
-    def get_transform(self, proj_model, roi):
-        x0, y0, w, h = roi.to_roi()
-        row = np.asarray([y0, y0, y0+h, y0+h])
-        col = np.asarray([x0, x0+w, x0+w, x0])
-        lon, lat, _ = proj_model.localization(row, col, alt=np.zeros_like(col))
-
-        gcps = [GroundControlPoint(row=r-y0, col=c-x0, x=ln, y=lt) for r, c, ln, lt in zip(row, col, lon, lat)]
-        dst_transform = rasterio.transform.from_gcps(gcps)
-
-        return dst_transform
 
     def get_sar_resolutions(self, int col, int row):
         # compute the azimuth and range 'resolution' by localizing two points in each direction
@@ -251,33 +240,19 @@ class TerrainFlatteningOp:
         range_resolution, azimuth_resolution = np.linalg.norm(p, axis=0)
         return range_resolution, azimuth_resolution
 
+    def get_transform(self, proj_model, roi):
+        x0, y0, w, h = roi.to_roi()
+        row = np.asarray([y0, y0, y0+h, y0+h])
+        col = np.asarray([x0, x0+w, x0+w, x0])
+        lon, lat, _ = proj_model.localization(row, col, alt=np.zeros_like(col))
+
+        gcps = [GroundControlPoint(row=r-y0, col=c-x0, x=ln, y=lt) for r, c, ln, lt in zip(row, col, lon, lat)]
+        dst_transform = rasterio.transform.from_gcps(gcps)
+
+        return dst_transform
+
     def resample_dem(self, int x0, int y0, int w, int h):
-        # NOTE: an affine transform is a poor approximation?
-        # we could warp with a higher order model, and use it to get the lon,lat as well
-
         roi = Roi(x0, y0, w, h)
-        tr = self.get_transform(self.proj_model, roi)
-
-        # fetch the resolution of the farthest pixel (finest resolution)
-        midrow = y0 + h // 2
-        midcol = x0 + w
-        range_resolution, azimuth_resolution = self.get_sar_resolutions(midcol, midrow)
-
-        # TODO: 30 is from SRTM30, use the resolution from the DEM and convert it
-        # NOTE: on a typical S1 SLC IW2 burst and SRTM30, Fx,Fy = 4,2
-        Fx = int(ceil((30 / range_resolution) * self.overSamplingFactor))
-        Fy = int(ceil((30 / azimuth_resolution) * self.overSamplingFactor))
-        print('oversampling:', Fx, Fy)
-        tr = tr * Affine.scale(1 / Fx, 1 / Fy)
-        nw = w * Fx
-        nh = h * Fy
-        print(nw, nh, w, h)
-        # TODO: add 0.5 pixel to the transform for pixel is point?
-
-        # TODO: directly reproject to 4978?
-        # then the image generation would be without crs conversion
-
-        bounds = []
 
         print('download dem'); t = time.time()
         geometry, _, _ = self.proj_model.get_approx_geom(roi)
@@ -286,19 +261,31 @@ class TerrainFlatteningOp:
         src_raster, src_transform, crs = self.dem_source.crop(bounds)
         print('download dem', time.time() - t)
 
+        # NOTE: an affine transform is a poor approximation?
+        # we could warp with a higher order model, and use it to get the lon,lat as well
+        transform = self.get_transform(self.proj_model, roi)
+
+        Fx, Fy = self.overSamplingFactor
+        print('oversampling:', Fx, Fy)
+        transform = transform * Affine.scale(1 / Fx, 1 / Fy)
+        nw = int(ceil(w * Fx))
+        nh = int(ceil(h * Fy))
+        print(nw, nh, w, h)
+        # TODO: add 0.5 pixel to the transform for pixel is point?
+
         dem = np.zeros((nh, nw))
         reproject(
             src_raster,
             dem,
             src_transform=src_transform,
             src_crs=crs,
-            dst_transform=tr,
+            dst_transform=transform,
             dst_crs=crs,
             src_nodata=np.nan,
             dst_nodata=np.nan,
             resampling=Resampling.cubic)
 
-        return dem, tr
+        return dem, transform
 
     def generateSimulatedImage(self, int x0, int y0, int w, int h, *, extends_roi=True):
         """
@@ -314,6 +301,7 @@ class TerrainFlatteningOp:
 
         # NOTE: rangeSpacing and azimuthSpacing are defined by the IPF
         # here, we use a different definition for the azimuthSpacing simply because it is more convenient
+        # TODO: make sure this definition of aBeta is ok
         cdef double azimuthSpacing = self.get_sar_resolutions(x0 + w // 2, y0 + h // 2)[1]
         cdef double rangeSpacing = const.LIGHT_SPEED_M_PER_SEC / (2 * self.proj_model.range_frequency)
         cdef double aBeta = azimuthSpacing * rangeSpacing
