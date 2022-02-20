@@ -12,16 +12,32 @@ class SLCCoordinateMixin:
     azimuth_frequency: float
     range_frequency: float
 
-    def to_azt_rng(self, row, col):
+    def to_azt(self, row):
         azt = row / self.azimuth_frequency + self.first_row_time
+        return azt
+
+    def to_rng(self, col):
         rng = (col / self.range_frequency + self.first_col_time) * \
             const.LIGHT_SPEED_M_PER_SEC / 2
+        return rng
+
+    def to_azt_rng(self, row, col):
+        azt = self.to_azt(row)
+        rng = self.to_rng(col)
         return azt, rng
 
-    def to_row_col(self, azt, rng):
+    def to_row(self, azt):
         row = (azt - self.first_row_time) * self.azimuth_frequency
+        return row
+
+    def to_col(self, rng):
         col = (2 * rng / const.LIGHT_SPEED_M_PER_SEC - self.first_col_time) * \
             self.range_frequency
+        return col
+
+    def to_row_col(self, azt, rng):
+        row = self.to_row(azt)
+        col = self.to_col(rng)
         return row, col
 
 
