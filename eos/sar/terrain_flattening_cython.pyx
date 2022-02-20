@@ -26,14 +26,10 @@ from eos.sar.roi import Roi
 from eos.products import sentinel1
 import eos.dem
 
-transformer_from_4326_to_4978 = pyproj.Transformer.from_crs('epsg:4979', 'epsg:4978', always_xy=True)
-transformer_from_4978_to_4326 = pyproj.Transformer.from_crs('epsg:4978', 'epsg:4979', always_xy=True)
-
 from affine import Affine
 import rasterio.crs
 import rasterio.transform
-from rasterio import Affine as A
-from rasterio.warp import reproject, Resampling, calculate_default_transform
+from rasterio.warp import reproject, Resampling
 from rasterio.control import GroundControlPoint
 
 """
@@ -110,30 +106,10 @@ cdef inline (double, double, double) geo2xyzWGS84(double latitude, double longit
 
     return x, y, z
 
-assert geo2xyzWGS84(39.361230359352405, 9.514164698791625, 1843.6623015093382) \
-        == transformer_from_4326_to_4978.transform(9.514164698791625, 39.361230359352405, 1843.6623015093382)
-
-cdef inline (double, double, double) xyz2geoWGS84(double x, double y, double z) nogil:
-    cdef double WGS84_a = 6378137.0
-    cdef double WGS84_b = 6356752.3142451794975639665996337
-    cdef double WGS84_earthFlatCoef = 1.0 / ((WGS84_a - WGS84_b) / WGS84_a)
-    cdef double WGS84_e2 = 2.0 / WGS84_earthFlatCoef - 1.0 / (WGS84_earthFlatCoef * WGS84_earthFlatCoef)
-    cdef double WGS84_ep2 = WGS84_e2 / (1 - WGS84_e2)
-    cdef double s = sqrt(x * x + y * y)
-    cdef double theta = atan(z * WGS84_a / (s * WGS84_b))
-    cdef double lat = atan((z + WGS84_ep2 * WGS84_b * sin(theta)**3) /
-                           (s - WGS84_e2 * WGS84_a * cos(theta)**3)) * (180. / M_PI)
-    cdef double lon = atan(y / x) * (180. / M_PI)
-    cdef double sinLat = sin(lat * (M_PI / 180.))
-    cdef double N = WGS84_a / sqrt(1.0 - WGS84_e2 * sinLat * sinLat)
-    cdef double alt = WGS84_e2 * N - N + z/sinLat
-
-    if lon < 0.0 and y >= 0.0:
-        lon += 180.0
-    elif lon > 0.0 and y < 0.0:
-        lon -= 180.0
-
-    return lat, lon, alt
+if True:
+    transformer_from_4326_to_4978 = pyproj.Transformer.from_crs('epsg:4979', 'epsg:4978', always_xy=True)
+    assert geo2xyzWGS84(39.361230359352405, 9.514164698791625, 1843.6623015093382) \
+            == transformer_from_4326_to_4978.transform(9.514164698791625, 39.361230359352405, 1843.6623015093382)
 
 cdef inline double computeElevationAngle(double earthPoint_x, double earthPoint_y, double earthPoint_z,
                                          double sensorPos_x, double sensorPos_y, double sensorPos_z):
@@ -355,8 +331,8 @@ class TerrainFlatteningOp:
 
         cdef int Nrows = dem.shape[0] - 1
         cdef int Ncols = dem.shape[1] - 1
-        cdef np.ndarray[np.int64_t, ndim=1] rlat = np.arange(0, Nrows+1)
-        cdef np.ndarray[np.int64_t, ndim=1] rlon = np.arange(0, Ncols+1)
+        cdef np.ndarray[np.int64_t, ndim=1] rrow = np.arange(0, Nrows+1)
+        cdef np.ndarray[np.int64_t, ndim=1] rcol = np.arange(0, Ncols+1)
         print('Ncols, Nrows:', Ncols, Nrows)
 
         cdef double gamma0
@@ -398,14 +374,12 @@ class TerrainFlatteningOp:
         cdef np.ndarray[np.float64_t, ndim=1] col0_lats = np.empty((Nrows+1,))
         cdef np.ndarray[np.float64_t, ndim=1] col0_alts = np.empty((Nrows+1,))
         cdef int mid = dem.shape[1] // 2
-        col0_alts = dem[rlat, mid]
-        col0_lons, col0_lats = dem_transform * (mid, rlat)
+        col0_alts = dem[rrow, mid]
+        col0_lons, col0_lats = dem_transform * (mid, rrow)
         row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
-        azt0, _ = self.proj_model.to_azt_rng(row0, col0)
+        azt0 = self.proj_model.to_azt(row0)
 
         cdef np.ndarray[np.float64_t, ndim=2] sats = self.proj_model.orbit.evaluate(azt0)
-
-        cdef int fast = 1
 
         cdef double t = time.time()
         for i in range(0, Nrows):
@@ -421,32 +395,22 @@ class TerrainFlatteningOp:
 
             # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
             row0_alts = dem[i]
-            row0_lons, row0_lats = dem_transform * (rlon, i)
+            row0_lons, row0_lats = dem_transform * (rcol, i)
             for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
                 row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])
 
-            if fast:
-                ok = self.getPositionConstantAzimuth(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
-                                row0_successes, row0_rangeIndices, row0_azimuthIndices)
-                if not ok:  # fast path in case the azimuth is outside [y0, y0+h]
-                    continue
-                sensorPos_x = sats[i,0]
-                sensorPos_y = sats[i,1]
-                sensorPos_z = sats[i,2]
-            else:
-                row0_gx, row0_gy, row0_gz = transformer_from_4326_to_4978.transform(row0_lons, row0_lats, row0_alts)
+            ok = self.getPositionConstantAzimuth(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
+                            row0_successes, row0_rangeIndices, row0_azimuthIndices)
+            if not ok:  # fast path in case the azimuth is outside [y0, y0+h]
+                continue
 
-                row0_successes.flat[:], row0_rangeIndices, row0_azimuthIndices, row0_sx, row0_sy, row0_sz = \
-                        self.getPosition(x0, y0, w, h, row0_gx, row0_gy, row0_gz)
+            sensorPos_x = sats[i,0]
+            sensorPos_y = sats[i,1]
+            sensorPos_z = sats[i,2]
 
             for j in range(Ncols-1):
                 if not row0_successes[j]:
                     continue
-
-                if not fast:
-                    sensorPos_x = row0_sx[j]
-                    sensorPos_y = row0_sy[j]
-                    sensorPos_z = row0_sz[j]
 
                 earthPoint_x = row0_gx[j]
                 earthPoint_y = row0_gy[j]
@@ -530,30 +494,6 @@ class TerrainFlatteningOp:
         lonMax = max([-180.0, lon1, lon2, lon3, lon4])
 
         return latMin, latMax, lonMin, lonMax
-
-    def getPosition(self, int x0, int y0, int w, int h, np.ndarray[np.float64_t, ndim=1] x, np.ndarray[np.float64_t, ndim=1] y, np.ndarray[np.float64_t, ndim=1] z):
-        """
-        Inputs:
-            x0/y0/w/h    Bounds of the image
-            x/y/z        Coordinates of the ground in 4978
-        Outputs:
-            success      Whether the operation succeeed (projection is in the image)
-            col          x coordinate on the image (range)
-            row          y coordinate on the image (azimuth)
-            sensorPos    x/y/z coordinate of the satellite in 4978
-        """
-        cdef np.ndarray[np.float64_t, ndim=1] row, col, satx, saty, satz
-
-        row, col, _ = self.proj_model.projection(x, y, z, crs='epsg:4978')
-        success = (row >= y0 - 1) * (row <= y0 + h) * (col >= x0 - 1) * (col <= x0 + w)
-
-        azt, rng = self.proj_model.to_azt_rng(row, col)
-        sat = self.proj_model.orbit.evaluate(azt)
-
-        satx = sat[:, 0]
-        saty = sat[:, 1]
-        satz = sat[:, 2]
-        return success, col, row, satx, saty, satz
 
     def getPositionConstantAzimuth(self, int x0, int y0, int w, int h,
                                    double[:] x,
