@@ -552,9 +552,9 @@ class TerrainFlatteningOp:
         rows2, cols2, _ = self.proj_model.projection(lon, lat, alt)
 
         # offset due to negative altitude
-        min_range_offset = max(0, int(ceil(- (cols - cols2).min())))
+        min_range_offset = max(0, int(ceil(- np.nanmin(cols - cols2))))
         # offset due to positive altitude
-        max_range_offset = max(0, int(ceil((cols - cols2).max())))
+        max_range_offset = max(0, int(ceil(np.nanmax(cols - cols2))))
         print('range offset for outer roi:', min_range_offset, max_range_offset)
 
         x0 -= min_range_offset
