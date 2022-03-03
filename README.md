@@ -12,9 +12,9 @@ To install the package, first install `cython` and `numpy`. You can run:
 
 Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. Therefore, make sure that you either install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4), which is an open source alternative providing acess to SRTM90 data.
 
-Currently, you can install from the following fork:
+If you wish to install srtm4, make sure to install with the "crop" extra dependencies: 
 
-	pip install git+https://github.com/rolandakiki/srtm4.git@crop
+	pip install srtm4["crop"]
 
  If you wish to use another dem source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a dem.
 
