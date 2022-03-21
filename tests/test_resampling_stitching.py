@@ -241,11 +241,12 @@ class Test_Resample_Stitch:
             burst_resampling_matrices = s1.regist.primary_registration_estimation(
                 primary_swath_model, primary_burst_models, x, y, alt, crs, burst_ids)
 
+        primary_image_readers = [image_readers[0] for _ in range(len(burst_ids))]
         primary_debursted_crop, read_rois_correc, resamplers =  \
             eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
                 read_rois_no_correc, burst_ids, primary_swath_model,
                 primary_swath_model, burst_resampling_matrices,
-                primary_bursts_meta, image_readers[0],
+                primary_bursts_meta, primary_image_readers,
                 write_rois_no_correc, out_shape)
 
         # construct secondary swath model and burst models
@@ -262,11 +263,12 @@ class Test_Resample_Stitch:
                 burst_ids, pts_in_burst_mask, primary_swath_model, rows_no_correc_global,
                 cols_no_correc_global, global_rows_fit=True)
 
+        secondary_image_readers = [image_readers[1] for _ in range(len(burst_ids))]
         secondary_debursted_crop, read_rois_correc, resamplers = \
             eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
                 read_rois_no_correc, burst_ids, primary_swath_model,
                 secondary_swath_model, burst_resampling_matrices,
-                secondary_bursts_meta, image_readers[1],
+                secondary_bursts_meta, secondary_image_readers,
                 write_rois_no_correc, out_shape,
                 get_complex=True)
 

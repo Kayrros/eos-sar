@@ -5,7 +5,7 @@ from eos.products.sentinel1 import burst_resamp
 
 def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
                                     secondary_swath_model, burst_resampling_matrices,
-                                    secondary_bursts_metas, image_reader,
+                                    secondary_bursts_metas, image_readers,
                                     write_rois, out_shape, out=None,
                                     get_complex=True, margin=5):
     """
@@ -26,8 +26,8 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
         resampling matrix of the burst.
     secondary_bursts_metas : List of dicts
         List of metadata of all bursts in a swath (even the ones we are not considering).
-    image_reader : rasterio.DatasetReader
-        Opened rasterio dataset.
+    image_readers : List of rasterio.DatasetReader
+        Opened rasterio datasets.
     write_rois : List of eos.sar.roi.Roi
         Each element defines the roi to write the data in the output array.
     out_shape : tuple
@@ -62,7 +62,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
 
             burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
                 burst_resampling_matrices[bid], burst_roi_dst, read_roi_dst, burst_roi_src,
-                secondary_bursts_metas[bid], image_reader, get_complex, margin)
+                secondary_bursts_metas[bid], image_readers[bid], get_complex, margin)
 
             read_rois_correc.append(read_roi_src)
             resamplers.append(resampler)
@@ -73,7 +73,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
 
 
 def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
-                    burst_resampling_matrices, bursts_metas, image_reader,
+                    burst_resampling_matrices, bursts_metas, image_readers,
                     get_complex=True):
     """
     Deburst an roi in the primary image.
@@ -89,8 +89,8 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
         resampling matrix of the burst.
     bursts_metas : List of dicts
         List of metadata of all bursts in a swath (even the ones we are not considering).
-    image_reader : rasterio.DatasetReader
-        Opened rasterio dataset.
+    image_readers : List of rasterio.DatasetReader
+        Opened rasterio datasets.
     get_complex : boolean, optional
         If set to True, get the complex array. Otherwise, all the processing is conducted
         on the amplitude from the start. The default is True.
@@ -119,7 +119,7 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
         roi_in_swath_no_correc)
     debursted_crop, read_rois_correc, resamplers = warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
                                                                                    primary_swath_model, burst_resampling_matrices,
-                                                                                   bursts_metas, image_reader,
+                                                                                   bursts_metas, image_readers,
                                                                                    write_rois_no_correc, out_shape,
                                                                                    get_complex)
     return burst_ids, read_rois_no_correc,\
