@@ -5,8 +5,7 @@ from urllib.parse import urlparse
 import numpy as np
 
 
-def open_image(path, profile_name=None, endpoint_url=None,
-               requester_pays=False):
+def open_image(path, requester_pays=False):
     """
     Open a remote or local image.
 
@@ -14,11 +13,6 @@ def open_image(path, profile_name=None, endpoint_url=None,
     ----------
     path : str
         Path to the image.
-    profile_name : str, optional
-        Name of the profile in AWS CLI config.
-    endpoint_url : str, optional
-        URL of the endpoint if different from AWS, None if AWS.
-         The default is None.
     requester_pays : bool, optional
         Set this to True for AWS requester-pays buckets.
         The requester will be charged by AWS for the request.
@@ -31,38 +25,8 @@ def open_image(path, profile_name=None, endpoint_url=None,
 
     """
     if path.startswith('s3://'):
-        # try except statement to avoid weird rasterio error
-        # in the absence of boto3
-        try:
-            import boto3
-        except ImportError:
-            print("You need to have boto3 installed to read from s3 bucket")
-            return None
-        # try to use the given profile_name
-        if profile_name:
-            session = rasterio.session.AWSSession(profile_name=profile_name,
-                                                  requester_pays=requester_pays)
-
-        # if the profile is not given, rely on environment variables
-        elif 'AWS_ACCESS_KEY_ID' in os.environ:
-            session = rasterio.session.AWSSession(
-                aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-                aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                region_name=os.environ["AWS_DEFAULT_REGION"],
-                requester_pays=requester_pays)
-            endpoint_url = endpoint_url or os.environ["AWS_S3_ENDPOINT"]
-
-        # last chance
-        else:
-            session = rasterio.session.AWSSession(requester_pays=requester_pays)
-
+        session = rasterio.session.AWSSession(requester_pays=requester_pays)
         env = rasterio.Env(session=session)
-        if endpoint_url:
-            if endpoint_url.startswith(('http://', 'https://')):
-                expr = re.match('^https?://', endpoint_url).group()
-                endpoint_url = endpoint_url.replace(expr, '')
-            env.options['AWS_S3_ENDPOINT'] = endpoint_url
-
     else:
         env = rasterio.Env()
 
@@ -72,8 +36,7 @@ def open_image(path, profile_name=None, endpoint_url=None,
     return image_reader
 
 
-def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
-                  requester_pays=False):
+def read_xml_file(xml_path, s3_client=None, requester_pays=False):
     """
     Read the content of a local or remote (S3) xml file.
 
@@ -81,11 +44,8 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
     ----------
     xml_path : str
         path of the xml file.
-    profile_name : str
-        Name of the profile in AWS CLI config.
-    endpoint_url : str, optional
-        URL of the endpoint if different from AWS, None if AWS.
-        The default is None.
+    s3_client : boto3.Client
+        boto3 s3 client with read permission to the resource
     requester_pays : bool, optional
         Set this to True for AWS requester-pays buckets.
         The requester will be charged by AWS for the request.
@@ -98,31 +58,8 @@ def read_xml_file(xml_path, profile_name=None, endpoint_url=None,
 
     """
     if xml_path.startswith('s3://'):
-        import boto3
-        s3_client = None
-
-        # try to use the given profile_name
-        if profile_name:
-            session = boto3.session.Session(profile_name=profile_name)
-            if endpoint_url and not endpoint_url.startswith('https://'):
-                if endpoint_url.startswith('http://'):
-                    endpoint_url = endpoint_url.replace('http://', '')
-                endpoint_url = 'https://' + endpoint_url
-            s3_client = session.client('s3',
-                                       endpoint_url=endpoint_url,
-                                       region_name=session.region_name)
-
-        # if the profile is not given, rely on environment variables
-        elif 'AWS_ACCESS_KEY_ID' in os.environ:
-            s3_client = boto3.client('s3',
-                                     aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-                                     aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-                                     endpoint_url="https://" + (endpoint_url or os.environ["AWS_S3_ENDPOINT"]),
-                                     region_name=os.environ["AWS_DEFAULT_REGION"],
-                                     )
-
-        # last chance
-        else:
+        if s3_client is None:
+            import boto3
             s3_client = boto3.client('s3')
 
         parsed_url = urlparse(xml_path)
