@@ -9,13 +9,7 @@ from eos.products import sentinel1
 
 @pytest.fixture
 def client_s3():
-    client_s3 = boto3.client(
-        "s3",
-        aws_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        endpoint_url="https://" + os.environ["AWS_S3_ENDPOINT"],
-        region_name=os.environ["AWS_DEFAULT_REGION"],
-    )
+    client_s3 = boto3.client("s3")
     return client_s3
 
 

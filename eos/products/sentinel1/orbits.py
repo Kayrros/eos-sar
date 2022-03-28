@@ -6,7 +6,7 @@ from lxml import etree
 
 from .metadata import string_to_timestamp
 
-S1_ORBITS_BUCKET = 's1-orbits'
+S1_ORBITS_BUCKET = 'kayrros-prod-acquisition-s1-orbits'
 
 
 def _parse_start_end_date_from_orbit_file(s):
