@@ -207,7 +207,7 @@ def _update_statevectors_from_source(product_info, burst, *, force_type, source)
 
 
 def update_statevectors_using_our_bucket(client_s3, product_info, burst, *, force_type=None, fullsearch=False):
-    '''Retrieve the orbit statevectors of the given bursts using the bucket s3://s1-orbits.
+    '''Retrieve the orbit statevectors of the given bursts using the bucket s3://kayrros-prod-acquisition-s1-orbits.
 
     Args
         client_s3: a boto3.client instance with kayrros OIO credentials
