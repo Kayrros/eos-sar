@@ -63,6 +63,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  full_bistatic_correction_reference=None,
                  apd_correction=True,
                  intra_pulse_correction=False,
+                 alt_fm_mismatch_correction=False,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BaseModel used to perform projection and localization\
@@ -106,6 +107,11 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             Apply atmospheric correction on the range. The default is True.
         intra_pulse_correction: Boolean, optional.
             Whether to apply intra_pulse_correction. The default is False.
+        alt_fm_mismatch_correction: Boolean, optional.
+            Whether to apply the altitude dependendent fm rate mismatch correction.
+            This correction corresponds to an azimuth shift, approx. linear w.r.t. 
+            the az. position in the burst, and dependent on the topography error
+            induced by the IPF height approximation during focusing.
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -137,6 +143,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.bistatic_correction = bistatic_correction
         self.full_bistatic_correction_reference = full_bistatic_correction_reference
         self.apd_correction = apd_correction
+        self.alt_fm_mismatch_correction = alt_fm_mismatch_correction
         self.intra_pulse_correction = intra_pulse_correction
         # stopping criteria
         self.max_iterations = max_iterations
@@ -215,7 +222,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                 src_crs, 'epsg:4979', always_xy=True)
             _, _, alt = transformer.transform(x, y, alt)
 
-        azt, rng = self.apply_corrections_proj(azt, rng, alt.squeeze(), np.cos(i))
+        azt, rng = self.apply_corrections_proj(azt, rng, gx, gy, gz,
+                                               alt.squeeze(), np.cos(i))
 
         # convert to row and col
         row, col = self.to_row_col(azt, rng)
@@ -224,9 +232,11 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
 
     def corrections_deactivated(self):
         """Get a boolean indicating if all the corrections are deactivated."""
-        return not(self.apd_correction or self.intra_pulse_correction or self.bistatic_correction)
+        return not(self.apd_correction or self.intra_pulse_correction\
+                   or self.bistatic_correction or self.alt_fm_mismatch_correction)
 
-    def apply_corrections_proj(self, azt, rng, alt=None, cos_i=None):
+    def apply_corrections_proj(self, azt, rng, gx, gy, gz,
+                               alt=None, cos_i=None):
         """
         Apply (activated) corrections (in a specific order) to projected point location.
 
@@ -236,6 +246,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             Azimuth time.
         rng : float or array
             Range distance in meters.
+        gx, gy, gz: float or array
+            Geocentric coordinates of the point(s) in 'epsg:4978'.
         alt : float or array, optional
             Altitude above wgs84 ellipsoid. The default is None.
         cos_i : float or array, optional
@@ -260,9 +272,13 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         if self.bistatic_correction:
             azt += self._bistatic_correction(rng)
 
+        if self.alt_fm_mismatch_correction:
+            azt += self._alt_fm_mismatch(azt, rng, gx, gy, gz)
+
         return azt, rng
 
-    def apply_corrections_loc(self, azt, rng, alt=None, cos_i=None):
+    def apply_corrections_loc(self, azt, rng, gx, gy, gz,
+                              alt=None, cos_i=None):
         """
         Apply (activated) corrections (in a specific order) before localizing a point.
 
@@ -272,6 +288,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             Azimuth time.
         rng : float or array
             Range distance in meters.
+        gx, gy, gz: float or array
+            Geocentric coordinates of the point(s) in 'epsg:4978'.
         alt : float or array, optional
             Altitude above wgs84 ellipsoid. The default is None.
         cos_i : float or array, optional
@@ -285,6 +303,10 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             Corrected range in meters.
 
         """
+        
+        if self.alt_fm_mismatch_correction:
+            azt -= self._alt_fm_mismatch(azt, rng, gx, gy, gz)
+
         # Apply corrections on rng and azt if needed
         if self.bistatic_correction:
             azt -= self._bistatic_correction(rng)
@@ -341,26 +363,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         # image coordinates to range and az time
         azt, rng = self.to_azt_rng(row, col)
 
-        cos_incidence = None
-        if self.apd_correction:
-            # evaluate satellite position
-            positions = self.orbit.evaluate(azt)
-            # Rough estimation of geometry
-            os = np.linalg.norm(positions, axis=1)
-
-            # Earth radius taken at the intersection of the line joining
-            # satellite and earth center with the ellipsoid
-            ell_axis = np.array([const.EARTH_WGS84_AXIS_A_M,
-                                 const.EARTH_WGS84_AXIS_A_M,
-                                 const.EARTH_WGS84_AXIS_B_M])
-
-            earth_radius = os / np.sqrt(np.sum((positions / ell_axis)**2, axis=1))
-            op = earth_radius + alt
-            # cosine rule
-            cos_incidence = (os**2 - op**2 - rng**2) / (2 * op * rng)
-
-        azt, rng = self.apply_corrections_loc(azt, rng, alt, cos_incidence)
-
         if vert_crs is None:
             dst_crs = crs
         else:
@@ -393,11 +395,39 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             y_init,
             z_init)
 
+        # First localization, no correction is enabled
         # localize each point
         gx, gy, gz = range_doppler.iterative_localization(
             self.orbit, azt, rng, alt, (gx_init, gy_init, gz_init),
             max_iterations=self.max_iterations,
             tol=self.localization_tolerance)
+
+        if not self.corrections_deactivated():
+            cos_incidence = None
+            # compute corrections if enabled
+            if self.apd_correction:
+                # compute the incidence angle
+                # evaluate satellite position
+                sat = self.orbit.evaluate(azt)
+                # points approx pos from first localization
+                points = np.column_stack([gx, gy, gz])
+    
+                os = np.linalg.norm(sat, axis=1)
+                op = np.linalg.norm(points, axis=1)
+    
+                cos_incidence = (os**2 - op**2 - rng**2) / (2 * op * rng)
+    
+            # apply corrections
+            azt, rng = self.apply_corrections_loc(azt, rng, gx, gy, gz,
+                                                  alt, cos_incidence)
+
+            # Perform localization again with corrected coords
+            # Should converge quickly (probably one iteration)
+            gx, gy, gz = range_doppler.iterative_localization(
+                self.orbit, azt, rng, alt, (gx, gy, gz),
+                max_iterations=self.max_iterations,
+                tol=self.localization_tolerance)
+
 
         todst = pyproj.Transformer.from_crs(
             'epsg:4978', dst_crs, always_xy=True)
@@ -428,6 +458,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                  full_bistatic_correction_reference=None,
                  apd_correction=True,
                  intra_pulse_correction=False,
+                 alt_fm_mismatch_correction=False,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BurstModel used to perform projection and localization\
@@ -475,6 +506,11 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
             Apply atmospheric correction on the range. The default is True.
         intra_pulse_correction: Boolean, optional.
             Whether to apply intra_pulse_correction. The default is False.
+        alt_fm_mismatch_correction: Boolean, optional.
+            Whether to apply the altitude dependendent fm rate mismatch correction.
+            This correction corresponds to an azimuth shift, approx. linear w.r.t. 
+            the az. position in the burst, and dependent on the topography error
+            induced by the IPF height approximation during focusing.
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -489,7 +525,16 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         Returns
         -------
         None.
-
+        
+        Notes
+        -----
+        For details on the implementation of the bistatic, intrapulse,
+        alt_fm_mismatch corrections, refer to : 
+            Gisinger, C., Schubert, A., Breit, H., Garthwaite, M., Balss, U.,
+            Willberg, M., … Miranda, N. (2020). In-Depth Verification of 
+            Sentinel-1 and TerraSAR-X Geolocation Accuracy Using the Australian
+            Corner Reflector Array. -, 1–28.
+            https://doi.org/10.1109/tgrs.2019.2961248
         """
 
         # set these for the CoordinateMixin
@@ -512,6 +557,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                          full_bistatic_correction_reference,
                          apd_correction,
                          intra_pulse_correction,
+                         alt_fm_mismatch_correction,
                          max_iterations,
                          tolerance)
 
@@ -623,6 +669,57 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                       - self.rank * self.pri + (2 * r / const.LIGHT_SPEED_M_PER_SEC) / 2)
         return dazt
 
+    def _alt_fm_mismatch(self, t, r, gx, gy, gz):
+
+            if not isinstance(t, (list, np.ndarray)):
+                d = self._alt_fm_mismatch(np.asarray([t]), np.asarray([r]),
+                                          gx, gy, gz)
+                assert len(d) == 1
+                return d[0]
+
+            # TODO add docstring
+            coords = np.column_stack([gx, gy, gz])
+
+            LIGHT_SPEED = const.LIGHT_SPEED_M_PER_SEC
+            tau = 2 * r / LIGHT_SPEED
+
+            # Doppler FM rate
+            range_dependent_doppler_rate = self.doppler.get_rg_dpt_dop_rate(tau)
+            assert len(range_dependent_doppler_rate) == len(r)
+
+            # Doppler Centroid Rate
+            doppler_rate = self.doppler.get_dop_rate(range_dependent_doppler_rate)
+
+            # Doppler Centroid Frequency
+            f_geom = self.doppler.get_dop_centroid(tau)
+
+            # azimuth dependent Doppler Centroid Frequency
+            mid_time = self.doppler.get_burst_mid_time()
+            ref_time = self.doppler.get_ref_time(f_geom, range_dependent_doppler_rate)
+
+            f = doppler_rate * (t - mid_time - ref_time)
+
+            k_geo = get_k_geo(self.orbit, t, coords, self.wavelength)
+
+            dazt = (f + f_geom) * (1 /k_geo - 1/range_dependent_doppler_rate)
+
+            return dazt
+
+def get_k_geo(orbit, azt, M, lamda):
+        # TODO add docstring
+        # speed
+        V = orbit.evaluate(azt, order=1).reshape(-1, 3)
+        # LOS vector
+        D = (orbit.evaluate(azt) - M).reshape(-1, 3)
+        # acceleration
+        Acc = orbit.evaluate(azt, order=2).reshape(-1, 3)
+        # scalar product
+        term1 = np.sum(D * Acc, axis=1).squeeze()
+        # squared speed norm
+        term2 = (np.linalg.norm(V, axis=1).squeeze()) ** 2
+        # combine
+        combined = term1 + term2
+        return -2 *combined / (lamda * np.linalg.norm(D, axis=1).squeeze() )
 
 class Sentinel1SwathModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at a swath."""
@@ -720,6 +817,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          rank,
                          False,
                          None,
+                         False,
                          False,
                          False,
                          max_iterations,
