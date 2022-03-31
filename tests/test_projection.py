@@ -15,7 +15,8 @@ def test_projection():
         burst_meta,
         bistatic_correction=True,
         apd_correction=True,
-        intra_pulse_correction=True)
+        intra_pulse_correction=True,
+        alt_fm_mismatch_correction=True)
     # create a grid of points
     x, y, w, h = bmod.burst_roi.to_roi()
     cols_grid, rows_grid = np.meshgrid(np.linspace(0, w - 1, 10), np.linspace(0, h - 1, 10))
@@ -33,7 +34,7 @@ def test_projection():
 
     # check if point fall back in the same location
     np.testing.assert_allclose(cols_pred, cols, atol=1e-3)
-    np.testing.assert_allclose(rows_pred, rows, atol=1e-3)
+    np.testing.assert_allclose(rows_pred, rows, atol=1e-2)
 
     # check ability to query one point
     ptlon, ptlat, ptalt = bmod.localization(rows[0], cols[0], alts[0])
