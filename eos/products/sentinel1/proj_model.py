@@ -1136,7 +1136,7 @@ def mask_pts_in_burst(swath_model, burst_id, row_swath, col_swath, without_ovl=T
 
 
 def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_correc_global,
-                       alt, incidence):
+                       alt, incidence, gx, gy, gz):
     """
     Estimate corrected swath coordinates ( the corrections are performed by the burst model).
 
@@ -1154,6 +1154,8 @@ def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_co
         Altitude (wgs84 ellipsoid) of the points.
     incidence : array
         Incidence angle at the points.
+    gx, gy, gz : array
+        Geocentric coordinates in meters
 
     Returns
     -------
@@ -1169,7 +1171,8 @@ def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_co
     azt, rng = swath_model.to_azt_rng(row_no_correc_global,
                                       col_no_correc_global)
 
-    azt, rng = burst_model.apply_corrections_proj(azt, rng, alt, np.cos(incidence))
+    azt, rng = burst_model.apply_corrections_proj(azt, rng, gx, gy, gz,
+                                                  alt, np.cos(incidence))
     # get corrected swath coordinates of points in burst
     row_correc_global, col_correc_global = swath_model.to_row_col(azt, rng)
 
@@ -1214,10 +1217,18 @@ def primary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_mo
     """
     transformer = pyproj.Transformer.from_crs(
         crs, 'epsg:4979', always_xy=True)
-    x, y, alt = transformer.transform(x, y, alt)
+    lon, lat, alt_ell = transformer.transform(x, y, alt)
+
+    # get geocentric coords
+    transformer = pyproj.Transformer.from_crs(
+        crs, 'epsg:4978', always_xy=True)
+
+    # convert to geocentric cartesian
+    gx, gy, gz = transformer.transform(x, y, alt)
+
     # project in swath_model
     row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(
-        x, y, alt)
+        gx, gy, gz, 'epsg:4978')
     pts_in_burst_mask = []
     rows_correc_global = []
     cols_correc_global = []
@@ -1230,8 +1241,8 @@ def primary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_mo
         cols_no_correc_global.append(col_no_correc_global[burst_mask])
         row_correc_global, col_correc_global = estimate_corrected(
             swath_model, burst_model, rows_no_correc_global[-1],
-            cols_no_correc_global[-1], alt[burst_mask],
-            incidence[burst_mask])
+            cols_no_correc_global[-1], alt_ell[burst_mask],
+            incidence[burst_mask], gx[burst_mask], gy[burst_mask], gz[burst_mask])
         pts_in_burst_mask.append(burst_mask)
         rows_correc_global.append(row_correc_global)
         cols_correc_global.append(col_correc_global)
@@ -1277,7 +1288,15 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_
 
     transformer = pyproj.Transformer.from_crs(
         crs, 'epsg:4979', always_xy=True)
-    x, y, alt = transformer.transform(x, y, alt)
+    lon, lat, alt_ell = transformer.transform(x, y, alt)
+
+    # get geocentric coords
+    transformer = pyproj.Transformer.from_crs(
+        crs, 'epsg:4978', always_xy=True)
+
+    # convert to geocentric cartesian
+    gx, gy, gz = transformer.transform(x, y, alt)
+
     rows_correc_global = []
     cols_correc_global = []
     rows_no_correc_global = []
@@ -1286,13 +1305,13 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_
         # project points that should fall in secondary burst
         # (according to previous primary projection)
         row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(
-            x[burst_mask], y[burst_mask], alt[burst_mask], crs=crs)
+            gx[burst_mask], gy[burst_mask], gz[burst_mask], crs='epsg:4978')
 
         # Apply burst corrections and get global swath coordinates
         row_correc_global, col_correc_global = estimate_corrected(
             swath_model, burst_model, row_no_correc_global,
-            col_no_correc_global, alt[burst_mask],
-            incidence)
+            col_no_correc_global, alt_ell[burst_mask],
+            incidence, gx[burst_mask], gy[burst_mask], gz[burst_mask])
 
         rows_no_correc_global.append(row_no_correc_global)
         cols_no_correc_global.append(col_no_correc_global)
