@@ -40,7 +40,7 @@ def test_poly():
 
 
 def test_baseline_predictions():
-    xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
+    xml_folder = 's3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
     xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
                      's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
     # list of our xmls

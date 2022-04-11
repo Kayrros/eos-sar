@@ -8,7 +8,7 @@ def test_radar_coding():
     remote_test = True
 
     if remote_test:
-        xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
+        xml_folder = 's3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
     else:
         xml_folder = '../tests/data'
 

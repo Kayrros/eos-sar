@@ -15,7 +15,7 @@ windows = (
 
 def get_infos(swath, pol, method, with_noise):
     pid = 'S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5'
-    basepath = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/test_calibration'
+    basepath = 's3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/test_calibration'
     calibration = io.read_xml_file(f'{basepath}/{pid}.SAFE/{swath}-{pol}-calibration.xml')
     noise = None
     if with_noise:

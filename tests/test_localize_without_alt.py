@@ -6,7 +6,7 @@ from eos.products import sentinel1
 
 
 def test_localize_without_alt():
-    xml_folder = 's3://dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
+    xml_folder = 's3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
     basename = 's1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
     xml_path = os.path.join(xml_folder, basename)
 
