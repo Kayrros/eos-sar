@@ -851,7 +851,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         """
         return request_roi.make_valid((self.h, self.w))
 
-    def get_read_write_rois(self, roi_in_swath=None):
+    def get_read_write_rois(self, roi_in_swath=None, adjust_roi_to_swath=True):
         """
         Compute the region to read from each burst if given a roi contained in
         a swath. The writing roi is also returned, with the corresponding burst
@@ -882,7 +882,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         if roi_in_swath is None:
             roi_in_swath = roi.Roi(0, 0, self.w, self.h)
 
-        roi_in_swath = self.adjust_roi_to_swath(roi_in_swath)
+        if adjust_roi_to_swath:
+            roi_in_swath = self.adjust_roi_to_swath(roi_in_swath)
 
         col, row, w, h = roi_in_swath.to_roi()
         out_shape = (h, w)
