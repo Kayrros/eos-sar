@@ -227,24 +227,25 @@ class Test_Resample_Stitch:
         roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
 
         # compute read/write rois
-        burst_ids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
+        bsids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
             roi_in_swath)
+        primary_image_readers = {bsid: image_readers[0] for bsid in bsids}
+        secondary_image_readers = {bsid: image_readers[1] for bsid in bsids}
 
         # construct burst models with appropriate corrections
-        primary_burst_models = [s1.proj_model.burst_model_from_burst_meta(
-            primary_bursts_meta[bid], full_bistatic_correction_reference=ref_metas[0],
-            **corrections) for bid in burst_ids]
+        primary_burst_models = {b['bsid']: s1.proj_model.burst_model_from_burst_meta(
+            b, full_bistatic_correction_reference=ref_metas[0],
+            **corrections) for b in primary_bursts_meta if b['bsid'] in bsids}
+        primary_bursts_meta = {b['bsid']: b for b in primary_bursts_meta}
 
         # estimate the matrices and resample
-        rows_no_correc_global, cols_no_correc_global, \
-            rows_correc_global, cols_correc_global, pts_in_burst_mask, \
+        rows_no_correc_global, cols_no_correc_global, _, _, pts_in_burst_mask, \
             burst_resampling_matrices = s1.regist.primary_registration_estimation(
-                primary_swath_model, primary_burst_models, x, y, alt, crs, burst_ids)
+                primary_swath_model, primary_burst_models, x, y, alt, crs, bsids)
 
-        primary_image_readers = [image_readers[0] for _ in range(len(burst_ids))]
-        primary_debursted_crop, read_rois_correc, resamplers =  \
+        primary_debursted_crop, _, _ =  \
             eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
-                read_rois_no_correc, burst_ids, primary_swath_model,
+                read_rois_no_correc, bsids, primary_swath_model,
                 primary_swath_model, burst_resampling_matrices,
                 primary_bursts_meta, primary_image_readers,
                 write_rois_no_correc, out_shape)
@@ -252,21 +253,21 @@ class Test_Resample_Stitch:
         # construct secondary swath model and burst models
         secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(secondary_bursts_meta)
 
-        secondary_burst_models = [s1.proj_model.burst_model_from_burst_meta(
-            secondary_bursts_meta[bid], full_bistatic_correction_reference=ref_metas[1],
-            **corrections) for bid in burst_ids]
+        secondary_burst_models = {b['bsid']: s1.proj_model.burst_model_from_burst_meta(
+            b, full_bistatic_correction_reference=ref_metas[1],
+            **corrections) for b in secondary_bursts_meta if b['bsid'] in bsids}
+        secondary_bursts_meta = {b['bsid']: b for b in secondary_bursts_meta}
 
         # estimate the matrices and resample
         burst_resampling_matrices = \
             s1.regist.secondary_registration_estimation(
                 secondary_swath_model, secondary_burst_models, x, y, alt, crs,
-                burst_ids, pts_in_burst_mask, primary_swath_model, rows_no_correc_global,
+                bsids, pts_in_burst_mask, primary_swath_model, rows_no_correc_global,
                 cols_no_correc_global, global_rows_fit=True)
 
-        secondary_image_readers = [image_readers[1] for _ in range(len(burst_ids))]
-        secondary_debursted_crop, read_rois_correc, resamplers = \
+        secondary_debursted_crop, _, _ = \
             eos.products.sentinel1.deburst.warp_rois_read_resample_deburst(
-                read_rois_no_correc, burst_ids, primary_swath_model,
+                read_rois_no_correc, bsids, primary_swath_model,
                 secondary_swath_model, burst_resampling_matrices,
                 secondary_bursts_meta, secondary_image_readers,
                 write_rois_no_correc, out_shape,

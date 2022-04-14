@@ -635,6 +635,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  bursts_times,
                  bursts_rois,
                  bursts_approx_geom,
+                 bsids,
                  state_vectors,
                  degree=11,
                  pri=None,
@@ -663,6 +664,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         bursts_approx_geom : List of list of tuples
             Each element is a list of tuples (lon, lat) corners of the approx geom
             of the burst
+        bsids: list of str
+            BSID of each burst of the model
         state_vectors : Iterable of dict
             List of state vectors (time, position, velocity).
         degree : int, optional
@@ -698,8 +701,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
 
         # setting image size
-        self.row_min = bursts_rois[0][1
-                                      ]
+        self.row_min = bursts_rois[0][1]
         col_max = max(roi_[0] + roi_[2] - 1 for roi_ in bursts_rois)
         w = (col_max - self.col_min + 1)
         h = int(np.round((bursts_times[-1][2] - first_row_time)
@@ -728,6 +730,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         # additional burst params, will surely be needed for coord conversion
         self.bursts_times = bursts_times
         self.bursts_rois = [roi.Roi.from_roi_tuple(_roi) for _roi in bursts_rois]
+        self.bsids = bsids
+
         # reset the initial azimuth guess at the center of swath
         self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2]) / 2
 
@@ -867,12 +871,12 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         Returns
         -------
-        burst_ids : list of int
-            Ids of the bursts intersected by the roi.
-        rois_read : list of eos.sar.roi.Roi
+        bsids : list of bsids
+            BSID of each burst intersecting the ROI.
+        rois_read : dict bsid -> eos.sar.roi.Roi
             Each roi corresponds to the region to be read from
             the tiff file.
-        rois_write : list of eos.sar.roi.Roi
+        rois_write : dict bsid -> eos.sar.roi.Roi
             Each roi corresponds to the region where the output
             data should be written in the output image.
         out_shape: tuple
@@ -892,15 +896,15 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         previous_bursts_h = 0  # current y in the input image fully debursted
         previous_roi_h = 0  # current y in the output crop
 
-        burst_ids = []
-        rois_read = []
-        rois_write = []
+        bsids = set()
+        rois_read = {}
+        rois_write = {}
 
-        for burst_id in range(len(self.bursts_rois)):
+        for bid, bsid in enumerate(self.bsids):
             # burst roi without overlap relative to tiff img
-            bcol, brow, bw, bh = self.burst_roi_without_ovl(burst_id).translate_roi(
-                self.bursts_rois[burst_id].col,
-                self.bursts_rois[burst_id].row).to_roi()
+            bcol, brow, bw, bh = self.burst_roi_without_ovl(bid).translate_roi(
+                self.bursts_rois[bid].col,
+                self.bursts_rois[bid].row).to_roi()
             # loop until we find first burst intersecting roi
             if previous_bursts_h + bh > row + previous_roi_h:
                 col_min = max(col, bcol)
@@ -911,16 +915,15 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                     debursted_to_tif
                 col_size = col_max - col_min
                 row_size = row_max - row_min
-                burst_ids.append(burst_id)
-                rois_read.append(roi.Roi(col_min, row_min, col_size, row_size))
-                rois_write.append(roi.Roi(col_min - col, previous_roi_h,
-                                          col_size, row_size))
+                bsids.add(bsid)
+                rois_read[bsid] = roi.Roi(col_min, row_min, col_size, row_size)
+                rois_write[bsid] = roi.Roi(col_min - col, previous_roi_h, col_size, row_size)
                 previous_roi_h += row_size
             previous_bursts_h += bh
             if previous_bursts_h >= row + h:
                 break
 
-        return burst_ids, rois_read, rois_write, out_shape
+        return bsids, rois_read, rois_write, out_shape
 
 
 def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
@@ -946,6 +949,7 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     bursts_times = [b['burst_times'] for b in bursts_metadata]
     bursts_rois = [b['burst_roi'] for b in bursts_metadata]
     bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]
+    bsids = [b['bsid'] for b in bursts_metadata]
 
     def alleq(prop):
         burst = bursts_metadata[0]
@@ -964,19 +968,14 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
                                bursts_times,
                                bursts_rois,
                                bursts_approx_geom,
+                               bsids,
                                bursts_metadata[0]['state_vectors'],
                                pri=bursts_metadata[0].get('pri'),
                                rank=bursts_metadata[0].get('rank'),
                                **kwargs)
 
-# TODO rethink models structure, taking into account that some things might
-# not be constant for the whole swath for ex. samples per burst
-# ( which is btw weird to include in the basemodel)
-# so basically, do sliceAssembly later,
-# -> JA: I removed samples_per_burst and lines_per_burst, it wasn't used for the swath model
 
-
-def get_burst_roi_in_swath(swath_model, burst_id, without_ovl=True):
+def get_burst_roi_in_swath(swath_model, bsid, without_ovl=True):
     """
     Get the roi of the burst in the swath coordinates.
 
@@ -996,17 +995,18 @@ def get_burst_roi_in_swath(swath_model, burst_id, without_ovl=True):
         Roi of the burst.
 
     """
-    col_orig, row_orig = swath_model.burst_orig_in_swath(burst_id)
+    bid = swath_model.bsids.index(bsid)
+    col_orig, row_orig = swath_model.burst_orig_in_swath(bid)
     if without_ovl:
         # get roi of burst without overlap in the swath
-        roi_burst = swath_model.burst_roi_without_ovl(burst_id).translate_roi(col_orig, row_orig)
+        roi_burst = swath_model.burst_roi_without_ovl(bid).translate_roi(col_orig, row_orig)
     else:
-        h, w = swath_model.bursts_rois[burst_id].get_shape()
+        h, w = swath_model.bursts_rois[bid].get_shape()
         roi_burst = roi.Roi(col_orig, row_orig, w, h)
     return roi_burst
 
 
-def mask_pts_in_burst(swath_model, burst_id, row_swath, col_swath, without_ovl=True):
+def mask_pts_in_burst(swath_model, bsid, row_swath, col_swath, without_ovl=True):
     """
     Check which of the points are within the burst and get a mask.
 
@@ -1031,7 +1031,7 @@ def mask_pts_in_burst(swath_model, burst_id, row_swath, col_swath, without_ovl=T
 
     """
     # get burst roi
-    roi_burst = get_burst_roi_in_swath(swath_model, burst_id, without_ovl)
+    roi_burst = get_burst_roi_in_swath(swath_model, bsid, without_ovl)
     # get a mask on the points that are within the roi
     burst_mask = roi_burst.contains(col_swath, row_swath)
 
@@ -1079,7 +1079,7 @@ def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_co
     return row_correc_global, col_correc_global
 
 
-def primary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_models):
+def primary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models):
     """
     Project points and correct them in the primary swath.
 
@@ -1095,54 +1095,52 @@ def primary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_mo
         Altitude of points.
     crs : any crs type accepted by pyproj
         CRS of the points.
-    burst_ids : Iterable
-        Id in the swath(zero based) of the specific bursts where we wish to have corrected coordinates.
-    burst_models : Iterable
+    bsids : Iterable
+        BSID of the specific bursts where we wish to have corrected coordinates.
+    burst_models : dict bsid -> model
         Associated burst models to the previous ids.
 
     Returns
     -------
-    rows_no_correc_global : list
+    rows_no_correc_global : dict bsid -> array
         Each element is an array of row coords without corrections inside a burst.
-    cols_no_correc_global : list
+    cols_no_correc_global : dict bsid -> array
         Each element is an array of col coords without corrections inside a burst.
-    rows_correc_global : list
+    rows_correc_global : dict bsid -> array
         Each element is an array of row coords with corrections inside a burst.
-    cols_correc_global : list
+    cols_correc_global : dict bsid -> array
         Each element is an array of col coords with corrections inside a burst.
-    pts_in_burst_mask : list
+    pts_in_burst_mask : dict bsid -> array
         Each element is a mask defining which points from the initial x, y, alt arrays
         were projected in the different bursts.
 
     """
-    transformer = pyproj.Transformer.from_crs(
-        crs, 'epsg:4979', always_xy=True)
-    x, y, alt = transformer.transform(x, y, alt)
     # project in swath_model
-    row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(
-        x, y, alt)
-    pts_in_burst_mask = []
-    rows_correc_global = []
-    cols_correc_global = []
-    rows_no_correc_global = []
-    cols_no_correc_global = []
-    for burst_id, burst_model in zip(burst_ids, burst_models):
-        burst_mask = mask_pts_in_burst(swath_model, burst_id,
-                                       row_no_correc_global, col_no_correc_global)
-        rows_no_correc_global.append(row_no_correc_global[burst_mask])
-        cols_no_correc_global.append(col_no_correc_global[burst_mask])
+    row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(x, y, alt, crs=crs)
+    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4979', always_xy=True)
+    _, _, alt_ellipsoid = transformer.transform(x, y, alt)
+    pts_in_burst_mask = {}
+    rows_correc_global = {}
+    cols_correc_global = {}
+    rows_no_correc_global = {}
+    cols_no_correc_global = {}
+    for bsid in bsids:
+        burst_model = burst_models[bsid]
+        burst_mask = mask_pts_in_burst(swath_model, bsid, row_no_correc_global, col_no_correc_global)
+        rows_no_correc_global[bsid] = row_no_correc_global[burst_mask]
+        cols_no_correc_global[bsid] = col_no_correc_global[burst_mask]
         row_correc_global, col_correc_global = estimate_corrected(
-            swath_model, burst_model, rows_no_correc_global[-1],
-            cols_no_correc_global[-1], alt[burst_mask],
+            swath_model, burst_model, rows_no_correc_global[bsid],
+            cols_no_correc_global[bsid], alt_ellipsoid[burst_mask],
             incidence[burst_mask])
-        pts_in_burst_mask.append(burst_mask)
-        rows_correc_global.append(row_correc_global)
-        cols_correc_global.append(col_correc_global)
-    return rows_no_correc_global, cols_no_correc_global,\
+        pts_in_burst_mask[bsid] = burst_mask
+        rows_correc_global[bsid] = row_correc_global
+        cols_correc_global[bsid] = col_correc_global
+    return rows_no_correc_global, cols_no_correc_global, \
         rows_correc_global, cols_correc_global, pts_in_burst_mask
 
 
-def secondary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_models, pts_in_burst_mask):
+def secondary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models, pts_in_burst_mask):
     """
     Project points and correct them in the primary swath.
 
@@ -1158,34 +1156,35 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_
         Altitude of points.
     crs : any crs type accepted by pyproj
         CRS of the points.
-    burst_ids : Iterable
-        Id in the swath(zero based) of the specific bursts where we wish to have corrected coordinates.
-    burst_models : Iterable
+    bsids : Iterable
+        BSIDs of the specific bursts where we wish to have corrected coordinates.
+    burst_models : dict bsid -> model
         Associated burst models to the previous ids.
-    pts_in_burst_mask : list
+    pts_in_burst_mask : dict bsid -> ndarray
         Each element is a mask defining which points from the initial x, y, alt arrays
         should be projected in the different bursts.
     Returns
     -------
-    rows_no_correc_global : list
+    rows_no_correc_global : dict bsid -> array
         Each element is an array of row coords without corrections inside a burst.
-    cols_no_correc_global : list
+    cols_no_correc_global : dict bsid -> array
         Each element is an array of col coords without corrections inside a burst.
-    rows_correc_global : list
+    rows_correc_global : dict bsid -> array
         Each element is an array of row coords with corrections inside a burst.
-    cols_correc_global : list
+    cols_correc_global : dict bsid -> array
         Each element is an array of col coords with corrections inside a burst.
 
     """
+    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4979', always_xy=True)
+    _, _, alt_ellipsoid = transformer.transform(x, y, alt)
+    rows_correc_global = {}
+    cols_correc_global = {}
+    rows_no_correc_global = {}
+    cols_no_correc_global = {}
+    for bsid in bsids:
+        burst_model = burst_models[bsid]
+        burst_mask = pts_in_burst_mask[bsid]
 
-    transformer = pyproj.Transformer.from_crs(
-        crs, 'epsg:4979', always_xy=True)
-    x, y, alt = transformer.transform(x, y, alt)
-    rows_correc_global = []
-    cols_correc_global = []
-    rows_no_correc_global = []
-    cols_no_correc_global = []
-    for burst_id, burst_model, burst_mask in zip(burst_ids, burst_models, pts_in_burst_mask):
         # project points that should fall in secondary burst
         # (according to previous primary projection)
         row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(
@@ -1194,13 +1193,13 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, burst_ids, burst_
         # Apply burst corrections and get global swath coordinates
         row_correc_global, col_correc_global = estimate_corrected(
             swath_model, burst_model, row_no_correc_global,
-            col_no_correc_global, alt[burst_mask],
+            col_no_correc_global, alt_ellipsoid[burst_mask],
             incidence)
 
-        rows_no_correc_global.append(row_no_correc_global)
-        cols_no_correc_global.append(col_no_correc_global)
-        rows_correc_global.append(row_correc_global)
-        cols_correc_global.append(col_correc_global)
+        rows_no_correc_global[bsid] = row_no_correc_global
+        cols_no_correc_global[bsid] = col_no_correc_global
+        rows_correc_global[bsid] = row_correc_global
+        cols_correc_global[bsid] = col_correc_global
 
     return rows_no_correc_global, cols_no_correc_global,\
         rows_correc_global, cols_correc_global

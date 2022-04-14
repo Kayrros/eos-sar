@@ -168,7 +168,7 @@ def orbital_registration(row_primary, col_primary, secondary_model,
     row_primary : ndarray
         Row projection of the x, y, raster points in the primary burst.
     col_primary : ndarray
-        Col projection of the x, y, raster points in the primary burst..
+        Col projection of the x, y, raster points in the primary burst.
     secondary_model : eos.sar.model.SensorModel
         Sensor model for the secondary image.
     x : ndarray
