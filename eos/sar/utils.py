@@ -192,35 +192,44 @@ def arr_in_interval(arr, arr_min, arr_max):
     return np.logical_and(arr >= arr_min, arr <= arr_max)
 
 
-def stitch_arrays(rect_arrays, write_rois, out_shape):
+def stitch_arrays(iter, out_shape, out=None):
     """
     Stitch individual rectangular arrays into an image of known shape, by
     writing the arrays into the given locations.
 
     Parameters
     ----------
-    rect_arrays : list of ndarray
-        Each element is a rectangular imagette to be used in the mosaic.
-    write_rois : list of eos.sar.roi.Roi
-        Each instance indicates where we should write the
+    iter : generator of tuples (array ndarray, write_roi eos.sar.roi.Roi)
+        Each `array` is a rectangular array to be used in the mosaic.
+        Each `write_roi` indicates where we should write the
         rectangular array in the output image.
     out_shape : tuple
         (h, w) Shape of output image.
+    out : ndarray, optional
+        Alternative output array in which to place the result.
+        It must have the same shape as the expected output,
+        but the type of the output values will be cast if necessary.
 
     Returns
     -------
-    out_img : ndarray
+    out : ndarray
         Output mosaic.
+        Equals to the `out` parameter if specified.
+        The dtype of the array will be the same as the dtype of the
+        first array in the list `iter`.
+        Equals to None if the list `iter` is empty.
 
     """
-    out_img = np.empty(out_shape, dtype=rect_arrays[0].dtype)
-    out_img[:] = np.nan
-    for arr, write_roi in zip(rect_arrays, write_rois):
+    for arr, write_roi in iter:
+        if out is None:
+            out = np.full(out_shape, np.nan, dtype=arr.dtype)
+
         assert arr.shape == write_roi.get_shape(), "array shape must match write roi shape"
         write_roi.assert_valid(out_shape)
         col_min, row_min, w, h = write_roi.to_roi()
-        out_img[row_min:row_min + h, col_min:col_min + w] = arr
-    return out_img
+        out[row_min:row_min + h, col_min:col_min + w] = arr
+
+    return out
 
 
 def write_array(arr, write_roi, out_shape):
@@ -242,4 +251,4 @@ def write_array(arr, write_roi, out_shape):
         Shifted output array.
 
     """
-    return stitch_arrays([arr], [write_roi], out_shape)
+    return stitch_arrays(((arr, write_roi)), out_shape)

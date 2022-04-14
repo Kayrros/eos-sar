@@ -6,7 +6,7 @@ from eos.products.sentinel1 import burst_resamp
 def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swath_model,
                                     secondary_swath_model, burst_resampling_matrices,
                                     secondary_bursts_metas, image_reader,
-                                    write_rois, out_shape,
+                                    write_rois, out_shape, out=None,
                                     get_complex=True, margin=5):
     """
     Warp the rois, read then resample, and deburst.
@@ -32,6 +32,8 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
         Each element defines the roi to write the data in the output array.
     out_shape : tuple
         Output array shape.
+    out : ndarray, optional
+        Output array (shape should be `out_shape` and dtype should be compatible with `get_complex`).
     get_complex : boolean, optional
         If set to True, get the complex array. Otherwise, all the processing is conducted
         on the amplitude from the start. The default is True.
@@ -50,23 +52,23 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, burst_ids, primary_swat
         Each resampler can be applied directly on the read array with read_rois_correc.
 
     """
-    burst_arrays_resamp = []
     read_rois_correc = []
     resamplers = []
 
-    for read_roi_dst, bid in zip(read_rois_no_correc, burst_ids):
-        burst_roi_dst = primary_swath_model.bursts_rois[bid]
-        burst_roi_src = secondary_swath_model.bursts_rois[bid]
+    def gen():
+        for read_roi_dst, bid in zip(read_rois_no_correc, burst_ids):
+            burst_roi_dst = primary_swath_model.bursts_rois[bid]
+            burst_roi_src = secondary_swath_model.bursts_rois[bid]
 
-        burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
-            burst_resampling_matrices[bid], burst_roi_dst, read_roi_dst, burst_roi_src,
-            secondary_bursts_metas[bid], image_reader, get_complex, margin)
+            burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
+                burst_resampling_matrices[bid], burst_roi_dst, read_roi_dst, burst_roi_src,
+                secondary_bursts_metas[bid], image_reader, get_complex, margin)
 
-        burst_arrays_resamp.append(burst_array_resamp)
-        read_rois_correc.append(read_roi_src)
-        resamplers.append(resampler)
+            read_rois_correc.append(read_roi_src)
+            resamplers.append(resampler)
+            yield burst_array_resamp, write_rois[bid]
 
-    debursted_crop = utils.stitch_arrays(burst_arrays_resamp, write_rois, out_shape)
+    debursted_crop = utils.stitch_arrays(gen(), out_shape, out=out)
     return debursted_crop, read_rois_correc, resamplers
 
 
