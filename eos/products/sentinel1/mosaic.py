@@ -147,6 +147,12 @@ class RoiProjModelWrapper:
             ys.append(y)
         return ys, xs, np.degrees(i)
 
+    def localize_without_alt(self, rows, cols, *args, **kwargs):
+        cols = np.asarray(cols) + self.roi.col
+        rows = np.asarray(rows) + self.roi.row
+        lons, lats, alts, mask = self.proj_model.localize_without_alt(rows, cols, *args, **kwargs)
+        return lons, lats, alts, mask
+
 
 def get_image_reader(product: Sentinel1ProductInfo, swath: str, pol: str, calibration):
     reader = product.get_image_reader(swath, pol)
@@ -196,11 +202,12 @@ class S1AssemblyCropper:
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
             secondary_bursts_meta_iw2 = get_bursts(products, 'iw2', pol, orbit_provider=orbit_provider)
             secondary_bursts_meta_iw2 = sentinel1.metadata.assemble_multiple_products_into_metas(secondary_bursts_meta_iw2)
-            assert all(b['samples_per_burst'] == secondary_bursts_meta_iw2[0]['samples_per_burst'] for b in secondary_bursts_meta_iw2)
+            # assert all(b['samples_per_burst'] == secondary_bursts_meta_iw2[0]['samples_per_burst'] for b in secondary_bursts_meta_iw2)
             full_bistatic_correction_reference = secondary_bursts_meta_iw2[0]
 
             corrections = dict(
                 bistatic_correction=True,
+                # TODO: full_bistatic_correction_reference should be specific for each burst and not for the full swath
                 full_bistatic_correction_reference=full_bistatic_correction_reference,
                 apd_correction=True,
                 intra_pulse_correction=True,
