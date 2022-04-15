@@ -905,7 +905,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             bcol, brow, bw, bh = self.burst_roi_without_ovl(bid).translate_roi(
                 self.bursts_rois[bid].col,
                 self.bursts_rois[bid].row).to_roi()
-            # loop until we find first burst intersecting roi
+            # loop until we find first burst vertically intersecting roi
             if previous_bursts_h + bh > row + previous_roi_h:
                 col_min = max(col, bcol)
                 col_max = min(col + w, bcol + bw)
@@ -915,9 +915,13 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                     debursted_to_tif
                 col_size = col_max - col_min
                 row_size = row_max - row_min
-                bsids.add(bsid)
-                rois_read[bsid] = roi.Roi(col_min, row_min, col_size, row_size)
-                rois_write[bsid] = roi.Roi(col_min - col, previous_roi_h, col_size, row_size)
+
+                write_roi = roi.Roi(col_min - col, previous_roi_h, col_size, row_size)
+                if write_roi.w > 0 and write_roi.h > 0:
+                    bsids.add(bsid)
+                    rois_read[bsid] = roi.Roi(col_min, row_min, col_size, row_size)
+                    rois_write[bsid] = write_roi
+
                 previous_roi_h += row_size
             previous_bursts_h += bh
             if previous_bursts_h >= row + h:
