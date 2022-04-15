@@ -272,7 +272,7 @@ class SarResample(abc.ABC):
         # and should yield a phase for each point in this grid
         pass
 
-    def resample(self, src_array):
+    def resample(self, src_array, *, reramp=True):
         """
         Resample a SAR image. If the image is complex, deramping and reramping
         must be applied.
@@ -281,6 +281,8 @@ class SarResample(abc.ABC):
         ----------
         src_array : ndarray
             src image.
+        reramp : bool
+            Set to False to avoid reramping after resampling.
 
         Returns
         -------
@@ -289,8 +291,9 @@ class SarResample(abc.ABC):
         """
         if src_array.dtype == np.complex64:
             # deramp, resample, reramp
-            dst_array = self.reramp(apply_affine(self.deramp(src_array),
-                                                 self.matrix, self.dst_shape))
+            dst_array = apply_affine(self.deramp(src_array), self.matrix, self.dst_shape)
+            if reramp:
+                dst_array = self.reramp(dst_array)
         else:
             dst_array = apply_affine(src_array, self.matrix, self.dst_shape)
         return dst_array

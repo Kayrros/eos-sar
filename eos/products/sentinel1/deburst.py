@@ -7,7 +7,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_mo
                                     secondary_swath_model, burst_resampling_matrices,
                                     secondary_bursts_metas, image_readers,
                                     write_rois, out_shape, out=None,
-                                    get_complex=True, margin=5):
+                                    get_complex=True, margin=5, reramp=True):
     """
     Warp the rois, read then resample, and deburst.
 
@@ -39,6 +39,8 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_mo
         on the amplitude from the start. The default is True.
     margin : int, optional
         Pixel safety margin to be applied after warping read_rois_no_correc. The default is 5.
+    reramp : bool
+        Set to False to avoid reramping after resampling.
 
     Returns
     -------
@@ -65,7 +67,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_mo
 
             burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
                 burst_resampling_matrices[bsid], burst_roi_dst, read_roi_dst, burst_roi_src,
-                secondary_bursts_metas[bsid], image_readers[bsid], get_complex, margin)
+                secondary_bursts_metas[bsid], image_readers[bsid], get_complex, margin, reramp)
 
             read_rois_correc[bsid] = read_roi_src
             resamplers[bsid] = resampler
