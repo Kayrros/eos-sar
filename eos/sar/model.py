@@ -3,7 +3,8 @@
 import abc
 import numpy as np
 from eos.sar.orbit import Orbit
-from eos.sar import utils, roi
+from eos.sar import utils
+from eos.sar.roi import Roi as Roi
 import eos.dem
 
 # TODO: change the functions so that they take a DemSource as parameter
@@ -121,7 +122,7 @@ class SensorModel(abc.ABC):
         lon, lat, alt_opt = self.localization(row, col, alt_opt)
         return lon, lat, alt_opt, masks
 
-    def get_approx_geom(self, _roi=None, margin=0, **kwargs):
+    def get_approx_geom(self, roi=None, margin=0, **kwargs):
         """
         Get the approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
@@ -129,7 +130,7 @@ class SensorModel(abc.ABC):
 
         Parameters
         ----------
-        _roi : eos.sar.roi.Roi, optional
+        roi : eos.sar.roi.Roi, optional
             Defines the region to localize. The default is None.
         margin : int, optional
             Margin in px to buffer the roi. The default is 0.
@@ -145,12 +146,12 @@ class SensorModel(abc.ABC):
                 keys: "zeros", "converged", "invalid"
                 as returned by localize_without_alt
         """
-        if _roi is None:
-            _roi = roi.Roi(0, 0, self.w, self.h)
+        if roi is None:
+            roi = Roi(0, 0, self.w, self.h)
         if margin:
-            _roi = _roi.add_margin(margin)
+            roi = roi.add_margin(margin)
 
-        rows, cols = _roi.to_bounding_points()
+        rows, cols = roi.to_bounding_points()
 
         lons, lats, alts, masks = self.localize_without_alt(
             rows, cols, **kwargs)

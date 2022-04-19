@@ -146,9 +146,9 @@ def get_registration_dem_pts(primary_model, roi=None, margin=500,
     """
     assert sampling_ratio > 0 and sampling_ratio <= 1, "sampling ratio out of range"
 
-    refined_geom, alts, mask = primary_model.get_approx_geom(roi, margin)
+    refined_geom, _, _ = primary_model.get_approx_geom(roi, margin)
     # get dem points
-    x, y, raster, transform, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
+    x, y, raster, _, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
 
     # you can mask some pixels to speed up the projection
     mask = np.random.binomial(n=1, p=sampling_ratio, size=x.shape).astype(bool)
@@ -168,7 +168,7 @@ def orbital_registration(row_primary, col_primary, secondary_model,
     row_primary : ndarray
         Row projection of the x, y, raster points in the primary burst.
     col_primary : ndarray
-        Col projection of the x, y, raster points in the primary burst..
+        Col projection of the x, y, raster points in the primary burst.
     secondary_model : eos.sar.model.SensorModel
         Sensor model for the secondary image.
     x : ndarray
@@ -272,7 +272,7 @@ class SarResample(abc.ABC):
         # and should yield a phase for each point in this grid
         pass
 
-    def resample(self, src_array):
+    def resample(self, src_array, *, reramp=True):
         """
         Resample a SAR image. If the image is complex, deramping and reramping
         must be applied.
@@ -281,6 +281,8 @@ class SarResample(abc.ABC):
         ----------
         src_array : ndarray
             src image.
+        reramp : bool
+            Set to False to avoid reramping after resampling.
 
         Returns
         -------
@@ -289,8 +291,9 @@ class SarResample(abc.ABC):
         """
         if src_array.dtype == np.complex64:
             # deramp, resample, reramp
-            dst_array = self.reramp(apply_affine(self.deramp(src_array),
-                                                 self.matrix, self.dst_shape))
+            dst_array = apply_affine(self.deramp(src_array), self.matrix, self.dst_shape)
+            if reramp:
+                dst_array = self.reramp(dst_array)
         else:
             dst_array = apply_affine(src_array, self.matrix, self.dst_shape)
         return dst_array

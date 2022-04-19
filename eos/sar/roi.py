@@ -198,18 +198,37 @@ class Roi:
 
         Returns
         -------
-        adapted_roi : tuple
-            (col, row, w, h) region of interest that lies within the parent shape.
+        adapted_roi : Roi
+            region of interest that lies within the parent shape.
 
         """""
-        h_parent, w_parent = parent_shape
+        h, w = parent_shape
+        parent_roi = Roi(0, 0, w, h)
+        return self.clip(parent_roi, inplace=inplace)
+
+    def clip(self, parent_roi, inplace=False):
+        """
+        If the child roi is not within the boundaries of the parent image dimension,
+        modify it to satisfy the condition.
+
+        Parameters
+        ----------
+        parent_roi : Roi
+
+        Returns
+        -------
+        adapted_roi : Roi
+            region of interest that lies within the parent shape.
+
+        """""
+        col_parent_min, row_parent_min, col_parent_max, row_parent_max = parent_roi.to_bounds()
         col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
 
         # take min, max with image boundary
-        col_min = max(col_child_min, 0)
-        col_max = min(col_child_max, w_parent - 1)
-        row_min = max(0, row_child_min)
-        row_max = min(row_child_max, h_parent - 1)
+        col_min = max(col_child_min, col_parent_min)
+        col_max = min(col_child_max, col_parent_max)
+        row_min = max(row_child_min, row_parent_min)
+        row_max = min(row_child_max, row_parent_max)
 
         if (row_max < row_min) or (col_max < col_min):
             return self.obj_from_roi_tuple((0, 0, 0, 0), inplace=inplace)
