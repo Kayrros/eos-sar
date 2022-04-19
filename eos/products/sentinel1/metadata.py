@@ -397,3 +397,8 @@ def extract_burst_metadata(xml, burst_id):
         The metadata of the burst.
     """
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
+
+
+def assemble_multiple_products_into_metas(metas_per_product):
+    bursts = list(sum(metas_per_product, []))
+    return bursts

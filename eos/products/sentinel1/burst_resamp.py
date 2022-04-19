@@ -387,7 +387,7 @@ def get_read_roi_src_and_resampler(
 
 def warp_roi_read_resample(
         burst_resampling_matrix, burst_roi_dst, read_roi_dst, burst_roi_src,
-        burst_meta_src, image_reader, get_complex=True, margin=5):
+        burst_meta_src, image_reader, get_complex=True, margin=5, reramp=True):
     """
     Warp the roi to the source frame, read, then resample to the destination frame.
 
@@ -410,6 +410,8 @@ def warp_roi_read_resample(
         If True, the complex array is read and resampled. The default is True.
     margin : int, optional
         Pixel safety margin to be applied after warping the destination region. The default is 5.
+    reramp : bool
+        Set to False to avoid reramping after resampling.
 
     Returns
     -------
@@ -433,6 +435,6 @@ def warp_roi_read_resample(
     padded_burst_array = io.read_window(
         image_reader, read_roi_src, get_complex)
 
-    burst_array_resamp = resampler.resample(padded_burst_array)
+    burst_array_resamp = resampler.resample(padded_burst_array, reramp=reramp)
 
     return burst_array_resamp, read_roi_src, resampler
