@@ -75,8 +75,8 @@ else:
 
 
 def get_bursts(products, swath, pol, orbit_provider):
-    bursts = [sentinel1.metadata.extract_bursts_metadata(p.get_xml_annotation(swath=swath, pol=pol))
-              for p in products]
+    xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
+    bursts = [sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls]
 
     if orbit_provider:
         for p, bs in zip(products, bursts):
@@ -200,7 +200,7 @@ class S1AssemblyCropper:
             pts_in_burst_mask[bsid] = burst_mask
 
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
-            secondary_bursts_meta_iw2 = get_bursts(products, 'iw2', pol, orbit_provider=orbit_provider)
+            secondary_bursts_meta_iw2 = get_bursts(products, 'iw2', pol, orbit_provider=None)
             secondary_bursts_meta_iw2 = sentinel1.metadata.assemble_multiple_products_into_metas(secondary_bursts_meta_iw2)
             # assert all(b['samples_per_burst'] == secondary_bursts_meta_iw2[0]['samples_per_burst'] for b in secondary_bursts_meta_iw2)
             full_bistatic_correction_reference = secondary_bursts_meta_iw2[0]
