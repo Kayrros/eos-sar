@@ -925,6 +925,144 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         return bsids, rois_read, rois_write, out_shape
 
+    def to_mosaic(self, **kwargs):
+        approx_geom, _, _ = self.get_approx_geom()
+
+        model = Sentinel1MosaicModel(
+            self.first_row_time,
+            self.first_col_time,
+            approx_geom,
+            self.range_frequency,
+            self.azimuth_frequency,
+            self.w,
+            self.h,
+            self.wavelength,
+            self.orbit.sv,
+            pri=self.pri,
+            rank=self.rank,
+            **kwargs,
+        )
+        return model
+
+
+class Sentinel1MosaicModel(Sentinel1BaseModel):
+    """Enables operations like projection and localization at a mosaic."""
+
+    def __init__(self,
+                 first_row_time,
+                 first_col_time,
+                 approx_geom,
+                 range_frequency,
+                 azimuth_frequency,
+                 width,
+                 height,
+                 wavelength,
+                 state_vectors,
+                 degree=11,
+                 max_iterations=20,
+                 tolerance=0.001):
+        """Sentinel1MosaicModel used to perform projection and localization\
+        in a Sentinel1 mosaic.
+
+        Parameters
+        ----------
+        range_frequency : float
+            Two way range time sampling frequency .
+        azimuth_frequency : float
+            Azimuth time sampling frequency.
+        wavelength: float
+            wavelength in m
+        first_row_time: float
+            Azimuth time of the first line in the image
+        first_col_time: float
+            Two way slant range time of the first column in the image
+        width: int
+            width of the image
+        height: int
+            height of the image
+        state_vectors : Iterable of dict
+            List of state vectors (time, position, velocity).
+        degree : int, optional
+            Degree of the orbit polynomial. The default is 11.
+        max_iterations : int, optional
+            Maximum iterations of the iterative projection and localization
+            algorithms. The default is 20.
+        tolerance : float, optional
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
+            iterations stop when the step in x, y, z is less than tolerance.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
+
+        """
+        # set these for the CoordinateMixin
+        first_row_time = row_min / azimuth_frequency
+        first_col_time = col_min / range_frequency
+
+        # call the base class constructor
+        super().__init__(first_row_time,
+                         first_col_time,
+                         approx_geom,
+                         range_frequency,
+                         azimuth_frequency,
+                         width,
+                         height,
+                         wavelength,
+                         state_vectors,
+                         degree,
+                         None,
+                         None,
+                         False,
+                         None,
+                         False,
+                         False,
+                         max_iterations,
+                         tolerance)
+
+    def to_dict(self) -> dict:
+        metadata = dict(
+            range_frequency=self.range_frequency,
+            azimuth_frequency=self.azimuth_frequency,
+            wavelength=self.wavelength,
+            col_min=self.first_col_time * self.range_frequency,
+            row_min=self.first_row_time * self.azimuth_frequency,
+            width=self.w,
+            height=self.h,
+            approx_geom=self.approx_geom,
+            state_vectors=self.orbit.sv,
+            degree=self.orbit.degree,
+            max_iterations=self.max_iterations,
+            tolerance=self.localization_tolerance,
+        )
+        return metadata
+
+    @staticmethod
+    def from_dict(dict):
+        return Sentinel1MosaicModel(**dict)
+
+    def to_cropped_mosaic(self, roi: roi.Roi):
+        first_col_time = self.first_col_time + roi.col / self.range_frequency
+        first_row_time = self.first_row_time + roi.row / self.azimuth_frequency
+
+        approx_geom, _, _ = self.get_approx_geom(roi)
+
+        model = Sentinel1MosaicModel(
+            first_row_time,
+            first_col_time,
+            approx_geom,
+            self.range_frequency,
+            self.azimuth_frequency,
+            roi.w,
+            roi.h,
+            self.wavelength,
+            self.orbit.sv,
+            degree=self.orbit.degree,
+            max_iterations=self.max_iterations,
+            tolerance=self.localization_tolerance,
+        )
+        return model
+
 
 def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     """
