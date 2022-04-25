@@ -54,7 +54,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  width,
                  height,
                  wavelength,
-                 slant_range_time,
                  state_vectors,
                  degree=11,
                  pri=None,
@@ -86,8 +85,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             height of the image
         wavelength: float
             wavelength in m
-        slant_range_time : float
-            Two way time to the first column in the sentinel1 raster.
         state_vectors : Iterable of dict
             List of state vectors (time, position, velocity).
         degree : int, optional
@@ -129,7 +126,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.h = height
         self.wavelength = wavelength  # for TopoCorrection
 
-        self.slant_range_time = slant_range_time
         self.orbit = orbit.Orbit(state_vectors, degree)
         # processing params
         self.pri = pri
@@ -495,6 +491,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         # set these for the CoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
+        self.slant_range_time = slant_range_time
         super().__init__(first_row_time,
                          first_col_time,
                          approx_geom,
@@ -503,7 +500,6 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                          burst_roi[2],
                          burst_roi[3],
                          wavelength,
-                         slant_range_time,
                          state_vectors,
                          degree,
                          pri,
@@ -697,6 +693,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
         first_col_time = slant_range_time + self.col_min / range_frequency
+        self.slant_range_time = slant_range_time
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
 
@@ -715,7 +712,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          w,
                          h,
                          wavelength,
-                         slant_range_time,
                          state_vectors,
                          degree,
                          pri,
