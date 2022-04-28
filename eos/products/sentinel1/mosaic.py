@@ -7,8 +7,6 @@ import eos.dem
 
 from eos.products.sentinel1.product import Sentinel1ProductInfo
 
-# TODO: support multi swath
-
 
 def get_bursts(products, swath, pol, orbit_provider):
     xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
@@ -26,14 +24,7 @@ class S1Assembler:
     meta_per_bsid_per_swath: dict[str, dict[str, dict]] = {}
 
     @staticmethod
-    def from_products(products, *, only_swath=None, orbit_provider=None):
-        assert only_swath, 'multiswath mosaicing is not yet supported'
-
-        if only_swath:
-            swaths = (only_swath.lower(),)
-        else:
-            swaths = ('iw1', 'iw2', 'iw3')
-
+    def from_products(products, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None):
         bursts_per_swath = {}
         for swath in swaths:
             bursts = get_bursts(products, swath, 'vv', orbit_provider)
@@ -89,12 +80,17 @@ class S1AssemblyCropper:
         self._cropper_fn = None
 
     def _prepare(self, dem):
+        swaths = sorted(list(self.assembler.meta_per_bsid_per_swath.keys()))
         primary_swath_model = self.assembler.get_swath_proj_model()
+
+        bursts_meta = [list(a.values()) for a in self.assembler.meta_per_bsid_per_swath.values()]
+        bursts_meta = sum(bursts_meta, [])
+        primary_cutter = sentinel1.acquisition.make_primary_cutter_from_bursts_meta(bursts_meta)
 
         # get affected bsids and their read/write rois
         # read_rois are relative to the primary bursts
         # write_rois are relative to the destination mosaic coordinates system
-        all_bsids, read_rois, write_rois, out_shape = primary_swath_model.get_read_write_rois(self.roi, adjust_roi_to_swath=False)
+        all_bsids, read_rois, write_rois, out_shape = primary_cutter.get_read_write_rois(self.roi)
         assert out_shape == self.roi.get_shape()
 
         mosaic_model = primary_swath_model
@@ -109,7 +105,7 @@ class S1AssemblyCropper:
         rows_primary = {}
         cols_primary = {}
         for bsid in all_bsids:
-            burst_mask = sentinel1.proj_model.mask_pts_in_burst(primary_swath_model, bsid, row_primary, col_primary)
+            burst_mask = primary_cutter.mask_pts_in_burst(bsid, row_primary, col_primary)
             rows_primary[bsid] = row_primary[burst_mask]
             cols_primary[bsid] = col_primary[burst_mask]
             pts_in_burst_mask[bsid] = burst_mask
@@ -117,7 +113,6 @@ class S1AssemblyCropper:
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
             secondary_bursts_meta_iw2 = get_bursts(products, 'iw2', pol, orbit_provider=None)
             secondary_bursts_meta_iw2 = sentinel1.metadata.assemble_multiple_products_into_metas(secondary_bursts_meta_iw2)
-            # assert all(b['samples_per_burst'] == secondary_bursts_meta_iw2[0]['samples_per_burst'] for b in secondary_bursts_meta_iw2)
             full_bistatic_correction_reference = secondary_bursts_meta_iw2[0]
 
             corrections = dict(
@@ -128,14 +123,21 @@ class S1AssemblyCropper:
                 intra_pulse_correction=True,
             )
 
-            out = np.full(out_shape, np.nan, dtype=np.csingle if get_complex else np.single)
-            swaths = ('iw1', 'iw2', 'iw3')
-            for swath in swaths:
-                secondary_bursts_meta = get_bursts(products, swath, pol, orbit_provider=orbit_provider)
+            secondary_burst_meta_per_swath = {
+                swath: get_bursts(products, swath, pol, orbit_provider=orbit_provider)
+                for swath in swaths
+            }
+            all_secondary_burst_meta = list(sum(sum(secondary_burst_meta_per_swath.values(), []), []))
+            secondary_cutter = sentinel1.acquisition.make_secondary_cutter_from_bursts_meta(all_secondary_burst_meta)
 
+            out = np.full(out_shape, np.nan, dtype=np.csingle if get_complex else np.single)
+            for swath, secondary_bursts_meta in secondary_burst_meta_per_swath.items():
                 bsids = all_bsids.intersection(b['bsid'] for metas in secondary_bursts_meta for b in metas)
                 if not bsids:
                     continue
+
+                for bsid in bsids:
+                    assert pts_in_burst_mask[bsid].sum() > 10
 
                 secondary_readers = {m['bsid']: get_image_reader(p, swath, pol, calibration)
                                      for metas, p in zip(secondary_bursts_meta, products)
@@ -148,13 +150,14 @@ class S1AssemblyCropper:
                                            for b in secondary_bursts_meta}
 
                 burst_resampling_matrices = sentinel1.regist.secondary_registration_estimation(
-                    secondary_swath_model, secondary_bursts_models, x, y, alt, crs,
-                    bsids, pts_in_burst_mask, mosaic_model, rows_primary, cols_primary)
+                    secondary_swath_model, secondary_cutter, secondary_bursts_models, x, y, alt, crs,
+                    bsids, pts_in_burst_mask, primary_cutter, rows_primary, cols_primary)
 
                 secondary_bursts_meta_per_bsid = {b['bsid']: b for b in secondary_bursts_meta}
                 sentinel1.deburst.warp_rois_read_resample_deburst(
-                    read_rois, bsids, mosaic_model,
-                    secondary_swath_model, burst_resampling_matrices,
+                    read_rois, bsids,
+                    primary_cutter, secondary_cutter,
+                    burst_resampling_matrices,
                     secondary_bursts_meta_per_bsid, secondary_readers,
                     write_rois, out_shape, out, get_complex=get_complex, reramp=reramp)
 

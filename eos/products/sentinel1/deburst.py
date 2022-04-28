@@ -3,8 +3,8 @@ from eos.sar import utils
 from eos.products.sentinel1 import burst_resamp
 
 
-def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_model,
-                                    secondary_swath_model, burst_resampling_matrices,
+def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
+                                    secondary_cutter, burst_resampling_matrices,
                                     secondary_bursts_metas, image_readers,
                                     write_rois, out_shape, out=None,
                                     get_complex=True, margin=5, reramp=True):
@@ -17,10 +17,10 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_mo
         Each element is an roi in the ideal primary frame.
     bsids : Iterable
         List of BSID of interest.
-    primary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
-        Primary swath model.
-    secondary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
-        Secondary swath model.
+    primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
+        Primary acquisition cutter.
+    secondary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
+        secondary acquisition cutter.
     burst_resampling_matrices : dict bsid -> matrix
         Dict where the key is the bsid and the value is a 3x3 affine inverse
         resampling matrix of the burst.
@@ -60,10 +60,9 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_mo
     def gen():
         for bsid in bsids:
             read_roi_dst = read_rois_no_correc[bsid]
-            bid1 = primary_swath_model.bsids.index(bsid)
-            bid2 = secondary_swath_model.bsids.index(bsid)
-            burst_roi_dst = primary_swath_model.bursts_rois[bid1]
-            burst_roi_src = secondary_swath_model.bursts_rois[bid2]
+
+            burst_roi_dst = primary_cutter.get_burst_outer_roi_in_tiff(bsid)
+            burst_roi_src = secondary_cutter.get_burst_outer_roi_in_tiff(bsid)
 
             burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
                 burst_resampling_matrices[bsid], burst_roi_dst, read_roi_dst, burst_roi_src,
@@ -77,7 +76,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_mo
     return debursted_crop, read_rois_correc, resamplers
 
 
-def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
+def deburst_primary(roi_in_swath_no_correc, primary_cutter,
                     burst_resampling_matrices, bursts_metas, image_readers,
                     get_complex=True):
     """
@@ -87,8 +86,8 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
     ----------
     roi_in_swath_no_correc : eos.sar.roi.Roi
         Region of interest to be deburst defined in the swath.
-    primary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
-        Primary swath model.
+    primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
+        Primary acquisition cutter.
     burst_resampling_matrices : dict
         Dict where the key is the burst id and the value is a 3x3 affine inverse
         resampling matrix of the burst.
@@ -119,10 +118,9 @@ def deburst_primary(roi_in_swath_no_correc, primary_swath_model,
 
 
     """
-    bsids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
-        roi_in_swath_no_correc)
-    debursted_crop, read_rois_correc, resamplers = warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_swath_model,
-                                                                                   primary_swath_model, burst_resampling_matrices,
+    bsids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_cutter.get_read_write_rois(roi_in_swath_no_correc)
+    debursted_crop, read_rois_correc, resamplers = warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
+                                                                                   primary_cutter, burst_resampling_matrices,
                                                                                    bursts_metas, image_readers,
                                                                                    write_rois_no_correc, out_shape,
                                                                                    get_complex)

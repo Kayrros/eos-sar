@@ -9,3 +9,4 @@ from eos.products.sentinel1 import calibration
 from eos.products.sentinel1 import overlap
 from eos.products.sentinel1 import mosaic
 from eos.products.sentinel1 import product
+from eos.products.sentinel1 import acquisition

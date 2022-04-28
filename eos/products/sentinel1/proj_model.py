@@ -937,9 +937,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             self.w,
             self.h,
             self.wavelength,
+            approx_geom,
             self.orbit.sv,
-            pri=self.pri,
-            rank=self.rank,
             **kwargs,
         )
         return model
@@ -996,11 +995,6 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
             using the speed. The default is 0.001.
 
         """
-        # set these for the CoordinateMixin
-        first_row_time = row_min / azimuth_frequency
-        first_col_time = col_min / range_frequency
-
-        # call the base class constructor
         super().__init__(first_row_time,
                          first_col_time,
                          approx_geom,
@@ -1025,8 +1019,8 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
             range_frequency=self.range_frequency,
             azimuth_frequency=self.azimuth_frequency,
             wavelength=self.wavelength,
-            col_min=self.first_col_time * self.range_frequency,
-            row_min=self.first_row_time * self.azimuth_frequency,
+            first_col_time=self.first_col_time,
+            first_row_time=self.first_row_time,
             width=self.w,
             height=self.h,
             approx_geom=self.approx_geom,
