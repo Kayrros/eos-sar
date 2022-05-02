@@ -1,4 +1,5 @@
 import os
+import glob
 import re
 import rasterio
 from urllib.parse import urlparse
@@ -139,3 +140,27 @@ def read_windows(image_reader, rois, get_complex=True):
     for roi in rois:
         arrays.append(read_window(image_reader, roi, get_complex))
     return arrays
+
+
+def glob_single_file(pattern):
+    """
+    Get the full path to a starred expression using glob, for a single file.
+
+    Parameters
+    ----------
+    pattern : str
+        Starred expression.
+
+    Returns
+    -------
+    str
+        Full path to the single file.
+
+    Raises
+    ------
+    AssertionError: If the number of files found is not one.
+    """
+    list_results = glob.glob(pattern)
+    assert len(list_results) == 1,\
+        f"Expected to find one file, instead found {len(list_results)}"
+    return list_results[0]
