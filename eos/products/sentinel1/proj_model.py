@@ -1,4 +1,5 @@
 """Sentinel1 models for projection/localization."""
+from typing import Optional
 import numpy as np
 import pyproj
 from eos.sar import model, range_doppler, const, coordinates, orbit, roi, utils
@@ -54,7 +55,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  width,
                  height,
                  wavelength,
-                 slant_range_time,
                  state_vectors,
                  degree=11,
                  pri=None,
@@ -86,8 +86,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             height of the image
         wavelength: float
             wavelength in m
-        slant_range_time : float
-            Two way time to the first column in the sentinel1 raster.
         state_vectors : Iterable of dict
             List of state vectors (time, position, velocity).
         degree : int, optional
@@ -129,7 +127,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.h = height
         self.wavelength = wavelength  # for TopoCorrection
 
-        self.slant_range_time = slant_range_time
         self.orbit = orbit.Orbit(state_vectors, degree)
         # processing params
         self.pri = pri
@@ -495,6 +492,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         # set these for the CoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
+        self.slant_range_time = slant_range_time
         super().__init__(first_row_time,
                          first_col_time,
                          approx_geom,
@@ -503,7 +501,6 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                          burst_roi[2],
                          burst_roi[3],
                          wavelength,
-                         slant_range_time,
                          state_vectors,
                          degree,
                          pri,
@@ -697,6 +694,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
         first_col_time = slant_range_time + self.col_min / range_frequency
+        self.slant_range_time = slant_range_time
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
 
@@ -715,7 +713,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          w,
                          h,
                          wavelength,
-                         slant_range_time,
                          state_vectors,
                          degree,
                          pri,
@@ -928,6 +925,134 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                 break
 
         return bsids, rois_read, rois_write, out_shape
+
+    def to_mosaic_model(self, roi_in_swath: Optional[roi.Roi]=None, **kwargs):
+        if roi_in_swath is None:
+            roi_in_swath = roi.Roi(0, 0, self.w, self.h)
+
+        offset_col = self.first_col_time * self.range_frequency
+        offset_row = self.first_row_time * self.azimuth_frequency
+        # TODO: offsets are not integer, is it a problem?
+        absolute_roi = roi_in_swath.translate_roi(offset_col, offset_row)
+
+        approx_geom, _, _ = self.get_approx_geom(roi_in_swath)
+
+        model = Sentinel1MosaicModel(
+            self.range_frequency,
+            self.azimuth_frequency,
+            self.wavelength,
+            absolute_roi.col,
+            absolute_roi.row,
+            absolute_roi.w,
+            absolute_roi.h,
+            approx_geom,
+            self.orbit.sv,
+            pri=self.pri,
+            rank=self.rank,
+            **kwargs,
+        )
+        return model
+
+
+class Sentinel1MosaicModel(Sentinel1BaseModel):
+    """Enables operations like projection and localization at a mosaic."""
+
+    def __init__(self,
+                 range_frequency,
+                 azimuth_frequency,
+                 wavelength,
+                 col_min,
+                 row_min,
+                 width,
+                 height,
+                 approx_geom,
+                 state_vectors,
+                 degree=11,
+                 pri=None,
+                 rank=None,
+                 max_iterations=20,
+                 tolerance=0.001):
+        """Sentinel1MosaicModel used to perform projection and localization\
+        in a Sentinel1 mosaic.
+
+        Parameters
+        ----------
+        range_frequency : float
+            Two way range time sampling frequency .
+        azimuth_frequency : float
+            Azimuth time sampling frequency.
+        wavelength: float
+            wavelength in m
+        col_min,
+        row_min,
+        state_vectors : Iterable of dict
+            List of state vectors (time, position, velocity).
+        degree : int, optional
+            Degree of the orbit polynomial. The default is 11.
+        pri: float, optional
+            Pulse Repetition Interval [s].
+            The default is None.
+        rank: float, optional
+            The number of PRI between transmitted pulse and return echo.
+            The default is None.
+        max_iterations : int, optional
+            Maximum iterations of the iterative projection and localization
+            algorithms. The default is 20.
+        tolerance : float, optional
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
+            iterations stop when the step in x, y, z is less than tolerance.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
+
+        """
+        # set these for the CoordinateMixin
+        first_row_time = row_min / azimuth_frequency
+        first_col_time = col_min / range_frequency
+
+        # call the base class constructor
+        super().__init__(first_row_time,
+                         first_col_time,
+                         approx_geom,
+                         range_frequency,
+                         azimuth_frequency,
+                         width,
+                         height,
+                         wavelength,
+                         state_vectors,
+                         degree,
+                         pri,
+                         rank,
+                         False,
+                         None,
+                         False,
+                         False,
+                         max_iterations,
+                         tolerance)
+
+    def to_dict(self) -> dict:
+        metadata = dict(
+            range_frequency=self.range_frequency,
+            azimuth_frequency=self.azimuth_frequency,
+            wavelength=self.wavelength,
+            col_min=self.first_col_time * self.range_frequency,
+            row_min=self.first_row_time * self.azimuth_frequency,
+            width=self.w,
+            height=self.h,
+            approx_geom=self.approx_geom,
+            state_vectors=self.orbit.sv,
+            degree=self.orbit.degree,
+            pri=self.pri,
+            rank=self.rank,
+            max_iterations=self.max_iterations,
+            tolerance=self.localization_tolerance,
+        )
+        return metadata
+
+    @staticmethod
+    def from_dict(dict):
+        return Sentinel1MosaicModel(**dict)
 
 
 def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
