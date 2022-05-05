@@ -93,7 +93,8 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
 
     context = etree.iterparse(xml_content, events=('end',), tag='OSV')
     for _, element in context:
-        date = string_to_timestamp(element.findtext('UTC')[4:])
+        # TODO figure out a correct datatake wise shift
+        date = string_to_timestamp(element.findtext('UTC')[4:]) - bursts[0]["anx_time"]
 
         if date < mid - 90:
             continue

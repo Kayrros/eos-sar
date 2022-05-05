@@ -32,7 +32,7 @@ def burst_model_from_burst_meta(burst_meta, doppler=None, doppler_kwargs={}, **k
                                burst_meta['slant_range_time'],
                                burst_meta['samples_per_burst'],
                                burst_meta['wave_length'],
-                               burst_meta['burst_times'],
+                               burst_meta['burst_times_anx'],
                                burst_meta['burst_roi'],
                                burst_meta['approx_geom'],
                                burst_meta['state_vectors'],
@@ -273,6 +273,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             azt += self._bistatic_correction(rng)
 
         if self.alt_fm_mismatch_correction:
+            print("applying something")
             azt += self._alt_fm_mismatch(azt, rng, gx, gy, gz)
 
         return azt, rng
@@ -703,6 +704,11 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
 
             dazt = (f + f_geom) * (1 /k_geo - 1/range_dependent_doppler_rate)
 
+            i_max = np.argmax(dazt)
+            i_min = np.argmin(dazt)
+            print("max", dazt[i_max] * 6000, t[i_max] - mid_time - ref_time[i_max])
+            print("min", dazt[i_min] * 6000, t[i_min] - mid_time - ref_time[i_max])
+
             return dazt
 
 def get_k_geo(orbit, azt, M, lamda):
@@ -1040,7 +1046,7 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
 
     """
     # TODO: aggregate state_vectors as well
-    bursts_times = [b['burst_times'] for b in bursts_metadata]
+    bursts_times = [b['burst_times_anx'] for b in bursts_metadata]
     bursts_rois = [b['burst_roi'] for b in bursts_metadata]
     bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]
 

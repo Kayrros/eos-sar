@@ -22,15 +22,15 @@ def doppler_from_meta(burst_meta, **kwargs):
 
     """
     return Sentinel1Doppler(
-        burst_times=burst_meta['burst_times'],
+        burst_times=burst_meta['burst_times_anx'],
         lines_per_burst=burst_meta['lines_per_burst'],
         samples_per_burst=burst_meta['samples_per_burst'],
         azimuth_frequency=burst_meta['azimuth_frequency'],
         range_frequency=burst_meta['range_frequency'],
         slant_range_time=burst_meta['slant_range_time'],
-        az_fm_times=burst_meta['az_fm_times'],
+        az_fm_times=[b - burst_meta['anx_time'] for b in burst_meta['az_fm_times']],
         az_fm_info=burst_meta['az_fm_info'],
-        dc_estimate_time=burst_meta['dc_estimate_time'],
+        dc_estimate_time=[b - burst_meta['anx_time'] for b in burst_meta['dc_estimate_time']],
         dc_estimate_t0=burst_meta['dc_estimate_t0'],
         dc_estimate_poly=burst_meta['dc_estimate_poly'],
         steering_rate=burst_meta['steering_rate'],

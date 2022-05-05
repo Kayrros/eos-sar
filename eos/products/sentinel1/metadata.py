@@ -247,7 +247,7 @@ def extract_common_metadata(xml):
     o['state_vectors'] = []
     for s in i['generalAnnotation']['orbitList']['orbit']:
         o['state_vectors'].append({
-            'time': string_to_timestamp(s['time']),
+            'time': string_to_timestamp(s['time']) - o['anx_time'],
             'position': [float(s['position'][k]) for k in ['x', 'y', 'z']],
             'velocity': [float(s['velocity'][k]) for k in ['x', 'y', 'z']]
         })
@@ -293,7 +293,6 @@ def extract_common_metadata(xml):
     o['rank'] = float(d['rank'])  # used for full_bistatic_correction
 
     return o, i
-
 
 def extract_bursts_metadata(xml, burst_ids=None):
     """Extract metadata for a list of bursts.
@@ -342,17 +341,27 @@ def extract_bursts_metadata(xml, burst_ids=None):
         w = valid_rows_right[0][0] - x + 1
         h = valid_rows_left[-1][1] - y + 1
 
+
+        burst['azimuth_anx_time'] = float(b['azimuthAnxTime'])
+
         # time interval corresponding to the valid burst domain
-        start = string_to_timestamp(b['azimuthTime'])
-        start_valid = start + y / o['azimuth_frequency']
-        end_valid = start_valid + h / o['azimuth_frequency']
-        burst['burst_times'] = (start, start_valid, end_valid)
+        start = {'burst_times': string_to_timestamp(b['azimuthTime'])
+                 , 'burst_times_anx': burst["azimuth_anx_time"]}
+
+
+        # TODO verify if this improves precision
+        # start = burst["anx_time"] + burst['azimuth_anx_time']
+        # start = burst["azimuth_anx_time"]
+        for key in ['burst_times', 'burst_times_anx']:
+            start_valid = start[key] + y / o['azimuth_frequency']
+            end_valid = start_valid + h / o['azimuth_frequency']
+            burst[key] = (start[key], start_valid, end_valid)
 
         # make the burst roi coordinates relative the the full swath
         y += bid * o['lines_per_burst']
         burst['burst_roi'] = (x, y, w, h)
 
-        burst['azimuth_anx_time'] = float(b['azimuthAnxTime'])
+
         burst['burst_sensing_time'] = string_to_timestamp(b['sensingTime'])
 
         corners = corners_of_geolocation_grid_points_list(gcp,
@@ -377,6 +386,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
         burst['bsid'] = f'{relative_burst_id}_{swath}'
 
         bursts.append(burst)
+
 
     return bursts
 
