@@ -238,6 +238,22 @@ class Roi:
             # reset or get new Roi instance
             return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
 
+    def intersects_roi(self, other_roi):
+        '''
+        Check whether other_roi and self intersect.
+
+        Parameters
+        ----------
+        other_roi : Roi
+
+        Returns
+        -------
+        are_intersecting : bool
+            True if the two ROIs are intersecting, False otherwise.
+        '''
+        clipped = self.clip(other_roi)
+        return clipped.w > 0 and clipped.h > 0
+
     def warp_valid_roi(self, input_parent_shape, output_parent_shape,
                        matrix, margin=0, inplace=False):
         """
