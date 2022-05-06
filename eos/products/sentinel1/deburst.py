@@ -20,7 +20,7 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
     primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
         Primary acquisition cutter.
     secondary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
-        secondary acquisition cutter.
+        Secondary acquisition cutter.
     burst_resampling_matrices : dict bsid -> matrix
         Dict where the key is the bsid and the value is a 3x3 affine inverse
         resampling matrix of the burst.

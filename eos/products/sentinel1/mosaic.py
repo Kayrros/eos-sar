@@ -34,14 +34,11 @@ class S1Assembler:
         asm.meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
         return asm
 
-    def get_swath_proj_model(self):
+    def get_proj_model(self):
         meta_per_bsid = list(self.meta_per_bsid_per_swath.values())[0]
         bursts_meta = [meta_per_bsid[bid] for bid in sorted(list(meta_per_bsid.keys()))]
-        proj_model = sentinel1.proj_model.swath_model_from_bursts_meta(bursts_meta)
-        return proj_model
+        swath_model = sentinel1.proj_model.swath_model_from_bursts_meta(bursts_meta)
 
-    def get_proj_model(self):
-        swath_model = self.get_swath_proj_model()
         proj_model = swath_model.to_mosaic()
         return proj_model
 
@@ -81,7 +78,7 @@ class S1AssemblyCropper:
 
     def _prepare(self, dem):
         swaths = sorted(list(self.assembler.meta_per_bsid_per_swath.keys()))
-        primary_swath_model = self.assembler.get_swath_proj_model()
+        mosaic_model = self.assembler.get_proj_model()
 
         bursts_meta = [list(a.values()) for a in self.assembler.meta_per_bsid_per_swath.values()]
         bursts_meta = sum(bursts_meta, [])
@@ -92,8 +89,6 @@ class S1AssemblyCropper:
         # write_rois are relative to the destination mosaic coordinates system
         all_bsids, read_rois, write_rois, out_shape = primary_cutter.get_read_write_rois(self.roi)
         assert out_shape == self.roi.get_shape()
-
-        mosaic_model = primary_swath_model
 
         # get registration dem pts
         x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(mosaic_model, roi=self.roi, dem=dem)
