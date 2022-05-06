@@ -186,8 +186,6 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
                 read_roi = Roi(col, row, w, h)
                 write_roi = clipped.translate_roi(-roi.col, -roi.row)
 
-                print('intersecting:', bsid, read_roi, write_roi)
-
                 read_rois[bsid] = read_roi
                 write_rois[bsid] = write_roi
 
