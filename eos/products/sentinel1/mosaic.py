@@ -97,13 +97,14 @@ class S1AssemblyCropper:
         row_primary, col_primary, _ = mosaic_model.projection(x, y, alt, crs=crs)
 
         pts_in_burst_mask = {}
-        rows_primary = {}
-        cols_primary = {}
+        azt_primary = {}
+        rng_primary = {}
         for bsid in all_bsids:
             burst_mask = primary_cutter.mask_pts_in_burst(bsid, row_primary, col_primary)
-            rows_primary[bsid] = row_primary[burst_mask]
-            cols_primary[bsid] = col_primary[burst_mask]
             pts_in_burst_mask[bsid] = burst_mask
+
+            rows, cols = row_primary[burst_mask], col_primary[burst_mask]
+            azt_primary[bsid], rng_primary[bsid] = primary_cutter.to_azt_rng(rows, cols)
 
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
             secondary_bursts_meta_iw2 = get_bursts(products, 'iw2', pol, orbit_provider=None)
@@ -146,7 +147,7 @@ class S1AssemblyCropper:
 
                 burst_resampling_matrices = sentinel1.regist.secondary_registration_estimation(
                     secondary_swath_model, secondary_cutter, secondary_bursts_models, x, y, alt, crs,
-                    bsids, pts_in_burst_mask, primary_cutter, rows_primary, cols_primary)
+                    bsids, pts_in_burst_mask, primary_cutter, azt_primary, rng_primary)
 
                 secondary_bursts_meta_per_bsid = {b['bsid']: b for b in secondary_bursts_meta}
                 sentinel1.deburst.warp_rois_read_resample_deburst(

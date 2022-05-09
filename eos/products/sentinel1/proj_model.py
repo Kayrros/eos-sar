@@ -1170,8 +1170,7 @@ def mask_pts_in_burst(swath_model, bsid, row_swath, col_swath, without_ovl=True)
     return burst_mask
 
 
-def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_correc_global,
-                       alt, incidence):
+def estimate_corrected(burst_model, azt_no_correc, rng_no_correc, alt, incidence):
     """
     Estimate corrected swath coordinates ( the corrections are performed by the burst model).
 
@@ -1181,10 +1180,10 @@ def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_co
         Model of the swath containing the bursts.
     burst_model : Sentinel1BurstModel
         Model of the burst containing the points to be corrected.
-    row_no_correc_global : array
-        Row coord of the points to be corrected in the swath.
-    col_no_correc_global : array
-        Col coordinate of the points to be corrected in the swath.
+    azt_no_correc : array
+        Azimuth time of the points to be corrected in the swath.
+    rng_no_correc : array
+        Range of the points to be corrected in the swath.
     alt : array
         Altitude (wgs84 ellipsoid) of the points.
     incidence : array
@@ -1192,23 +1191,20 @@ def estimate_corrected(swath_model, burst_model, row_no_correc_global, col_no_co
 
     Returns
     -------
-    row_correc_global : array
-        Corrected row coordinate.
-    col_correc_global : array
-        Corrected col coordinate.
+    azt_correc: array
+        Corrected azt time.
+    rng_correc: array
+        Corrected rng time.
 
     """
     if burst_model.corrections_deactivated():
-        return row_no_correc_global, col_no_correc_global
+        return azt_no_correc, rng_no_correc
 
-    azt, rng = swath_model.to_azt_rng(row_no_correc_global,
-                                      col_no_correc_global)
+    azt_correc, rng_correc = burst_model.apply_corrections_proj(
+        azt_no_correc, rng_no_correc,
+        alt, np.cos(incidence))
 
-    azt, rng = burst_model.apply_corrections_proj(azt, rng, alt, np.cos(incidence))
-    # get corrected swath coordinates of points in burst
-    row_correc_global, col_correc_global = swath_model.to_row_col(azt, rng)
-
-    return row_correc_global, col_correc_global
+    return azt_correc, rng_correc
 
 
 def primary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models):
@@ -1234,42 +1230,44 @@ def primary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models
 
     Returns
     -------
-    rows_no_correc_global : dict bsid -> array
-        Each element is an array of row coords without corrections inside a burst.
-    cols_no_correc_global : dict bsid -> array
-        Each element is an array of col coords without corrections inside a burst.
-    rows_correc_global : dict bsid -> array
-        Each element is an array of row coords with corrections inside a burst.
-    cols_correc_global : dict bsid -> array
-        Each element is an array of col coords with corrections inside a burst.
+    azt_no_correc : dict bsid -> array
+       Each element is an array of azimuth times without corrections.
+    rng_no_correc : dict bsid -> array
+       Each element is an array of ranges without corrections.
+    azt_correc : dict bsid -> array
+       Each element is an array of azimuth times with corrections.
+    rng_correc : dict bsid -> array
+        Each element is an array of ranges with corrections.
     pts_in_burst_mask : dict bsid -> array
         Each element is a mask defining which points from the initial x, y, alt arrays
         were projected in the different bursts.
 
     """
     # project in swath_model
-    row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(x, y, alt, crs=crs)
+    row_no_correc, col_no_correc, incidence = swath_model.projection(x, y, alt, crs=crs)
     transformer = pyproj.Transformer.from_crs(crs, 'epsg:4979', always_xy=True)
     _, _, alt_ellipsoid = transformer.transform(x, y, alt)
+
+    azt_no_correc_flat, rng_no_correc_flat = swath_model.to_azt_rng(row_no_correc, col_no_correc)
+
     pts_in_burst_mask = {}
-    rows_correc_global = {}
-    cols_correc_global = {}
-    rows_no_correc_global = {}
-    cols_no_correc_global = {}
+    azt_correc = {}
+    rng_correc = {}
+    azt_no_correc = {}
+    rng_no_correc = {}
     for bsid in bsids:
         burst_model = burst_models[bsid]
-        burst_mask = mask_pts_in_burst(swath_model, bsid, row_no_correc_global, col_no_correc_global)
-        rows_no_correc_global[bsid] = row_no_correc_global[burst_mask]
-        cols_no_correc_global[bsid] = col_no_correc_global[burst_mask]
-        row_correc_global, col_correc_global = estimate_corrected(
-            swath_model, burst_model, rows_no_correc_global[bsid],
-            cols_no_correc_global[bsid], alt_ellipsoid[burst_mask],
-            incidence[burst_mask])
+        burst_mask = mask_pts_in_burst(swath_model, bsid, row_no_correc, col_no_correc)
         pts_in_burst_mask[bsid] = burst_mask
-        rows_correc_global[bsid] = row_correc_global
-        cols_correc_global[bsid] = col_correc_global
-    return rows_no_correc_global, cols_no_correc_global, \
-        rows_correc_global, cols_correc_global, pts_in_burst_mask
+
+        azt_no_correc[bsid], rng_no_correc[bsid] = azt_no_correc_flat[burst_mask], rng_no_correc_flat[burst_mask]
+
+        azt_correc[bsid], rng_correc[bsid] = estimate_corrected(
+            burst_model, azt_no_correc[bsid],
+            rng_no_correc[bsid], alt_ellipsoid[burst_mask],
+            incidence[burst_mask])
+
+    return azt_no_correc, rng_no_correc, azt_correc, rng_correc, pts_in_burst_mask
 
 
 def secondary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models, pts_in_burst_mask):
@@ -1297,41 +1295,37 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_mode
         should be projected in the different bursts.
     Returns
     -------
-    rows_no_correc_global : dict bsid -> array
-        Each element is an array of row coords without corrections inside a burst.
-    cols_no_correc_global : dict bsid -> array
-        Each element is an array of col coords without corrections inside a burst.
-    rows_correc_global : dict bsid -> array
-        Each element is an array of row coords with corrections inside a burst.
-    cols_correc_global : dict bsid -> array
-        Each element is an array of col coords with corrections inside a burst.
+    azt_no_correc : dict bsid -> array
+       Each element is an array of azimuth times without corrections.
+    rng_no_correc : dict bsid -> array
+       Each element is an array of ranges without corrections.
+    azt_correc : dict bsid -> array
+       Each element is an array of azimuth times with corrections.
+    rng_correc : dict bsid -> array
+        Each element is an array of ranges with corrections.
 
     """
     transformer = pyproj.Transformer.from_crs(crs, 'epsg:4979', always_xy=True)
     _, _, alt_ellipsoid = transformer.transform(x, y, alt)
-    rows_correc_global = {}
-    cols_correc_global = {}
-    rows_no_correc_global = {}
-    cols_no_correc_global = {}
+
+    azt_correc = {}
+    rng_correc = {}
+    azt_no_correc = {}
+    rng_no_correc = {}
     for bsid in bsids:
         burst_model = burst_models[bsid]
         burst_mask = pts_in_burst_mask[bsid]
 
         # project points that should fall in secondary burst
         # (according to previous primary projection)
-        row_no_correc_global, col_no_correc_global, incidence = swath_model.projection(
+        rows, cols, incidence = swath_model.projection(
             x[burst_mask], y[burst_mask], alt[burst_mask], crs=crs)
+        azt_no_correc[bsid], rng_no_correc[bsid] = swath_model.to_azt_rng(rows, cols)
 
-        # Apply burst corrections and get global swath coordinates
-        row_correc_global, col_correc_global = estimate_corrected(
-            swath_model, burst_model, row_no_correc_global,
-            col_no_correc_global, alt_ellipsoid[burst_mask],
+        # Apply burst corrections
+        azt_correc[bsid], rng_correc[bsid] = estimate_corrected(
+            burst_model, azt_no_correc[bsid],
+            rng_no_correc[bsid], alt_ellipsoid[burst_mask],
             incidence)
 
-        rows_no_correc_global[bsid] = row_no_correc_global
-        cols_no_correc_global[bsid] = col_no_correc_global
-        rows_correc_global[bsid] = row_correc_global
-        cols_correc_global[bsid] = col_correc_global
-
-    return rows_no_correc_global, cols_no_correc_global,\
-        rows_correc_global, cols_correc_global
+    return azt_no_correc, rng_no_correc, azt_correc, rng_correc
