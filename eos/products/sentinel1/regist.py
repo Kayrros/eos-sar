@@ -116,14 +116,14 @@ def primary_registration_estimation(primary_swath_model, primary_cutter, primary
 
 
 def secondary_registration_estimation(
-        secondary_swath_model, secondary_cutter, secondary_burst_models, x, y, alt, crs,
+        secondary_proj_model, secondary_cutter, secondary_burst_models, x, y, alt, crs,
         bsids, pts_in_burst_mask, primary_cutter, azt_no_correc, rng_no_correc):
     """
     Estimate the resampling matrices for a secondary img w.r.t. the ideal primary frame.
 
     Parameters
     ----------
-    secondary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
+    secondary_proj_model : eos.products.sentinel1.proj_model.Sentinel1BaseModel
         Swath model for the secondary img.
     secondary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
         Secondary acquisition cutter.
@@ -157,7 +157,7 @@ def secondary_registration_estimation(
 
     """
     _, _, azt_correc, rng_correc = secondary_project_and_correct(
-        secondary_swath_model, x, y, alt, crs,
+        secondary_proj_model, x, y, alt, crs,
         bsids, secondary_burst_models, pts_in_burst_mask)
 
     burst_resampling_matrices = get_burst_resampling_matrices(

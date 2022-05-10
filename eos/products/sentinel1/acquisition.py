@@ -26,11 +26,15 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
         self.bursts_times = bursts_times
         self.bsids = bsids
 
-        # WARN: this has to match the definition of the origin of a swath-mosaic?
-        first_swath = sorted(set(bsid.split('_')[1] for bsid in bsids))[0]
+        swaths = sorted(set(bsid.split('_')[1] for bsid in bsids))
+        first_swath = swaths[0]
+        # TODO: the cuts should be invariant to this, but they are not
         self.col_min = min(r[0] for i, r in enumerate(bursts_rois) if bsids[i].endswith(first_swath))
         self.first_col_time = slant_range_time_iw1 + self.col_min / range_frequency
         self.first_row_time = min(t[1] for t in bursts_times)   # min start valid
+        last_next_row_time = max(t[2] for t in bursts_times)
+
+        self._burst_roi_in_tiff = [Roi.from_roi_tuple(roi) for roi in bursts_rois]
 
         self._swath_col_orig_in_acquisition = {
             'iw1': 0,
@@ -39,8 +43,18 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
             'iw3': (slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency,
         }
 
+        last_col_per_burst = []
+        for bsid, roi in zip(bsids, self._burst_roi_in_tiff):
+            swath = bsid.split('_')[1].lower()
+            col = int(round(roi.col + roi.w + self._swath_col_orig_in_acquisition[swath]))
+            last_col_per_burst.append(col)
+
+        self.w = max(last_col_per_burst)
+        self.h = (last_next_row_time - self.first_row_time) * azimuth_frequency
+        assert abs(int(round(self.h)) - self.h) < 1e-3, self.h
+        self.h = int(round(self.h))
+
         self.bursts_times = bursts_times
-        self._burst_roi_in_tiff = [Roi.from_roi_tuple(roi) for roi in bursts_rois]
         self.bsids = bsids
 
         self._bursts_times_per_bsid = {bsid: burst_times for bsid, burst_times in zip(self.bsids, self.bursts_times)}

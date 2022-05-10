@@ -931,24 +931,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         return bsids, rois_read, rois_write, out_shape
 
-    def to_mosaic(self, **kwargs):
-        approx_geom, _, _ = self.get_approx_geom()
-
-        model = Sentinel1MosaicModel(
-            self.first_row_time,
-            self.first_col_time,
-            approx_geom,
-            self.range_frequency,
-            self.azimuth_frequency,
-            self.w,
-            self.h,
-            self.wavelength,
-            approx_geom,
-            self.orbit.sv,
-            **kwargs,
-        )
-        return model
-
 
 class Sentinel1MosaicModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at a mosaic."""
@@ -1276,14 +1258,14 @@ def primary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models
     return azt_no_correc, rng_no_correc, azt_correc, rng_correc, pts_in_burst_mask
 
 
-def secondary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models, pts_in_burst_mask):
+def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids, burst_models, pts_in_burst_mask):
     """
     Project points and correct them in the primary swath.
 
     Parameters
     ----------
-    swath_model : Sentinel1SwathModel
-        Model of the swath containing the bursts.
+    proj_model : Sentinel1BaseModel
+        Model containing the bursts.
     x : array
         x coordinate of points.
     y : array
@@ -1324,7 +1306,7 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_mode
 
         # project points that should fall in secondary burst
         # (according to previous primary projection)
-        azt_no_correc[bsid], rng_no_correc[bsid], incidence = swath_model.projection(
+        azt_no_correc[bsid], rng_no_correc[bsid], incidence = proj_model.projection(
             x[burst_mask], y[burst_mask], alt[burst_mask], crs=crs, as_azt_rng=True)
 
         # Apply burst corrections
