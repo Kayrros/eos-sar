@@ -149,7 +149,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.azt_init = first_row_time
         self.approx_geom = approx_geom
 
-    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None):
+    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None, as_azt_rng=False):
         """Projects a 3D point into the image coordinates.
 
         Parameters
@@ -166,6 +166,9 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         azt_init: ndarray or scalar, optional
             Initial azimuth time guess of the points. If not given, the first
             row time will be used. The default is None.
+        as_azt_rng: bool, optional
+            Returns azimuth/range instead of rows/cols. The incidence angle is unchanged.
+            Defaults to False.
 
         Returns
         -------
@@ -212,6 +215,9 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             _, _, alt = transformer.transform(x, y, alt)
 
         azt, rng = self.apply_corrections_proj(azt, rng, alt.squeeze(), np.cos(i))
+
+        if as_azt_rng:
+            return azt, rng, i
 
         # convert to row and col
         row, col = self.to_row_col(azt, rng)
@@ -1318,9 +1324,8 @@ def secondary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_mode
 
         # project points that should fall in secondary burst
         # (according to previous primary projection)
-        rows, cols, incidence = swath_model.projection(
-            x[burst_mask], y[burst_mask], alt[burst_mask], crs=crs)
-        azt_no_correc[bsid], rng_no_correc[bsid] = swath_model.to_azt_rng(rows, cols)
+        azt_no_correc[bsid], rng_no_correc[bsid], incidence = swath_model.projection(
+            x[burst_mask], y[burst_mask], alt[burst_mask], crs=crs, as_azt_rng=True)
 
         # Apply burst corrections
         azt_correc[bsid], rng_correc[bsid] = estimate_corrected(
