@@ -38,7 +38,8 @@ class Sentinel1Assembler:
     meta_per_bsid_per_swath: dict[str, dict[str, dict]] = {}
     product_id_per_bsid: dict[str, str] = {}
     bsids: set[str] = set()
-    _cutter: Optional[sentinel1.acquisition.Sentinel1AcquisitionCutter] = None
+    _prim_cutter: Optional[sentinel1.acquisition.PrimarySentinel1AcquisitionCutter] = None
+    _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = None
 
     @staticmethod
     def from_products(products, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None):
@@ -60,17 +61,25 @@ class Sentinel1Assembler:
         asm.bsids = bsids
         return asm
 
-    def get_cutter(self):
-        if self._cutter is None:
+    def get_primary_cutter(self):
+        if self._prim_cutter is None:
             bursts_meta = [meta
                            for meta_per_bsid in self.meta_per_bsid_per_swath.values()
                            for meta in meta_per_bsid.values()]
-            self._cutter = sentinel1.acquisition.make_primary_cutter_from_bursts_meta(bursts_meta)
-        return self._cutter
+            self._prim_cutter = sentinel1.acquisition.make_primary_cutter_from_bursts_meta(bursts_meta)
+        return self._prim_cutter
+
+    def get_secondary_cutter(self):
+        if self._sec_cutter is None:
+            bursts_meta = [meta
+                           for meta_per_bsid in self.meta_per_bsid_per_swath.values()
+                           for meta in meta_per_bsid.values()]
+            self._sec_cutter = sentinel1.acquisition.make_secondary_cutter_from_bursts_meta(bursts_meta)
+        return self._sec_cutter
 
     def get_mosaic_model(self):
         # get the cutter to get the origin and (width, height) of the mosaic
-        cutter = self.get_cutter()
+        cutter = self.get_secondary_cutter()
 
         # compute the approx_geom of the swaths
         bursts = [b for meta_per_bsid in self.meta_per_bsid_per_swath.values()
@@ -151,7 +160,7 @@ class Sentinel1AssemblyCropper:
 
     def _prepare(self, dem):
         mosaic_model = self.assembler.get_mosaic_model()
-        primary_cutter = self.assembler.get_cutter()
+        primary_cutter = self.assembler.get_primary_cutter()
 
         # get affected bsids and their read/write rois
         # read_rois are relative to the primary bursts
@@ -178,7 +187,7 @@ class Sentinel1AssemblyCropper:
 
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
             secondary_asm = Sentinel1Assembler.from_products(products, orbit_provider=orbit_provider)
-            secondary_cutter = secondary_asm.get_cutter()
+            secondary_cutter = secondary_asm.get_secondary_cutter()
             secondary_mosaic_model = secondary_asm.get_mosaic_model()
 
             secondary_bursts_meta_iw2 = secondary_asm.meta_per_bsid_per_swath['iw2']

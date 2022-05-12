@@ -10,7 +10,7 @@ def _avg_or_none(a, b):
     return (a + b) // 2
 
 
-class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
+class _Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
 
     def __init__(self,
                  range_frequency: float,
@@ -28,6 +28,7 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
 
         swaths = sorted(set(bsid.split('_')[1] for bsid in bsids))
         first_swath = swaths[0]
+
         # TODO: the cuts should be invariant to this, but they are not
         self.col_min = min(r[0] for i, r in enumerate(bursts_rois) if bsids[i].endswith(first_swath))
         self.first_col_time = slant_range_time_iw1 + self.col_min / range_frequency
@@ -43,7 +44,6 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
 
         self._swath_col_orig_in_acquisition = {
             'iw1': 0,
-            # FIXME: round?
             'iw2': int(round((slant_range_time_iw2 - slant_range_time_iw1) * self.range_frequency)),
             'iw3': int(round((slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency)),
         }
@@ -64,11 +64,7 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
 
         self._bursts_times_per_bsid = {bsid: burst_times for bsid, burst_times in zip(self.bsids, self.bursts_times)}
 
-        self._compute_cuts()
-
-    def _compute_cuts(self):
         self.__burst_orig_in_swath = {}
-
         for bsid, burst_times, burst_roi_tiff in zip(self.bsids, self.bursts_times, self._burst_roi_in_tiff):
             col = burst_roi_tiff.col - self.col_min  # TODO: fix coordinate system?
             azt = burst_times[1]
@@ -77,6 +73,47 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
             orig = (col, int(round(row)))
             self.__burst_orig_in_swath[bsid] = orig
 
+    def _burst_orig_in_swath2(self, bsid) -> tuple[int, int]:
+        col_orig, row_orig = self.__burst_orig_in_swath[bsid]
+        return col_orig, row_orig
+
+    def _burst_orig_in_swath(self, bsid) -> tuple[int, int]:
+        col_orig, row_orig = self.__burst_orig_in_swath[bsid]
+
+        swath = bsid.split('_')[1].lower()
+        col_orig += self._swath_col_orig_in_acquisition[swath]
+
+        return col_orig, row_orig
+
+    def get_burst_outer_roi_in_tiff(self, bsid) -> Roi:
+        bid = self.bsids.index(bsid)
+        return self._burst_roi_in_tiff[bid]
+
+    def _to_row_col_in_swath(self, azt, rng, swath):
+        row, col = self.to_row_col(azt, rng)
+        col -= self._swath_col_orig_in_acquisition[swath]
+        return row, col
+
+    def to_row_col_in_burst(self, azt, rng, bsid):
+        swath = bsid.split('_')[1].lower()
+        row, col = self._to_row_col_in_swath(azt, rng, swath)
+        col_orig, row_orig = self._burst_orig_in_swath2(bsid)
+        row -= row_orig
+        col -= col_orig
+        return row, col
+
+
+class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._compute_cuts()
+
+    def _get_burst_roi(self, bsid) -> Roi:  # in tiff
+        bid = self.bsids.index(bsid)
+        return self._burst_roi_in_tiff[bid]
+
+    def _compute_cuts(self):
         bsids_per_swath = {}
         for bsid in self.bsids:
             swath = bsid.split('_')[1].lower()
@@ -141,41 +178,6 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
                 self._burst_roi_without_ovl[bsid] = roi
                 self._burst_roi_with_ovl[bsid] = Roi(0, 0, w, h)
 
-    def visualize_burst_rois_in_mosaic(self):
-        import numpy as np
-        import matplotlib.pyplot as plt
-
-        plt.figure(figsize=(10, 10))
-
-        for bsid, roi in self._burst_roi_with_ovl.items():
-            swath = bsid.split('_')[1].lower()
-
-            ocol, orow = self.__burst_orig_in_swath[bsid]
-            ocol += self._swath_col_orig_in_acquisition[swath]
-            roi = roi.translate_roi(ocol, orow)
-
-            rows, cols = roi.to_bounding_points()
-            rows = np.append(rows, rows[0])
-            cols = np.append(cols, cols[0])
-
-            plt.plot(cols, rows, '--', color='blue', alpha=0.5)
-
-        for bsid, roi in self._burst_roi_without_ovl.items():
-            swath = bsid.split('_')[1].lower()
-
-            ocol, orow = self.__burst_orig_in_swath[bsid]
-            ocol += self._swath_col_orig_in_acquisition[swath]
-            roi = roi.translate_roi(ocol, orow)
-
-            rows, cols = roi.to_bounding_points()
-            rows = np.append(rows, rows[0])
-            cols = np.append(cols, cols[0])
-
-            plt.plot(cols, rows, '-.', color='red', alpha=0.5)
-
-        plt.gca().invert_yaxis()
-        plt.show()
-
     def get_read_write_rois(self, roi: Roi):
         out_shape = roi.get_shape()
 
@@ -215,43 +217,53 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
         burst_mask = self._burst_roi_without_ovl[bsid].contains(col, row)
         return burst_mask
 
-    def _burst_orig_in_swath(self, bsid) -> tuple[int, int]:
-        col_orig, row_orig = self.__burst_orig_in_swath[bsid]
+    def visualize_burst_rois_in_mosaic(self):
+        import numpy as np
+        import matplotlib.pyplot as plt
 
-        swath = bsid.split('_')[1].lower()
-        col_orig += self._swath_col_orig_in_acquisition[swath]
+        plt.figure(figsize=(10, 10))
 
-        return col_orig, row_orig
+        for bsid, roi in self._burst_roi_with_ovl.items():
+            swath = bsid.split('_')[1].lower()
 
-    def _get_burst_roi(self, bsid) -> Roi:  # in tiff
-        bid = self.bsids.index(bsid)
-        return self._burst_roi_in_tiff[bid]
+            ocol, orow = self._burst_orig_in_swath2(bsid)
+            ocol += self._swath_col_orig_in_acquisition[swath]
+            roi = roi.translate_roi(ocol, orow)
 
-    def get_burst_outer_roi_in_tiff(self, bsid) -> Roi:
-        bid = self.bsids.index(bsid)
-        return self._burst_roi_in_tiff[bid]
+            rows, cols = roi.to_bounding_points()
+            rows = np.append(rows, rows[0])
+            cols = np.append(cols, cols[0])
+
+            plt.plot(cols, rows, '--', color='blue', alpha=0.5)
+
+        for bsid, roi in self._burst_roi_without_ovl.items():
+            swath = bsid.split('_')[1].lower()
+
+            ocol, orow = self._burst_orig_in_swath2(bsid)
+            ocol += self._swath_col_orig_in_acquisition[swath]
+            roi = roi.translate_roi(ocol, orow)
+
+            rows, cols = roi.to_bounding_points()
+            rows = np.append(rows, rows[0])
+            cols = np.append(cols, cols[0])
+
+            plt.plot(cols, rows, '-.', color='red', alpha=0.5)
+
+        plt.gca().invert_yaxis()
+        plt.show()
 
     def _get_burst_inner_roi_in_swath(self, bsid) -> Roi:
-        ocol, orow = self.__burst_orig_in_swath[bsid]
+        ocol, orow = self._burst_orig_in_swath2(bsid)
         roi = self._burst_roi_without_ovl[bsid]
         roi = roi.translate_roi(ocol, orow)
         return roi
 
-    def _to_row_col_in_swath(self, azt, rng, swath):
-        row, col = self.to_row_col(azt, rng)
-        col -= self._swath_col_orig_in_acquisition[swath]
-        return row, col
 
-    def to_row_col_in_burst(self, azt, rng, bsid):
-        swath = bsid.split('_')[1].lower()
-        row, col = self._to_row_col_in_swath(azt, rng, swath)
-        col_orig, row_orig = self.__burst_orig_in_swath[bsid]
-        row -= row_orig
-        col -= col_orig
-        return row, col
+class SecondarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
+    pass
 
 
-def make_primary_cutter_from_bursts_meta(bursts_metadata):
+def _make_cutter(bursts_metadata, cls):
     bursts_times = [b['burst_times'] for b in bursts_metadata]
     bursts_rois = [b['burst_roi'] for b in bursts_metadata]
     bsids = [b['bsid'] for b in bursts_metadata]
@@ -280,7 +292,7 @@ def make_primary_cutter_from_bursts_meta(bursts_metadata):
     slt_iw2 = slt_iw2 or slt_iw3 or 0
     slt_iw3 = slt_iw3 or 0
 
-    return Sentinel1AcquisitionCutter(
+    return cls(
         bursts_metadata[0]['range_frequency'],
         bursts_metadata[0]['azimuth_frequency'],
         slt_iw1,
@@ -292,5 +304,9 @@ def make_primary_cutter_from_bursts_meta(bursts_metadata):
     )
 
 
+def make_primary_cutter_from_bursts_meta(bursts_metadata):
+    return _make_cutter(bursts_metadata, PrimarySentinel1AcquisitionCutter)
+
+
 def make_secondary_cutter_from_bursts_meta(bursts_metadata):
-    return make_primary_cutter_from_bursts_meta(bursts_metadata)
+    return _make_cutter(bursts_metadata, SecondarySentinel1AcquisitionCutter)
