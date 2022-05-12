@@ -163,17 +163,18 @@ class Sentinel1AssemblyCropper:
         x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(mosaic_model, roi=self.roi, dem=dem)
 
         # project in the mosaic
-        row_primary, col_primary, _ = mosaic_model.projection(x, y, alt, crs=crs)
+        azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(x, y, alt, crs=crs, as_azt_rng=True)
 
         pts_in_burst_mask = {}
         azt_primary = {}
         rng_primary = {}
         for bsid in all_bsids:
-            burst_mask = primary_cutter.mask_pts_in_burst(bsid, row_primary, col_primary)
+            # Calling mask_pts_in_burst multiple times is inefficient due to the conversion from
+            # from azt/rng to row/col in the burst. However, profiling shows that the dem.crop is by far slower.
+            burst_mask = primary_cutter.mask_pts_in_burst(bsid, azt_primary_flat, rng_primary_flat)
             pts_in_burst_mask[bsid] = burst_mask
-
-            rows, cols = row_primary[burst_mask], col_primary[burst_mask]
-            azt_primary[bsid], rng_primary[bsid] = primary_cutter.to_azt_rng(rows, cols)
+            azt_primary[bsid] = azt_primary_flat[burst_mask]
+            rng_primary[bsid] = rng_primary_flat[burst_mask]
 
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
             secondary_asm = Sentinel1Assembler.from_products(products, orbit_provider=orbit_provider)

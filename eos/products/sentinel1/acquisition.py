@@ -36,11 +36,16 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
 
         self._burst_roi_in_tiff = [Roi.from_roi_tuple(roi) for roi in bursts_rois]
 
+        a = (slant_range_time_iw2 - slant_range_time_iw1) * self.range_frequency
+        assert abs(a - round(a)) < 1e-7
+        a = (slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency
+        assert abs(a - round(a)) < 1e-7
+
         self._swath_col_orig_in_acquisition = {
             'iw1': 0,
             # FIXME: round?
-            'iw2': (slant_range_time_iw2 - slant_range_time_iw1) * self.range_frequency,
-            'iw3': (slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency,
+            'iw2': int(round((slant_range_time_iw2 - slant_range_time_iw1) * self.range_frequency)),
+            'iw3': int(round((slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency)),
         }
 
         last_col_per_burst = []
@@ -205,11 +210,9 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
 
         return bsids, read_rois, write_rois, out_shape
 
-    def mask_pts_in_burst(self, bsid, row_swath, col_swath):
-        # WARN: row/col_swath has to be in the same coordinate system
-        col_orig, row_orig = self._burst_orig_in_swath(bsid)
-        roi_burst = self._burst_roi_without_ovl[bsid].translate_roi(col_orig, row_orig)
-        burst_mask = roi_burst.contains(col_swath, row_swath)
+    def mask_pts_in_burst(self, bsid, azt, rng):
+        row, col = self.to_row_col_in_burst(azt, rng, bsid)
+        burst_mask = self._burst_roi_without_ovl[bsid].contains(col, row)
         return burst_mask
 
     def _burst_orig_in_swath(self, bsid) -> tuple[int, int]:
@@ -234,14 +237,14 @@ class Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
         roi = roi.translate_roi(ocol, orow)
         return roi
 
-    def to_row_col_in_swath(self, azt, rng, swath):
+    def _to_row_col_in_swath(self, azt, rng, swath):
         row, col = self.to_row_col(azt, rng)
         col -= self._swath_col_orig_in_acquisition[swath]
         return row, col
 
     def to_row_col_in_burst(self, azt, rng, bsid):
         swath = bsid.split('_')[1].lower()
-        row, col = self.to_row_col_in_swath(azt, rng, swath)
+        row, col = self._to_row_col_in_swath(azt, rng, swath)
         col_orig, row_orig = self.__burst_orig_in_swath[bsid]
         row -= row_orig
         col -= col_orig
