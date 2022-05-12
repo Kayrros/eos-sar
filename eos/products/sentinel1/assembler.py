@@ -33,7 +33,7 @@ def _get_image_reader(product: Sentinel1ProductInfo, swath: str, pol: str, calib
     return reader
 
 
-class S1Assembler:
+class Sentinel1Assembler:
 
     meta_per_bsid_per_swath: dict[str, dict[str, dict]] = {}
     product_id_per_bsid: dict[str, str] = {}
@@ -54,7 +54,7 @@ class S1Assembler:
                     product_id_per_bsid[m['bsid']] = product.product_id
                     bsids.add(m['bsid'])
 
-        asm = S1Assembler()
+        asm = Sentinel1Assembler()
         asm.meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
         asm.product_id_per_bsid = product_id_per_bsid
         asm.bsids = bsids
@@ -99,7 +99,7 @@ class S1Assembler:
         return proj_model
 
     def get_cropper(self, roi):
-        return S1AssemblyCropper(self, roi)
+        return Sentinel1AssemblyCropper(self, roi)
 
     def get_image_readers(self, products: list[Sentinel1ProductInfo], bsids, pol, calibration):
         product_per_id = {p.product_id: p for p in products}
@@ -135,16 +135,16 @@ class S1Assembler:
 
     @staticmethod
     def from_dict(dict):
-        asm = S1Assembler()
+        asm = Sentinel1Assembler()
         asm.meta_per_bsid_per_swath = dict['meta_per_bsid_per_swath']
         asm.product_id_per_bsid = dict['product_id_per_bsid']
         asm.bsids = set(dict['bsids'])
         return asm
 
 
-class S1AssemblyCropper:
+class Sentinel1AssemblyCropper:
 
-    def __init__(self, assembler: S1Assembler, roi: Roi):
+    def __init__(self, assembler: Sentinel1Assembler, roi: Roi):
         self.assembler = assembler
         self.roi = roi
         self._cropper_fn = None
@@ -176,7 +176,7 @@ class S1AssemblyCropper:
             azt_primary[bsid], rng_primary[bsid] = primary_cutter.to_azt_rng(rows, cols)
 
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
-            secondary_asm = S1Assembler.from_products(products, orbit_provider=orbit_provider)
+            secondary_asm = Sentinel1Assembler.from_products(products, orbit_provider=orbit_provider)
             secondary_cutter = secondary_asm.get_cutter()
             secondary_mosaic_model = secondary_asm.get_mosaic_model()
 
@@ -230,3 +230,4 @@ class S1AssemblyCropper:
     def get_proj_model(self):
         mosaic_model = self.assembler.get_mosaic_model()
         return mosaic_model.to_cropped_mosaic(self.roi)
+
