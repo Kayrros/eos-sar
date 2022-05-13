@@ -25,82 +25,80 @@ class _Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
         self.azimuth_frequency = azimuth_frequency
         self.bursts_times = bursts_times
         self.bsids = bsids
-
-        swaths = sorted(set(bsid.split('_')[1] for bsid in bsids))
-        first_swath = swaths[0]
-
-        # TODO: the cuts should be invariant to this, but they are not
-        self.col_min = min(r[0] for i, r in enumerate(bursts_rois) if bsids[i].endswith(first_swath))
-        self.first_col_time = slant_range_time_iw1 + self.col_min / range_frequency
-        self.first_row_time = min(t[1] for t in bursts_times)   # min start valid
-        last_next_row_time = max(t[2] for t in bursts_times)
-
         self._burst_roi_in_tiff = [Roi.from_roi_tuple(roi) for roi in bursts_rois]
+        self._bursts_times_per_bsid = {bsid: burst_times for bsid, burst_times in zip(self.bsids, self.bursts_times)}
 
-        a = (slant_range_time_iw2 - slant_range_time_iw1) * self.range_frequency
-        assert abs(a - round(a)) < 1e-7
-        a = (slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency
-        assert abs(a - round(a)) < 1e-7
+        # compute the range origin of the mosaic
+        first_swath = sorted(set(bsid.split('_')[1] for bsid in bsids))[0]
+        col_min_iw1 = min(r[0] for i, r in enumerate(bursts_rois) if bsids[i].endswith(first_swath))
+        self.first_col_time = slant_range_time_iw1 + col_min_iw1 / range_frequency
 
+        # compute the azimuth origin of the mosaic
+        first_row_time = min(t[1] for t in bursts_times)   # min start valid
+        last_next_row_time = max(t[2] for t in bursts_times)
+        self.first_row_time = first_row_time
+
+        # compute the column origin of each swath inside the mosaic
         self._swath_col_orig_in_acquisition = {
-            'iw1': 0,
-            'iw2': int(round((slant_range_time_iw2 - slant_range_time_iw1) * self.range_frequency)),
-            'iw3': int(round((slant_range_time_iw3 - slant_range_time_iw1) * self.range_frequency)),
+            'iw1': int(round((slant_range_time_iw1 - self.first_col_time) * range_frequency)),
+            'iw2': int(round((slant_range_time_iw2 - self.first_col_time) * range_frequency)),
+            'iw3': int(round((slant_range_time_iw3 - self.first_col_time) * range_frequency)),
         }
 
+        # compute the width and height of the mosaic
+        first_col_per_burst = []
         last_col_per_burst = []
         for bsid, roi in zip(bsids, self._burst_roi_in_tiff):
             swath = bsid.split('_')[1].lower()
-            col = int(round(roi.col + roi.w + self._swath_col_orig_in_acquisition[swath]))
-            last_col_per_burst.append(col)
 
-        self.w = max(last_col_per_burst)
-        self.h = (last_next_row_time - self.first_row_time) * azimuth_frequency
-        assert abs(int(round(self.h)) - self.h) < 1e-3, self.h
-        self.h = int(round(self.h))
+            last_col = roi.col + roi.w + self._swath_col_orig_in_acquisition[swath]
+            last_col_per_burst.append(last_col)
 
-        self.bursts_times = bursts_times
-        self.bsids = bsids
+            first_col = roi.col + self._swath_col_orig_in_acquisition[swath]
+            first_col_per_burst.append(first_col)
 
-        self._bursts_times_per_bsid = {bsid: burst_times for bsid, burst_times in zip(self.bsids, self.bursts_times)}
+        self.w = max(last_col_per_burst) - min(first_col_per_burst)
+        self.h = int(round((last_next_row_time - first_row_time) * azimuth_frequency))
 
-        self.__burst_orig_in_swath = {}
+        # compute the origin of each burst in the mosaic
+        self.__burst_orig_in_mosaic = {}
         for bsid, burst_times, burst_roi_tiff in zip(self.bsids, self.bursts_times, self._burst_roi_in_tiff):
-            col = burst_roi_tiff.col - self.col_min  # TODO: fix coordinate system?
-            azt = burst_times[1]
-            row = (azt - self.first_row_time) * self.azimuth_frequency
-            assert abs(int(round(row)) - row) < 1e-3, row  # TODO: improve precision
-            orig = (col, int(round(row)))
-            self.__burst_orig_in_swath[bsid] = orig
+            swath = bsid.split('_')[1].lower()
 
-    def _burst_orig_in_swath2(self, bsid) -> tuple[int, int]:
-        col_orig, row_orig = self.__burst_orig_in_swath[bsid]
-        return col_orig, row_orig
+            row = (burst_times[1] - self.first_row_time) * self.azimuth_frequency
+            assert abs(int(round(row)) - row) < 1e-3, row
+            row = int(round(row))
+            col = burst_roi_tiff.col + self._swath_col_orig_in_acquisition[swath]
 
-    def _burst_orig_in_swath(self, bsid) -> tuple[int, int]:
-        col_orig, row_orig = self.__burst_orig_in_swath[bsid]
+            self.__burst_orig_in_mosaic[bsid] = col, row
 
-        swath = bsid.split('_')[1].lower()
-        col_orig += self._swath_col_orig_in_acquisition[swath]
-
-        return col_orig, row_orig
+        # check some of the roundings performed above
+        if True:
+            a = (slant_range_time_iw1 - self.first_col_time) * self.range_frequency
+            assert abs(a - round(a)) < 1e-7
+            if slant_range_time_iw2:
+                a = (slant_range_time_iw2 - self.first_col_time) * self.range_frequency
+                assert abs(a - round(a)) < 1e-7
+            if slant_range_time_iw3:
+                a = (slant_range_time_iw3 - self.first_col_time) * self.range_frequency
+                assert abs(a - round(a)) < 1e-5, abs(a - round(a))
+            a = (last_next_row_time - first_row_time) * azimuth_frequency
+            assert abs(int(round(a)) - a) < 1e-3, self.h
 
     def get_burst_outer_roi_in_tiff(self, bsid) -> Roi:
         bid = self.bsids.index(bsid)
         return self._burst_roi_in_tiff[bid]
 
-    def _to_row_col_in_swath(self, azt, rng, swath):
-        row, col = self.to_row_col(azt, rng)
-        col -= self._swath_col_orig_in_acquisition[swath]
-        return row, col
-
     def to_row_col_in_burst(self, azt, rng, bsid):
-        swath = bsid.split('_')[1].lower()
-        row, col = self._to_row_col_in_swath(azt, rng, swath)
-        col_orig, row_orig = self._burst_orig_in_swath2(bsid)
+        col_orig, row_orig = self._burst_orig_in_mosaic(bsid)
+
+        row, col = self.to_row_col(azt, rng)
         row -= row_orig
         col -= col_orig
         return row, col
+
+    def _burst_orig_in_mosaic(self, bsid) -> tuple[int, int]:
+        return self.__burst_orig_in_mosaic[bsid]
 
 
 class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
@@ -109,26 +107,23 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
         super().__init__(*args, **kwargs)
         self._compute_cuts()
 
-    def _get_burst_roi(self, bsid) -> Roi:  # in tiff
-        bid = self.bsids.index(bsid)
-        return self._burst_roi_in_tiff[bid]
-
     def _compute_cuts(self):
         bsids_per_swath = {}
         for bsid in self.bsids:
             swath = bsid.split('_')[1].lower()
             bsids_per_swath.setdefault(swath, []).append(bsid)
 
+        # compute the minimum and maximum of left and right boundaries of each swath
         left_min_col = {}
         left_max_col = {}
         right_min_col = {}
         right_max_col = {}
         for swath, bsids in bsids_per_swath.items():
-            tiff_rois = [self._get_burst_roi(bsid) for bsid in bsids]
-            left_min_col[swath] = min(r.col for r in tiff_rois) + int(round(self._swath_col_orig_in_acquisition[swath]))
-            left_max_col[swath] = max(r.col for r in tiff_rois) + int(round(self._swath_col_orig_in_acquisition[swath]))
-            right_min_col[swath] = min(r.col + r.w for r in tiff_rois) + int(round(self._swath_col_orig_in_acquisition[swath]))
-            right_max_col[swath] = max(r.col + r.w for r in tiff_rois) + int(round(self._swath_col_orig_in_acquisition[swath]))
+            tiff_rois = [self.get_burst_outer_roi_in_tiff(bsid) for bsid in bsids]
+            left_min_col[swath] = min(r.col for r in tiff_rois) + self._swath_col_orig_in_acquisition[swath]
+            left_max_col[swath] = max(r.col for r in tiff_rois) + self._swath_col_orig_in_acquisition[swath]
+            right_min_col[swath] = min(r.col + r.w for r in tiff_rois) + self._swath_col_orig_in_acquisition[swath]
+            right_max_col[swath] = max(r.col + r.w for r in tiff_rois) + self._swath_col_orig_in_acquisition[swath]
 
         # compute the right cut for each swath
         right_cut_col = {
@@ -144,17 +139,19 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
             'iw3': right_cut_col['iw2'],
         }
 
-        self._burst_roi_without_ovl = {}
-        self._burst_roi_with_ovl = {}
+        self._inner_burst_roi = {}
+        self._outer_burst_roi = {}
         for swath, bsids in bsids_per_swath.items():
             bsids = sorted(bsids)
-            overlaps = {}
             ovlp = 0
             prev_ovlp = 0
             for i, bsid in enumerate(bsids):
-                burst_roi = self._get_burst_roi(bsid)
-                h, w = burst_roi.get_shape()
+                h, w = self.get_burst_outer_roi_in_tiff(bsid).get_shape()
 
+                burst_roi = Roi(0, 0, w, h)
+                burst_roi_in_mosaic = burst_roi.translate_roi(*self._burst_orig_in_mosaic(bsid))
+
+                # compute the amount of overlap on bottom of the current burst
                 # WARN: non-consecutive bsids are not handled
                 prev_ovlp = ovlp
                 ovlp = 0
@@ -163,20 +160,19 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
                     current_burst_end = self._bursts_times_per_bsid[bsid][2]
                     next_burst_start = self._bursts_times_per_bsid[next_bsid][1]
                     ovlp = int(round((current_burst_end - next_burst_start) * self.azimuth_frequency))
-                overlaps[bsid] = ovlp
 
+                # compute the inner roi of the burst (this cuts out overlapped regions)
                 remove_lines_at_top = prev_ovlp // 2
                 remove_lines_at_bottom = ovlp - ovlp // 2
-
-                x0 = left_cut_col[swath] - (burst_roi.col + int(round(self._swath_col_orig_in_acquisition[swath])))
+                x0 = left_cut_col[swath] - burst_roi_in_mosaic.col
                 x0 = max(0, x0)
-                x1 = right_cut_col[swath] - (burst_roi.col + int(round(self._swath_col_orig_in_acquisition[swath])))
+                x1 = right_cut_col[swath] - burst_roi_in_mosaic.col
                 x1 = min(burst_roi.w, x1)
                 ww = x1 - x0
-                roi = Roi(x0, remove_lines_at_top, ww, h - remove_lines_at_top - remove_lines_at_bottom)
+                inner_roi = Roi(x0, remove_lines_at_top, ww, h - remove_lines_at_top - remove_lines_at_bottom)
 
-                self._burst_roi_without_ovl[bsid] = roi
-                self._burst_roi_with_ovl[bsid] = Roi(0, 0, w, h)
+                self._inner_burst_roi[bsid] = inner_roi
+                self._outer_burst_roi[bsid] = burst_roi
 
     def get_read_write_rois(self, roi: Roi):
         out_shape = roi.get_shape()
@@ -186,24 +182,19 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
         write_rois = {}
 
         for bsid in self.bsids:
-            burst_roi = self._get_burst_inner_roi_in_swath(bsid)
-            swath = bsid.split('_')[1].lower()
-            ocol = self._swath_col_orig_in_acquisition[swath]
-            assert abs(int(round(ocol)) - ocol) < 1e-6
-            ocol = int(round(ocol))
-            burst_roi = burst_roi.translate_roi(ocol, 0)
+            inner_burst_roi = self._inner_burst_roi[bsid]
+            mosaic_burst_roi = inner_burst_roi.translate_roi(*self._burst_orig_in_mosaic(bsid))
 
-            burst_roi_tiff = self._get_burst_roi(bsid)
-            # without overlap:
-            burst_roi_tiff = self._burst_roi_without_ovl[bsid].translate_roi(burst_roi_tiff.col, burst_roi_tiff.row)
-
-            if roi.intersects_roi(burst_roi):
+            if roi.intersects_roi(mosaic_burst_roi):
                 bsids.add(bsid)
 
-                clipped = roi.clip(burst_roi)
+                burst_roi_tiff = self.get_burst_outer_roi_in_tiff(bsid)
+                burst_roi_tiff = inner_burst_roi.translate_roi(burst_roi_tiff.col, burst_roi_tiff.row)
+
+                clipped = roi.clip(mosaic_burst_roi)
                 h, w = clipped.get_shape()
-                col = burst_roi_tiff.col + (clipped.col - burst_roi.col)
-                row = burst_roi_tiff.row + (clipped.row - burst_roi.row)
+                col = burst_roi_tiff.col + (clipped.col - mosaic_burst_roi.col)
+                row = burst_roi_tiff.row + (clipped.row - mosaic_burst_roi.row)
                 read_roi = Roi(col, row, w, h)
                 write_roi = clipped.translate_roi(-roi.col, -roi.row)
 
@@ -214,7 +205,7 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
 
     def mask_pts_in_burst(self, bsid, azt, rng):
         row, col = self.to_row_col_in_burst(azt, rng, bsid)
-        burst_mask = self._burst_roi_without_ovl[bsid].contains(col, row)
+        burst_mask = self._inner_burst_roi[bsid].contains(col, row)
         return burst_mask
 
     def visualize_burst_rois_in_mosaic(self):
@@ -223,11 +214,8 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
 
         plt.figure(figsize=(10, 10))
 
-        for bsid, roi in self._burst_roi_with_ovl.items():
-            swath = bsid.split('_')[1].lower()
-
-            ocol, orow = self._burst_orig_in_swath2(bsid)
-            ocol += self._swath_col_orig_in_acquisition[swath]
+        for bsid, roi in self._outer_burst_roi.items():
+            ocol, orow = self._burst_orig_in_mosaic(bsid)
             roi = roi.translate_roi(ocol, orow)
 
             rows, cols = roi.to_bounding_points()
@@ -236,11 +224,8 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
 
             plt.plot(cols, rows, '--', color='blue', alpha=0.5)
 
-        for bsid, roi in self._burst_roi_without_ovl.items():
-            swath = bsid.split('_')[1].lower()
-
-            ocol, orow = self._burst_orig_in_swath2(bsid)
-            ocol += self._swath_col_orig_in_acquisition[swath]
+        for bsid, roi in self._inner_burst_roi.items():
+            ocol, orow = self._burst_orig_in_mosaic(bsid)
             roi = roi.translate_roi(ocol, orow)
 
             rows, cols = roi.to_bounding_points()
@@ -249,14 +234,14 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
 
             plt.plot(cols, rows, '-.', color='red', alpha=0.5)
 
+        roi = Roi(0, 0, self.w, self.h)
+        rows, cols = roi.to_bounding_points()
+        rows = np.append(rows, rows[0])
+        cols = np.append(cols, cols[0])
+        plt.plot(cols, rows, '-.', color='red', alpha=0.5)
+
         plt.gca().invert_yaxis()
         plt.show()
-
-    def _get_burst_inner_roi_in_swath(self, bsid) -> Roi:
-        ocol, orow = self._burst_orig_in_swath2(bsid)
-        roi = self._burst_roi_without_ovl[bsid]
-        roi = roi.translate_roi(ocol, orow)
-        return roi
 
 
 class SecondarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
