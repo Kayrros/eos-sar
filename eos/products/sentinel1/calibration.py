@@ -296,7 +296,7 @@ class CalibrationReader:
     """Class to calibrate after reading the data"""
 
     def __init__(self, reader, calibrator: Sentinel1Calibrator,
-                 method='sigma', dont_clip_noise=False):
+                 method: str, dont_clip_noise=False):
         """
         Constructor.
 
@@ -306,8 +306,8 @@ class CalibrationReader:
             Reader to the tiff of the product.
         calibrator : Sentinel1Calibrator
             Calibrator on the same product (same swath/polarization).
-        method : str, optional
-            Calibration method (either "sigma", "gamma", "beta"). The default is 'sigma'.
+        method : str
+            Calibration method (either "sigma", "gamma", "beta").
         dont_clip_noise : boolean, optional
             if true, during noise calibration, values are not clipped to 0 but stay positive
             this is what happens in the implementation of SNAP. The default is False.
