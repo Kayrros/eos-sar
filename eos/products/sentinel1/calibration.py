@@ -1,6 +1,7 @@
 import numpy as np
 import xmltodict
 
+from eos.sar.roi import Roi
 from . import _calibration as _cal
 
 
@@ -212,13 +213,13 @@ class Sentinel1Calibrator:
         else:
             self.has_noise = False
 
-    def calibrate_inplace(self, image, window, method, dont_clip_noise=False):
+    def calibrate_inplace(self, image, roi, method, dont_clip_noise=False):
         """
             Apply the radiometric calibration on the given raster, at position `window` of the SLC tif image.
 
             Args
                 image (np.array): array of shape (h, w), of type float32 or complex64
-                window (tuple): (x, y, w, h), position in the source SLC tif image
+                roi (Roi): position in the source SLC tif image
                 method (str): 'sigma' | 'gamma' | 'beta'
                 dont_clip_noise (bool, default False):
                     if true, during noise calibration, values are not clipped to 0 but stay positive
@@ -229,11 +230,13 @@ class Sentinel1Calibrator:
                 if you need an out-of-place calibration, copy the array first
         """
         assert method in ('sigma', 'gamma', 'beta')
+        assert image.shape == roi.get_shape()
 
         # IPF defines the calibration methods with 'Nought' postfix except for gamma
         if method in ('sigma', 'beta'):
             method += 'Nought'
 
+        window = roi.to_roi()
         calib_array = self._get_calibration_array(window, method)
         noise_array = self._get_noise_array(window) if self.has_noise else None
         return _apply_radiometric_calibration(image, calib_array, noise_array, dont_clip_noise)
@@ -293,7 +296,7 @@ class CalibrationReader:
     """Class to calibrate after reading the data"""
 
     def __init__(self, reader, calibrator: Sentinel1Calibrator,
-                 method='sigma', dont_clip_noise=False):
+                 method: str, dont_clip_noise=False):
         """
         Constructor.
 
@@ -303,8 +306,8 @@ class CalibrationReader:
             Reader to the tiff of the product.
         calibrator : Sentinel1Calibrator
             Calibrator on the same product (same swath/polarization).
-        method : str, optional
-            Calibration method (either "sigma", "gamma", "beta"). The default is 'sigma'.
+        method : str
+            Calibration method (either "sigma", "gamma", "beta").
         dont_clip_noise : boolean, optional
             if true, during noise calibration, values are not clipped to 0 but stay positive
             this is what happens in the implementation of SNAP. The default is False.
@@ -341,9 +344,8 @@ class CalibrationReader:
         (y, yh), (x, xw) = window
         h = yh - y
         w = xw - x
-        window = y, x, h, w
-        self.calibrator.calibrate_inplace(array, window, self.method,
-                                          self.dont_clip_noise)
+        roi = Roi(x, y, w, h)
+        self.calibrator.calibrate_inplace(array, roi, self.method, self.dont_clip_noise)
 
         # undo the pow2 from the calibration
         return array / np.sqrt(1e-9 + np.abs(array))
