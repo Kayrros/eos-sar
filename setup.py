@@ -10,6 +10,9 @@ with open('README.md', 'r') as f:
 with open('requirements.txt') as f:
     required = f.read().splitlines()
 
+ext_module = cythonize('eos/products/sentinel1/_calibration.pyx')
+ext_module[0].include_dirs = [np.get_include()]
+
 setuptools.setup(
     name='kayrros-eos-sar',
     version='0.7.0',
@@ -21,8 +24,7 @@ setuptools.setup(
     package_dir={'': '.'},
     package_data={},
 
-    ext_modules=cythonize('eos/products/sentinel1/_calibration.pyx'),
-    include_dirs=[np.get_include()],
+    ext_modules=ext_module,
 
     setup_requires=["cython", "numpy"],
     install_requires=required,
