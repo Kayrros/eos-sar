@@ -42,12 +42,12 @@ class Sentinel1Assembler:
     _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = None
 
     @staticmethod
-    def from_products(products, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None):
+    def from_products(products, pol, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None):
         bsids = set()
         bursts_per_swath = {}
         product_id_per_bsid = {}
         for swath in swaths:
-            bursts = _get_bursts(products, swath, 'vv', orbit_provider)
+            bursts = _get_bursts(products, swath, pol, orbit_provider)
             bursts_per_swath[swath] = sentinel1.metadata.assemble_multiple_products_into_metas(bursts)
 
             for product, metas in zip(products, bursts):
@@ -186,7 +186,8 @@ class Sentinel1AssemblyCropper:
             rng_primary[bsid] = rng_primary_flat[burst_mask]
 
         def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
-            secondary_asm = Sentinel1Assembler.from_products(products, orbit_provider=orbit_provider)
+            secondary_asm = Sentinel1Assembler.from_products(products, pol,
+                                                             orbit_provider=orbit_provider)
             secondary_cutter = secondary_asm.get_secondary_cutter()
             secondary_mosaic_model = secondary_asm.get_mosaic_model()
 
