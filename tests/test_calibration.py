@@ -73,8 +73,8 @@ def test_calibration_without_noise(window, pol, swath, method, with_noise):
     for clip in (True, False) if with_noise else (False,):
         print(clip)
 
-        arr = calibrator.calibrate_inplace(image.copy(), window, method=method, dont_clip_noise=not clip)
-        arrc = calibrator.calibrate_inplace(imagec.copy(), window, method=method, dont_clip_noise=not clip)
+        arr = calibrator.calibrate_inplace(image.copy(), roi, method=method, dont_clip_noise=not clip)
+        arrc = calibrator.calibrate_inplace(imagec.copy(), roi, method=method, dont_clip_noise=not clip)
 
         snap = None
         if not with_noise or not clip:
@@ -87,6 +87,6 @@ def test_calibration_without_noise(window, pol, swath, method, with_noise):
 def test_inplaceness():
     calibrator, _, _ = get_infos('iw1', 'vv', 'sigma', False)
     arr = np.ones((20, 20), dtype=np.float32)
-    window = (1000, 100, 20, 20)
-    arr2 = calibrator.calibrate_inplace(arr, window, 'sigma')
+    roi = Roi(1000, 100, 20, 20)
+    arr2 = calibrator.calibrate_inplace(arr, roi, 'sigma')
     assert arr2 is arr
