@@ -41,6 +41,11 @@ class Sentinel1Assembler:
     _prim_cutter: Optional[sentinel1.acquisition.PrimarySentinel1AcquisitionCutter] = None
     _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = None
 
+    def __init__(self, bsids, product_id_per_bsid, meta_per_bsid_per_swath):
+        self.bsids = bsids
+        self.product_id_per_bsid = product_id_per_bsid
+        self.meta_per_bsid_per_swath = meta_per_bsid_per_swath
+
     @staticmethod
     def from_products(products, pol, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None):
         bsids = set()
@@ -55,11 +60,8 @@ class Sentinel1Assembler:
                     product_id_per_bsid[m['bsid']] = product.product_id
                     bsids.add(m['bsid'])
 
-        asm = Sentinel1Assembler()
-        asm.meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
-        asm.product_id_per_bsid = product_id_per_bsid
-        asm.bsids = bsids
-        return asm
+        meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
+        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath)
 
     def get_primary_cutter(self):
         if self._prim_cutter is None:
@@ -144,11 +146,10 @@ class Sentinel1Assembler:
 
     @staticmethod
     def from_dict(dict):
-        asm = Sentinel1Assembler()
-        asm.meta_per_bsid_per_swath = dict['meta_per_bsid_per_swath']
-        asm.product_id_per_bsid = dict['product_id_per_bsid']
-        asm.bsids = set(dict['bsids'])
-        return asm
+        meta_per_bsid_per_swath = dict['meta_per_bsid_per_swath']
+        product_id_per_bsid = dict['product_id_per_bsid']
+        bsids = set(dict['bsids'])
+        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath)
 
 
 class Sentinel1AssemblyCropper:
@@ -241,4 +242,3 @@ class Sentinel1AssemblyCropper:
     def get_proj_model(self):
         mosaic_model = self.assembler.get_mosaic_model()
         return mosaic_model.to_cropped_mosaic(self.roi)
-
