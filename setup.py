@@ -15,7 +15,7 @@ ext_module[0].include_dirs = [np.get_include()]
 
 setuptools.setup(
     name='kayrros-eos-sar',
-    version='0.7.0',
+    version='0.8.0',
     description='',
     long_description=long_description,
     author='Kayrros',
