@@ -3,10 +3,10 @@ import eos.sar
 from eos.products.sentinel1.proj_model import primary_project_and_correct, secondary_project_and_correct
 
 
-def get_burst_resampling_matrices(swath_model_no_correc, swath_model_correc,
-                                  rows_no_correc_global, cols_no_correc_global,
-                                  rows_correc_global, cols_correc_global,
-                                  bsids, global_rows_fit=False):
+def get_burst_resampling_matrices(primary_cutter, secondary_cutter,
+                                  azt_no_correc, rng_no_correc,
+                                  azt_correc, rng_correc,
+                                  bsids):
     """
     Compute the resampling matrix of two swath models burst by burst. This is\
     typically used between the ideal model (called no_correc) and the imperfect\
@@ -19,20 +19,16 @@ def get_burst_resampling_matrices(swath_model_no_correc, swath_model_correc,
         Swath model in ideal (primary img) coordinate system.
     swath_model_correc : eos.products.sentinel1.proj_model.Sentinel1SwathModel
         Swath model in imperfect coordinate system (primary or secondary img).
-    rows_no_correc_global : dict bsid -> list of coords
-        Each element is an array of row coords without corrections inside a burst.
-    cols_no_correc_global : dict bsid -> list of coords
-        Each element is an array of col coords without corrections inside a burst.
-    rows_correc_global : dict bsid -> list of coords
-        Each element is an array of row coords with corrections inside a burst.
-    cols_correc_global : dict bsid -> list of coords
-        Each element is an array of col coords with corrections inside a burst.
+    azt_no_correc : dict bsid -> array
+        Each element is an array of azimuth times without corrections.
+    rng_no_correc : dict bsid -> array
+        Each element is an array of ranges without corrections.
+    azt_correc : dict bsid -> array
+        Each element is an array of azimuth times with corrections.
+    rng_correc : dict bsid -> array
+        Each element is an array of ranges with corrections.
     bsids : list
         List of BSIDs of interest for the registration.
-    global_rows_fit : boolean, optional
-        If set to True, a global fitting is used for the row affine translation.
-        This is a useful feature if ESD algorithm is run afterwards.
-        The default is False.
 
     Returns
     -------
@@ -41,48 +37,27 @@ def get_burst_resampling_matrices(swath_model_no_correc, swath_model_correc,
         resampling matrix of the burst.
 
     """
-    assert len(rows_no_correc_global) == len(cols_no_correc_global)
-    assert len(rows_correc_global) == len(cols_correc_global)
-    assert len(bsids) <= len(rows_correc_global) <= len(rows_no_correc_global)
-
-    if global_rows_fit:
-        _rows_no_correc_global = np.concatenate([rows_no_correc_global[bsid] for bsid in sorted(bsids)])
-        _cols_no_correc_global = np.concatenate([cols_no_correc_global[bsid] for bsid in sorted(bsids)])
-        pts_no_correc_global = np.column_stack([_rows_no_correc_global, _cols_no_correc_global])
-
-        _rows_correc_global = np.concatenate([rows_correc_global[bsid] for bsid in sorted(bsids)])
-        _cols_correc_global = np.concatenate([cols_correc_global[bsid] for bsid in sorted(bsids)])
-        pts_correc_global = np.column_stack([_rows_correc_global, _cols_correc_global])
-
-        A_global = eos.sar.regist.affine_transformation(pts_no_correc_global, pts_correc_global)
+    assert len(azt_no_correc) == len(rng_no_correc)
+    assert len(azt_correc) == len(rng_correc)
+    assert len(bsids) <= len(azt_correc) <= len(azt_no_correc)
 
     burst_resampling_matrices = {}
     for bsid in bsids:
-        bid1 = swath_model_no_correc.bsids.index(bsid)
-        bid2 = swath_model_correc.bsids.index(bsid)
-        col_dst, row_dst = swath_model_no_correc.burst_orig_in_swath(bid1)
-        col_src, row_src = swath_model_correc.burst_orig_in_swath(bid2)
+        rows_primary, cols_primary = \
+            primary_cutter.to_row_col_in_burst(azt_no_correc[bsid], rng_no_correc[bsid], bsid)
+        rows_secondary, cols_secondary = \
+            secondary_cutter.to_row_col_in_burst(azt_correc[bsid], rng_correc[bsid], bsid)
 
-        pts_no_correc_local = np.column_stack([rows_no_correc_global[bsid] - row_dst,
-                                               cols_no_correc_global[bsid] - col_dst])
-        pts_correc_local = np.column_stack([rows_correc_global[bsid] - row_src,
-                                            cols_correc_global[bsid] - col_src])
+        pts_no_correc = np.column_stack([rows_primary, cols_primary])
+        pts_correc = np.column_stack([rows_secondary, cols_secondary])
 
-        A_local = eos.sar.regist.affine_transformation(pts_no_correc_local, pts_correc_local)
-
-        if global_rows_fit:
-            # Adapt global matrix to burst origins
-            A_burst_adapt = eos.sar.regist.change_resamp_mat_orig(
-                row_dst, col_dst, row_src, col_src, A_global)
-            # row from global fitting
-            A_local[0] = A_burst_adapt[0]
-
-        burst_resampling_matrices[bsid] = A_local
+        A = eos.sar.regist.affine_transformation(pts_no_correc, pts_correc)
+        burst_resampling_matrices[bsid] = A
 
     return burst_resampling_matrices
 
 
-def primary_registration_estimation(primary_swath_model, primary_burst_models,
+def primary_registration_estimation(primary_swath_model, primary_cutter, primary_burst_models,
                                     x, y, alt, crs, bsids):
     """
     Estimate the resampling matrices for a primary image so that we can resample\
@@ -92,6 +67,8 @@ def primary_registration_estimation(primary_swath_model, primary_burst_models,
     ----------
     primary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
         Swath model for primary img.
+    primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
+        Primary acquisition cutter.
     primary_burst_models : dict bsid -> eos.products.sentinel1.proj_model.Sentinel1BurstModel
         Burst model per bsid, where the resampling matrices should be estimated.
     x : array
@@ -107,14 +84,14 @@ def primary_registration_estimation(primary_swath_model, primary_burst_models,
 
     Returns
     -------
-    rows_no_correc_global : list
-        Each element is an array of row coords without corrections inside a burst.
-    cols_no_correc_global : list
-        Each element is an array of col coords without corrections inside a burst.
-    rows_correc_global : list
-        Each element is an array of row coords with corrections inside a burst.
-    cols_correc_global : list
-        Each element is an array of col coords with corrections inside a burst.
+    azt_no_correc : dict bsid -> array
+       Each element is an array of azimuth times without corrections.
+    rng_no_correc : dict bsid -> array
+       Each element is an array of ranges without corrections.
+    azt_correc : dict bsid -> array
+       Each element is an array of azimuth times with corrections.
+    rng_correc : dict bsid -> array
+        Each element is an array of ranges with corrections.
     pts_in_burst_mask : list
         Each element is a mask defining which points from the initial x, y, alt arrays
         were projected in the different bursts.
@@ -123,7 +100,7 @@ def primary_registration_estimation(primary_swath_model, primary_burst_models,
         resampling matrix of the burst.
 
     """
-    rows_no_correc_global, cols_no_correc_global, rows_correc_global, cols_correc_global, pts_in_burst_mask = primary_project_and_correct(
+    azt_no_correc, rng_no_correc, azt_correc, rng_correc, pts_in_burst_mask = primary_project_and_correct(
         primary_swath_model, x, y, alt, crs,
         bsids, primary_burst_models)
 
@@ -131,25 +108,25 @@ def primary_registration_estimation(primary_swath_model, primary_burst_models,
         burst_resampling_matrices = {bsid: None for bsid in bsids}
     else:
         burst_resampling_matrices = get_burst_resampling_matrices(
-            primary_swath_model, primary_swath_model, rows_no_correc_global, cols_no_correc_global,
-            rows_correc_global, cols_correc_global, bsids)
+            primary_cutter, primary_cutter, azt_no_correc, rng_no_correc,
+            azt_correc, rng_correc, bsids)
 
-    return rows_no_correc_global, cols_no_correc_global,\
-        rows_correc_global, cols_correc_global, pts_in_burst_mask,\
-        burst_resampling_matrices
+    return azt_no_correc, rng_no_correc, azt_correc, rng_correc, \
+        pts_in_burst_mask, burst_resampling_matrices
 
 
 def secondary_registration_estimation(
-        secondary_swath_model, secondary_burst_models, x, y, alt, crs,
-        bsids, pts_in_burst_mask, primary_swath_model, rows_no_correc_global,
-        cols_no_correc_global, global_rows_fit=True):
+        secondary_proj_model, secondary_cutter, secondary_burst_models, x, y, alt, crs,
+        bsids, pts_in_burst_mask, primary_cutter, azt_no_correc, rng_no_correc):
     """
     Estimate the resampling matrices for a secondary img w.r.t. the ideal primary frame.
 
     Parameters
     ----------
-    secondary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
+    secondary_proj_model : eos.products.sentinel1.proj_model.Sentinel1BaseModel
         Swath model for the secondary img.
+    secondary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
+        Secondary acquisition cutter.
     secondary_burst_models : eos.products.sentinel1.proj_model.Sentinel1BurstModel
         List of burst models where the resampling matrices should be estimated.
     x : array
@@ -165,16 +142,12 @@ def secondary_registration_estimation(
     pts_in_burst_mask : list
         Each element is a mask defining which points from the initial x, y, alt arrays
         should be projected in the different bursts.
-    primary_swath_model : eos.products.sentinel1.proj_model.Sentinel1SwathModel
-        Swath model for primary img.
-    rows_no_correc_global : list
-        Each element is an array of row coords in the primary swath without corrections inside a burst.
-    cols_no_correc_global : list
-        Each element is an array of col coords in the primary swath without corrections inside a burst.
-    global_rows_fit : boolean, optional
-        If set to True, a global fitting is used for the row affine translation.
-        This is a useful feature if ESD algorithm is run afterwards.
-        The default is True.
+    primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
+        Primary acquisition cutter.
+    azt_no_correc : dict bsid -> array
+        Each element is an array of azimuth times in the primary swath without corrections.
+    rng_no_correc : dict bsid -> array
+        Each element is an array of ranges in the primary swath without corrections.
 
     Returns
     -------
@@ -183,12 +156,12 @@ def secondary_registration_estimation(
         resampling matrix of the burst.
 
     """
-    _, _, rows_correc_global_sec, cols_correc_global_sec = secondary_project_and_correct(
-        secondary_swath_model, x, y, alt, crs,
+    _, _, azt_correc, rng_correc = secondary_project_and_correct(
+        secondary_proj_model, x, y, alt, crs,
         bsids, secondary_burst_models, pts_in_burst_mask)
 
     burst_resampling_matrices = get_burst_resampling_matrices(
-        primary_swath_model, secondary_swath_model, rows_no_correc_global, cols_no_correc_global,
-        rows_correc_global_sec, cols_correc_global_sec, bsids, global_rows_fit=global_rows_fit)
+        primary_cutter, secondary_cutter, azt_no_correc, rng_no_correc,
+        azt_correc, rng_correc, bsids)
 
     return burst_resampling_matrices

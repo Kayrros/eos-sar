@@ -33,7 +33,7 @@ class SensorModel(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None):
+    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None, as_azt_rng=False):
         pass
 
     @abc.abstractmethod
