@@ -114,6 +114,7 @@ def _mid_burst_sensing_time_correction(o, first_burst_xml):
     # approximative longitude of the current burst (it's ok if it is a few degrees of)
     current_lon = np.mean([c[0] for c in o['approx_geom']])
     # expected longitude for a given orbit number
+
     def lon_at_anx(orbit): return (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
     # since the longitude difference between the swaths is +/-1° the longitude of swath 2,
     # we don't have to correct it since the margin of error will be around 10°
@@ -402,3 +403,49 @@ def extract_burst_metadata(xml, burst_id):
 def assemble_multiple_products_into_metas(metas_per_product):
     bursts = list(sum(metas_per_product, []))
     return bursts
+
+
+def _unique_sv(state_vectors: list[dict]):
+    """
+    Get a list of unique state vectors from a list of redundant state_vectors.
+
+    Parameters
+    ----------
+    state_vectors : list[dict]
+        Each state vector is a dict with time, position, velocity of satellite.
+        Here, state vectors may be duplicates.
+
+    Returns
+    -------
+    unique_state_vectors : list[dict]
+        Each state vector is a dict with time, position, velocity of satellite.
+        Here state vectors have been filtered and are unique.
+
+    """
+    state_vectors = sorted(state_vectors, key=lambda x: x["time"])
+
+    unique_state_vectors = [state_vectors[0]]
+    for sv in state_vectors[1:]:
+        if sv["time"] - unique_state_vectors[-1]["time"]:
+            # different sample
+            unique_state_vectors.append(sv)
+            continue
+    return unique_state_vectors
+
+
+def unique_sv_from_bursts_meta(bursts_meta: list[dict]):
+    """
+    Get an aggregated list of state_vectors from bursts_meta
+
+    Parameters
+    ----------
+    bursts_meta : list[dict]
+        List of bursts metadata.
+
+    Returns
+    -------
+    unique_state_vectors: list[dict]
+        Each element is a unique state_vectors
+    """
+    state_vectors = [sv for bmeta in bursts_meta for sv in bmeta["state_vectors"]]
+    return _unique_sv(state_vectors)

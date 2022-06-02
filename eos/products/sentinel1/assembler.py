@@ -33,21 +33,32 @@ def _get_image_reader(product: Sentinel1ProductInfo, swath: str, pol: str, calib
     return reader
 
 
+def _swath_from_bsid(bsid: str):
+    return bsid.split("_")[1].lower()
+
+
+def all_svs(meta_per_bsid_per_swath: dict[str, dict[str, dict]]):
+    return [sv for meta_per_bsid in meta_per_bsid_per_swath.values()
+            for m in meta_per_bsid.values() for sv in m["state_vectors"]]
+
+
 class Sentinel1Assembler:
 
     meta_per_bsid_per_swath: dict[str, dict[str, dict]] = {}
     product_id_per_bsid: dict[str, str] = {}
     bsids: set[str] = set()
+    orbit_degree: int
     _prim_cutter: Optional[sentinel1.acquisition.PrimarySentinel1AcquisitionCutter] = None
     _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = None
 
-    def __init__(self, bsids, product_id_per_bsid, meta_per_bsid_per_swath):
+    def __init__(self, bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree=11):
         self.bsids = bsids
         self.product_id_per_bsid = product_id_per_bsid
         self.meta_per_bsid_per_swath = meta_per_bsid_per_swath
+        self.set_orbit(orbit_degree)
 
     @staticmethod
-    def from_products(products, pol, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None):
+    def from_products(products, pol, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None, orbit_degree=11):
         bsids = set()
         bursts_per_swath = {}
         product_id_per_bsid = {}
@@ -61,7 +72,13 @@ class Sentinel1Assembler:
                     bsids.add(m['bsid'])
 
         meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
-        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath)
+        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree)
+
+    def set_orbit(self, orbit_degree):
+        all_state_vectors = [sv for meta_per_bsid in self.meta_per_bsid_per_swath.values()
+                             for m in meta_per_bsid.values() for sv in m["state_vectors"]]
+        unique_state_vectors = sentinel1.metadata._unique_sv(all_state_vectors)
+        self.orbit = eos.sar.orbit.Orbit(unique_state_vectors, orbit_degree)
 
     def get_primary_cutter(self):
         if self._prim_cutter is None:
@@ -90,8 +107,6 @@ class Sentinel1Assembler:
         multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
         approx_geom = list(multipolygon.convex_hull.exterior.coords)
 
-        # TODO: aggregate state_vectors
-        state_vectors = bursts[0]['state_vectors']
         wavelength = bursts[0]['wave_length']
 
         # instanciate the mosaic model
@@ -104,7 +119,7 @@ class Sentinel1Assembler:
             cutter.w,
             cutter.h,
             wavelength,
-            state_vectors,
+            self.orbit,
         )
 
         return proj_model
@@ -117,7 +132,7 @@ class Sentinel1Assembler:
 
         readers = {}
         for bsid in bsids:
-            swath = bsid.split('_')[1]
+            swath = _swath_from_bsid(bsid)
             product_id = self.product_id_per_bsid[bsid]
             product = product_per_id[product_id]
             readers[bsid] = _get_image_reader(product, swath, pol, calibration)
@@ -130,11 +145,15 @@ class Sentinel1Assembler:
                   for bsid in bsids}
         return models
 
+
+    def get_single_burst_meta(self, bsid: str):
+        swath = _swath_from_bsid(bsid)
+        return self.meta_per_bsid_per_swath[swath][bsid]
+
     def get_burst_metas(self, bsids):
         metas = {}
         for bsid in bsids:
-            swath = bsid.split('_')[1].lower()
-            metas[bsid] = self.meta_per_bsid_per_swath[swath][bsid]
+            metas[bsid] = self.get_single_burst_meta(bsid)
         return metas
 
     def to_dict(self):
@@ -142,6 +161,7 @@ class Sentinel1Assembler:
             'meta_per_bsid_per_swath': self.meta_per_bsid_per_swath,
             'product_id_per_bsid': self.product_id_per_bsid,
             'bsids': list(self.bsids),
+            'orbit_degree': self.orbit.degree
         }
 
     @staticmethod
@@ -149,7 +169,9 @@ class Sentinel1Assembler:
         meta_per_bsid_per_swath = dict['meta_per_bsid_per_swath']
         product_id_per_bsid = dict['product_id_per_bsid']
         bsids = set(dict['bsids'])
-        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath)
+        orbit_degree = int(dict['orbit_degree'])
+        return Sentinel1Assembler(bsids, product_id_per_bsid,
+                                  meta_per_bsid_per_swath, orbit_degree)
 
 
 class Sentinel1AssemblyCropper:
