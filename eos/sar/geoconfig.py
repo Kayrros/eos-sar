@@ -3,6 +3,35 @@ import pyproj
 from eos.sar import poly
 
 
+def compute_cosi_rng(points, sat):
+    """
+    Apply cosine rule to get the cosine of the incidence angle, by
+    considering the triangle formed by the center of the earth( origin of geocentric coordinate system),
+    the 3D point, and the satellite.
+
+    Parameters
+    ----------
+    points : ndarray (n, 3)
+        Points on which we wish to get the incidence.
+    sat : ndarray (n, 3)
+        Satellite positions corresponding the points positions.
+
+    Returns
+    -------
+    cos_i : (n,)
+        Cosinus of the incidence angle.
+    rng : (n, )
+        Geometric distance in meters from satellite to point.
+
+    """
+    # apply the cosine rule to get the incidence angle
+    op = np.linalg.norm(points, axis=1)
+    os = np.linalg.norm(sat, axis=1)
+    rng = np.linalg.norm(sat - points, axis=1)
+    cos_i = (os**2 - op**2 - rng**2) / (2 * op * rng)
+    return cos_i, rng
+
+
 def normalize(vec):
     '''
     normalize vec so that norm(Vec) = 1
@@ -159,13 +188,10 @@ def get_geom_config(primary_model, secondary_models, grid_size_col=20,
     sat_pos_prim = primary_model.orbit.evaluate(azt, order=0)
     sat_speed_prim = primary_model.orbit.evaluate(azt, order=1)
 
-    # distances with earth center
-    op = np.linalg.norm(points_3D, axis=1)
-    _os = np.linalg.norm(sat_pos_prim, axis=1)
-    ps = np.linalg.norm(sat_pos_prim - points_3D, axis=1)
+    cos_i, ps = compute_cosi_rng(points_3D, sat_pos_prim)
 
     # local incidence on ellipsoid estimation
-    theta_inc = np.arccos((_os**2 - op**2 - ps**2) / (2 * op * ps))
+    theta_inc = np.arccos(cos_i)
 
     perp_baseline = np.zeros((len(secondary_models), num_points))
     delta_r = np.zeros((len(secondary_models), num_points))
