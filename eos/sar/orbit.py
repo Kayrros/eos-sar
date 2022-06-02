@@ -55,3 +55,14 @@ class Orbit:
             coeff = cheb.get_diff_coeffs(
                 self.coeffs[0], self.cheb_domain, der=order)
         return cheb.evaluate_cheb_interp(azt, coeff, self.cheb_domain)
+
+    def to_dict(self) -> dict:
+        metadata = dict(
+            state_vectors=self.sv,
+            degree=self.degree,
+        )
+        return metadata
+
+    @staticmethod
+    def from_dict(dict):
+        return Orbit(**dict)
