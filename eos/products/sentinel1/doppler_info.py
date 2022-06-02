@@ -1,10 +1,10 @@
 """Compute Sentinel1 burst doppler quantities from metadata."""
 import numpy as np
 
-from eos.sar import orbit
+from eos.sar.orbit import Orbit
 
 
-def doppler_from_meta(burst_meta, **kwargs):
+def doppler_from_meta(burst_meta, orbit):
     """
     Construct a Sentinel1Doppler object from burst metadata.
 
@@ -12,8 +12,8 @@ def doppler_from_meta(burst_meta, **kwargs):
     ----------
     burst_meta : dict
         Dict of burst metadata.
-    **kwargs : key word arguments
-        Additional key word args for the constructor of Sentinel1Doppler.
+    orbit: Orbit
+        Orbit instance
 
     Returns
     -------
@@ -35,8 +35,7 @@ def doppler_from_meta(burst_meta, **kwargs):
         dc_estimate_poly=burst_meta['dc_estimate_poly'],
         steering_rate=burst_meta['steering_rate'],
         wave_length=burst_meta['wave_length'],
-        state_vectors=burst_meta['state_vectors'],
-        **kwargs,
+        orbit=orbit
     )
 
 
@@ -49,7 +48,7 @@ class Sentinel1Doppler:
                  az_fm_times, az_fm_info,
                  dc_estimate_time, dc_estimate_t0, dc_estimate_poly,
                  steering_rate, wave_length,
-                 state_vectors, degree=11,
+                 orbit: Orbit,
                  ):
         """Instantiate a Sentinel1Doppler object.
 
@@ -92,10 +91,8 @@ class Sentinel1Doppler:
             steering rate in rad/sec of the EM beam (TOPSAR mode).
         wave_length : float
             Carrier wavelength.
-        state_vectors : Iterable of dict
-            List of state vectors (time, position, velocity).
-        degree : int, optional
-            Degree of polynomial interpolating the orbit. The default is 11.
+        orbit: Orbit
+            Orbit instance
         """
         # set the product variables
         self.lines_per_burst = lines_per_burst
@@ -120,8 +117,7 @@ class Sentinel1Doppler:
         self.dc_poly = dc_estimate_poly[dc_id]
 
         # interpolate the speed
-        orb = orbit.Orbit(state_vectors, degree=degree)
-        speed = np.linalg.norm(orb.evaluate(self.burst_mid_time, order=1))
+        speed = np.linalg.norm(orbit.evaluate(self.burst_mid_time, order=1))
 
         # doppler rate due to rotation of EM beam
         self.krot = 2 * speed * steering_rate / wave_length
@@ -132,7 +128,7 @@ class Sentinel1Doppler:
         Parameters
         ----------
         slrt : ndarray
-             Two slant range time.
+             Two way slant range time.
 
         Returns
         -------
@@ -149,7 +145,7 @@ class Sentinel1Doppler:
         Parameters
         ----------
         slrt : ndarray
-             Two slant range time.
+             Two way slant range time.
 
         Returns
         -------
@@ -208,6 +204,46 @@ class Sentinel1Doppler:
 
     def get_burst_mid_time(self):
         return self.burst_mid_time
+
+    def get_doppler_quantities(self, azt, slrt):
+        """
+        Get doppler quantities for some azt and slant range times
+
+        Parameters
+        ----------
+        azt : 1darray
+            azt time.
+        slrt : 1darray
+            Two way slant range time.
+
+        Returns
+        -------
+        range_dependent_doppler_rate : 1darray
+            Azimuth fm (stripmap) doppler rate.
+        doppler_rate : 1darray
+            Overall Doppler rate of focused data.
+        f_geom : 1darray
+            FM Doppler centroid.
+        f : 1darray
+            Doppler centroid shift induced by Doppler rate.
+
+        """
+        # Doppler FM rate
+        range_dependent_doppler_rate = self.get_rg_dpt_dop_rate(slrt)
+
+        # Doppler Centroid Rate
+        doppler_rate = self.get_dop_rate(range_dependent_doppler_rate)
+
+        # Doppler Centroid Frequency
+        f_geom = self.get_dop_centroid(slrt)
+
+        # azimuth dependent Doppler Centroid Frequency
+        mid_time = self.get_burst_mid_time()
+        ref_time = self.get_ref_time(f_geom, range_dependent_doppler_rate)
+
+        f = doppler_rate * (azt - mid_time - ref_time)
+
+        return range_dependent_doppler_rate, doppler_rate, f_geom, f
 
 
 def find_nearest_index(l, x):
