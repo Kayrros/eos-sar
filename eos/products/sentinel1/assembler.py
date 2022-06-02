@@ -139,6 +139,10 @@ class Sentinel1Assembler:
 
         return readers
 
+    def get_doppler(self, bsid):
+        return sentinel1.doppler_info.doppler_from_meta(
+            self.get_single_burst_meta(bsid), self.orbit)
+
     def get_burst_models(self, bsids, **kwargs):
         metas = self.get_burst_metas(bsids)
         models = {bsid: sentinel1.proj_model.burst_model_from_burst_meta(metas[bsid], **kwargs)
