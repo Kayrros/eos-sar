@@ -197,6 +197,11 @@ class Sentinel1Assembler:
             **kwargs) for bsid in bsids}
         return models
 
+    def get_burst_resampler(self, bsid: str, dst_burst_shape: tuple, matrix):
+        return sentinel1.burst_resamp.burst_resample_from_meta(
+            self.get_single_burst_meta(bsid), dst_burst_shape, matrix,
+            self.get_doppler(bsid))
+
     def get_single_burst_meta(self, bsid: str):
         swath = _swath_from_bsid(bsid)
         return self.meta_per_bsid_per_swath[swath][bsid]
@@ -236,14 +241,15 @@ class Sentinel1AssemblyCropper:
         mosaic_model = self.assembler.get_mosaic_model()
         primary_cutter = self.assembler.get_primary_cutter()
 
-        # get affected bsids and their read/write rois
-        # read_rois are relative to the primary bursts
+        # get affected bsids and their within_burst/write rois
+        # within_burst are relative to the primary bursts
         # write_rois are relative to the destination mosaic coordinates system
-        all_bsids, read_rois, write_rois, out_shape = primary_cutter.get_read_write_rois(self.roi)
-        assert out_shape == self.roi.get_shape()
+        all_bsids, within_burst_rois, write_rois = primary_cutter.get_debursting_rois(self.roi)
+        out_shape = self.roi.get_shape()
 
         # get registration dem pts
-        x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(mosaic_model, roi=self.roi, dem=dem)
+        x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(
+            mosaic_model, roi=self.roi, dem=dem, sampling_ratio=1)
 
         # project in the mosaic
         azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(x, y, alt, crs=crs, as_azt_rng=True)
@@ -291,12 +297,18 @@ class Sentinel1AssemblyCropper:
                 secondary_mosaic_model, secondary_cutter, secondary_corrector_per_bsid, x, y, alt, crs,
                 bsids, pts_in_burst_mask, primary_cutter, azt_primary, rng_primary)
 
+            # instantiate resamplers
+            resamplers = {
+                bsid: secondary_asm.get_burst_resampler(
+                    bsid,
+                    primary_cutter.get_burst_outer_roi_in_tiff(bsid).get_shape(),
+                    burst_resampling_matrices[bsid]) for bsid in bsids
+            }
+
             sentinel1.deburst.warp_rois_read_resample_deburst(
-                read_rois, bsids,
-                primary_cutter, secondary_cutter,
-                burst_resampling_matrices,
-                secondary_bursts_meta_per_bsid, secondary_readers,
-                write_rois, out_shape, out, get_complex=get_complex, reramp=reramp)
+                bsids, resamplers, within_burst_rois, secondary_cutter,
+                secondary_readers, write_rois, out_shape, out,
+                get_complex=get_complex, reramp=reramp)
 
             return out
 

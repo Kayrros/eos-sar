@@ -174,34 +174,33 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
                 self._inner_burst_roi[bsid] = inner_roi
                 self._outer_burst_roi[bsid] = burst_roi
 
-    def get_read_write_rois(self, roi: Roi):
-        out_shape = roi.get_shape()
+    def get_debursting_rois(self, roi: Roi):
 
         bsids = set()
-        read_rois = {}
+        within_burst_rois = {}
         write_rois = {}
 
         for bsid in self.bsids:
             inner_burst_roi = self._inner_burst_roi[bsid]
-            mosaic_burst_roi = inner_burst_roi.translate_roi(*self._burst_orig_in_mosaic(bsid))
+
+            burst_col_orig_mosaic, burst_row_orig_mosaic = self._burst_orig_in_mosaic(bsid)
+            mosaic_burst_roi = inner_burst_roi.translate_roi(
+                burst_col_orig_mosaic, burst_row_orig_mosaic)
 
             if roi.intersects_roi(mosaic_burst_roi):
                 bsids.add(bsid)
 
-                burst_roi_tiff = self.get_burst_outer_roi_in_tiff(bsid)
-                burst_roi_tiff = inner_burst_roi.translate_roi(burst_roi_tiff.col, burst_roi_tiff.row)
-
                 clipped = roi.clip(mosaic_burst_roi)
-                h, w = clipped.get_shape()
-                col = burst_roi_tiff.col + (clipped.col - mosaic_burst_roi.col)
-                row = burst_roi_tiff.row + (clipped.row - mosaic_burst_roi.row)
-                read_roi = Roi(col, row, w, h)
+
+                within_burst_roi = clipped.translate_roi(
+                    -burst_col_orig_mosaic, -burst_row_orig_mosaic)
+
                 write_roi = clipped.translate_roi(-roi.col, -roi.row)
 
-                read_rois[bsid] = read_roi
+                within_burst_rois[bsid] = within_burst_roi
                 write_rois[bsid] = write_roi
 
-        return bsids, read_rois, write_rois, out_shape
+        return bsids, within_burst_rois, write_rois
 
     def mask_pts_in_burst(self, bsid, azt, rng):
         row, col = self.to_row_col_in_burst(azt, rng, bsid)

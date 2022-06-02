@@ -121,6 +121,9 @@ class Roi:
     def get_shape(self):
         return (self.h, self.w)
 
+    def get_origin(self):
+        return self.col, self.row
+
     def to_bounding_points(self, homogeneous=False):
         """
         Convert to its bounding points representation.

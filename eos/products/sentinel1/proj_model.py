@@ -595,7 +595,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         """
         return request_roi.make_valid((self.h, self.w))
 
-    def get_read_write_rois(self, roi_in_swath=None, adjust_roi_to_swath=True):
+    def get_debursting_rois(self, roi_in_swath=None, adjust_roi_to_swath=True):
         """
         Compute the region to read from each burst if given a roi contained in
         a swath. The writing roi is also returned, with the corresponding burst
@@ -637,7 +637,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         previous_roi_h = 0  # current y in the output crop
 
         bsids = set()
-        rois_read = {}
+        within_burst_rois = {}
         rois_write = {}
 
         for bid, bsid in enumerate(self.bsids):
@@ -660,7 +660,10 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                 if write_roi.w > 0 and write_roi.h > 0:
                     bsids.add(bsid)
 
-                    rois_read[bsid] = roi.Roi(col_min, row_min, col_size, row_size)
+                    within_burst_rois[bsid] = roi.Roi(
+                        col_min - self.bursts_rois[bid].col,
+                        row_min - self.bursts_rois[bid].row,
+                        col_size, row_size)
                     rois_write[bsid] = write_roi
 
                 previous_roi_h += row_size
@@ -668,7 +671,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             if previous_bursts_h >= row + h:
                 break
 
-        return bsids, rois_read, rois_write, out_shape
+        return bsids, within_burst_rois, rois_write, out_shape
 
 
 class Sentinel1MosaicModel(Sentinel1BaseModel):
