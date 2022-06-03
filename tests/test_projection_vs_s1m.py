@@ -5,6 +5,7 @@ have s1m installed on your system."""
 import numpy as np
 import s1m
 from eos.products import sentinel1
+from eos.sar.orbit import Orbit
 
 
 def test_projection_vs_s1m():
@@ -13,15 +14,20 @@ def test_projection_vs_s1m():
     with open(xml_path) as f:
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
+    # create an orbit
+    orbit = Orbit(burst_meta["state_vectors"])
+    # create a doppler
+    doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
+    # create a corrector
+    corrector = sentinel1.coordinate_correction.s1_corrector_from_meta(
+        burst_meta, orbit, doppler, apd=True, bistatic=True)
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(
-        burst_meta,
-        bistatic_correction=True,
-        apd_correction=True)
+        burst_meta, orbit, corrector
+    )
 
     # create a grid of points
-    x, y, w, h = bmod.burst_roi.to_roi()
-    cols_grid, rows_grid = np.meshgrid(np.linspace(0, w - 1, 10), np.linspace(0, h - 1, 10))
+    cols_grid, rows_grid = np.meshgrid(np.linspace(0, bmod.w - 1, 10), np.linspace(0, bmod.h - 1, 10))
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 
@@ -49,7 +55,7 @@ def test_projection_vs_s1m():
     # atol is set to a big value when testing against s1m master branch
     # because the orbit interpolation and projection is done differently
     np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                               cols_pred + bmod.burst_roi.col, atol=1e-2)
+                               cols_pred + burst_meta['burst_roi'][0], atol=1e-2)
 
     # check similarity of azimuth time
     azt_pred, _ = bmod.to_azt_rng(rows_pred, cols_pred)

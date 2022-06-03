@@ -2,6 +2,7 @@ import os
 import numpy as np
 from eos.sar import io, dem_to_radar, regist, roi
 from eos.products import sentinel1
+from eos.sar.orbit import Orbit
 
 
 def test_radar_coding():
@@ -24,9 +25,18 @@ def test_radar_coding():
     burst_meta = sentinel1.metadata.extract_burst_metadata(
         xml_content, burst_id)
 
+    # create an orbit
+    orbit = Orbit(burst_meta["state_vectors"])
+    # create a doppler
+    doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
+    # create a corrector
+    corrector = sentinel1.coordinate_correction.s1_corrector_from_meta(
+        burst_meta, orbit, doppler, apd=True, bistatic=True, intra_pulse=True,
+        alt_fm_mismatch=True)
+
     # create a Sentinel1BurstModel
-    bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta,
-                                                            intra_pulse_correction=True)
+    bmod = sentinel1.proj_model.burst_model_from_burst_meta(
+        burst_meta, orbit, corrector)
 
     margin = 10
 

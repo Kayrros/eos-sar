@@ -2,6 +2,7 @@ import numpy as np
 import os
 import eos.products.sentinel1 as s1
 import eos.sar
+from eos.sar.orbit import Orbit
 import pytest
 
 
@@ -70,12 +71,30 @@ def inputs():
 @pytest.fixture(scope="module")
 def dem(inputs):
     image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
+
+    orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
     # construct primary swath model
     primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
-        primary_bursts_meta)
+        primary_bursts_meta, orbit)
     # get dem points
     x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
     return x, y, alt, crs
+
+
+def _get_objects(burst_meta, ref_meta=None):
+    # create an orbit
+    orbit = Orbit(burst_meta["state_vectors"])
+    # create a doppler
+    doppler = s1.doppler_info.doppler_from_meta(burst_meta, orbit)
+    # create a corrector
+    corrector = s1.coordinate_correction.s1_corrector_from_meta(
+        burst_meta, orbit, doppler, apd=True, bistatic=True, full_bistatic_reference=ref_meta,
+        intra_pulse=True, alt_fm_mismatch=True)
+    # Now instantiate burst_model instances for projection/localization
+    burst_model = s1.proj_model.burst_model_from_burst_meta(
+        burst_meta, orbit, corrector
+    )
+    return orbit, doppler, corrector, burst_model
 
 
 class Test_Resample_Stitch:
@@ -114,18 +133,12 @@ class Test_Resample_Stitch:
 
         # start by testing the burst resampling feature
         b_index = 3
-        # Now instantiate burst_model instances for projection/localization
-        primary_burst_model = s1.proj_model.burst_model_from_burst_meta(
-            primary_bursts_meta[b_index], bistatic_correction=True,
-            full_bistatic_correction_reference=ref_metas[0],
-            apd_correction=True,
-            intra_pulse_correction=True)
 
-        secondary_burst_model = s1.proj_model.burst_model_from_burst_meta(
-            secondary_bursts_meta[b_index], bistatic_correction=True,
-            full_bistatic_correction_reference=ref_metas[1],
-            apd_correction=True,
-            intra_pulse_correction=True)
+        # Now instantiate burst_model instances for projection/localization
+        primary_burst_model = _get_objects(primary_bursts_meta[b_index],
+                                           ref_metas[0])[3]
+        secondary_burst_model = _get_objects(secondary_bursts_meta[b_index],
+                                             ref_metas[1])[3]
 
         A = self.mat_estim(primary_burst_model, secondary_burst_model, *dem)
         assert np.any(A != np.eye(3))
@@ -151,24 +164,23 @@ class Test_Resample_Stitch:
         # resampler on the complex secondary burst
         col_dst, row_dst, w_dst, h_dst = primary_burst_meta['burst_roi']
         col_src, row_src, w_src, h_src = secondary_burst_meta['burst_roi']
-        resampler = s1.burst_resamp.burst_resample_from_meta(secondary_burst_meta,
-                                                             dst_burst_shape=(
-                                                                 h_dst, w_dst),
-                                                             matrix=A)
+
+        secondary_doppler = _get_objects(secondary_burst_meta)[1]
+        burst_resampler = s1.burst_resamp.burst_resample_from_meta(secondary_burst_meta,
+                                                                   dst_burst_shape=(
+                                                                       h_dst, w_dst),
+                                                                   matrix=A,
+                                                                   doppler=secondary_doppler)
+
+        assert np.all(burst_resampler.matrix == burst_resampler.burst_matrix)
 
         # Region of interest inside the burst in the primary (col, row, w, h)
         dst_roi_in_burst = eos.sar.roi.Roi(90, 90, 150, 100)
+        src_roi_in_burst = burst_resampler.src_roi_from_dst_roi(dst_roi_in_burst)
+        resampler_on_roi = burst_resampler.get_resampler_on_different_roi(
+            dst_roi_in_burst, src_roi_in_burst)
 
-        # warp the roi to the secondary, and add a margin of 5 pixels on each side
-        src_roi_in_burst = dst_roi_in_burst.warp_valid_roi((h_dst, w_dst), (h_src, w_src),
-                                                           A, margin=5)
-
-        # set the resampler to work on rois inside the burst
-        # this will adapt the resampling matrix to the roi origins
-        # and will adapt the deramping origin (since deramping depends on pixel position)
-        resampler.set_inside_burst(dst_roi_in_burst, src_roi_in_burst)
-
-        assert np.any(resampler.matrix != resampler.burst_matrix)
+        assert np.any(resampler_on_roi.matrix != resampler_on_roi.burst_matrix)
 
         # translate the roi origin from the burst to the tiff coordinates
         secondary_tiff_roi = src_roi_in_burst.translate_roi(col_src, row_src)
@@ -178,7 +190,7 @@ class Test_Resample_Stitch:
             image_readers[1], secondary_tiff_roi)
 
         # resample
-        resampled_secondary_array = resampler.resample(secondary_burst_array)
+        resampled_secondary_array = resampler_on_roi.resample(secondary_burst_array)
 
         resamp_h, resamp_w = resampled_secondary_array.shape
 
@@ -190,7 +202,7 @@ class Test_Resample_Stitch:
         # If you wish to resample the amplitude
 
         # resample amplitude if you want to do this only (without phase )
-        resampled_secondary_amplitude = resampler.resample(np.abs(secondary_burst_array))
+        resampled_secondary_amplitude = resampler_on_roi.resample(np.abs(secondary_burst_array))
 
         resamp_h, resamp_w = resampled_secondary_amplitude.shape
 
@@ -203,76 +215,83 @@ class Test_Resample_Stitch:
         #   the difference is actually quite large, because of the deramping/reramping
         assert np.abs(np.abs(resampled_secondary_array) - resampled_secondary_amplitude).mean() < 10
 
-        # you can reset the resampler in case burst resampling is needed
-        resampler.set_to_default_roi()
-
-        assert np.all(resampler.matrix == resampler.burst_matrix)
-
     def test_debursting(self, inputs, dem):
 
         image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs
 
-        corrections = {
-            'bistatic_correction': True,
-            'apd_correction': True,
-            'intra_pulse_correction': True,
-        }
-
         x, y, alt, crs = dem
 
+        orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
         # construct primary swath model and acquisition cutter
-        primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(primary_bursts_meta)
+        primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(primary_bursts_meta, orbit)
         primary_cutter = s1.acquisition.make_primary_cutter_from_bursts_meta(primary_bursts_meta)
 
         # If you wish to deburst a "crop" defined by a roi in the swath coordinates
         roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
 
         # compute read/write rois
-        bsids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_swath_model.get_read_write_rois(
+        bsids, within_burst_rois, write_rois, out_shape = primary_swath_model.get_debursting_rois(
             roi_in_swath)
         primary_image_readers = {bsid: image_readers[0] for bsid in bsids}
         secondary_image_readers = {bsid: image_readers[1] for bsid in bsids}
 
         # construct burst models with appropriate corrections
-        primary_burst_models = {b['bsid']: s1.proj_model.burst_model_from_burst_meta(
-            b, full_bistatic_correction_reference=ref_metas[0],
-            **corrections) for b in primary_bursts_meta if b['bsid'] in bsids}
+        primary_correctors = {b['bsid']: _get_objects(b, ref_metas[0])[2]
+                              for b in primary_bursts_meta if b['bsid'] in bsids}
         primary_bursts_meta = {b['bsid']: b for b in primary_bursts_meta}
 
-        # estimate the matrices and resample
-        rows_no_correc_global, cols_no_correc_global, _, _, pts_in_burst_mask, \
-            burst_resampling_matrices = s1.regist.primary_registration_estimation(
-                primary_swath_model, primary_cutter, primary_burst_models, x, y, alt, crs, bsids)
+        # project in the mosaic
+        azt_primary_flat, rng_primary_flat, _ = primary_swath_model.projection(x, y, alt, crs=crs, as_azt_rng=True)
 
-        primary_debursted_crop, _, _ =  \
-            s1.deburst.warp_rois_read_resample_deburst(
-                read_rois_no_correc, bsids, primary_cutter,
-                primary_cutter, burst_resampling_matrices,
-                primary_bursts_meta, primary_image_readers,
-                write_rois_no_correc, out_shape)
+        pts_in_burst_mask = {}
+        azt_primary = {}
+        rng_primary = {}
+        for bsid in bsids:
+            # Calling mask_pts_in_burst multiple times is inefficient due to the conversion from
+            # from azt/rng to row/col in the burst. However, profiling shows that the dem.crop is by far slower.
+            burst_mask = primary_cutter.mask_pts_in_burst(bsid, azt_primary_flat, rng_primary_flat)
+            pts_in_burst_mask[bsid] = burst_mask
+            azt_primary[bsid] = azt_primary_flat[burst_mask]
+            rng_primary[bsid] = rng_primary_flat[burst_mask]
+
+        def regist(swath_model, cutter, corrector_per_bsid, readers, metas_per_bsid):
+            burst_resampling_matrices = s1.regist.secondary_registration_estimation(
+                swath_model, cutter, corrector_per_bsid, x, y, alt, crs,
+                bsids, pts_in_burst_mask, primary_cutter, azt_primary, rng_primary)
+            # instantiate resamplers
+            resamplers = {
+                bsid: s1.burst_resamp.burst_resample_from_meta(
+                    metas_per_bsid[bsid],
+                    primary_cutter.get_burst_outer_roi_in_tiff(bsid).get_shape(),
+                    burst_resampling_matrices[bsid],
+                    _get_objects(metas_per_bsid[bsid])[1]) for bsid in bsids
+            }
+
+            debursted_crop, _, _ = s1.deburst.warp_rois_read_resample_deburst(
+                bsids, resamplers, within_burst_rois, cutter,
+                readers, write_rois, out_shape,
+                get_complex=True, reramp=True)
+
+            assert debursted_crop.shape == out_shape, "crop shape mismatch"
+            assert np.isnan(debursted_crop).sum() / debursted_crop.size < 0.05
+            return debursted_crop
+
+        regist(primary_swath_model, primary_cutter,
+               primary_correctors, primary_image_readers,
+               primary_bursts_meta)
 
         # construct secondary swath model and burst models
-        secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(secondary_bursts_meta)
+        orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta))
+        secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
+            secondary_bursts_meta, orbit)
         secondary_cutter = s1.acquisition.make_secondary_cutter_from_bursts_meta(secondary_bursts_meta)
 
-        secondary_burst_models = {b['bsid']: s1.proj_model.burst_model_from_burst_meta(
-            b, full_bistatic_correction_reference=ref_metas[1],
-            **corrections) for b in secondary_bursts_meta if b['bsid'] in bsids}
+        secondary_correctors = {b['bsid']: _get_objects(b, ref_metas[0])[2]
+                                for b in secondary_bursts_meta if b['bsid'] in bsids}
         secondary_bursts_meta = {b['bsid']: b for b in secondary_bursts_meta}
 
-        # estimate the matrices and resample
-        burst_resampling_matrices = \
-            s1.regist.secondary_registration_estimation(
-                secondary_swath_model, secondary_cutter, secondary_burst_models, x, y, alt, crs,
-                bsids, pts_in_burst_mask, primary_cutter, rows_no_correc_global,
-                cols_no_correc_global)
-
-        secondary_debursted_crop, _, _ = s1.deburst.warp_rois_read_resample_deburst(
-            read_rois_no_correc, bsids, primary_cutter,
-            secondary_cutter, burst_resampling_matrices,
-            secondary_bursts_meta, secondary_image_readers,
-            write_rois_no_correc, out_shape,
-            get_complex=True)
-
-        assert primary_debursted_crop.shape == roi_in_swath.get_shape(), "crop shape mismatch"
-        assert secondary_debursted_crop.shape == roi_in_swath.get_shape(), "crop shape mismatch"
+        regist(secondary_swath_model,
+               secondary_cutter,
+               secondary_correctors,
+               secondary_image_readers,
+               secondary_bursts_meta)

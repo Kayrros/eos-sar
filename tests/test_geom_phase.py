@@ -32,11 +32,13 @@ def test_geom_phase_prediction():
     primary_bursts_meta = eos.sar.utils.filter_list(primary_bursts_meta, prim_burst_ids)
     secondary_bursts_meta = eos.sar.utils.filter_list(secondary_bursts_meta, sec_burst_ids)
 
+    primary_orbit = eos.sar.orbit.Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
     primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-        primary_bursts_meta)
+        primary_bursts_meta, primary_orbit)
 
+    secondary_orbit = eos.sar.orbit.Orbit(s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta))
     secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-        secondary_bursts_meta)
+        secondary_bursts_meta, secondary_orbit)
 
     primary_swath_roi = Roi(10000, 785, 50, 100)
 

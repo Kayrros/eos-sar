@@ -2,6 +2,7 @@ import numpy as np
 import os
 from eos.sar import poly, io, geoconfig
 import eos.products.sentinel1 as s1
+from eos.sar.orbit import Orbit
 
 
 def get_normalization(vec):
@@ -56,9 +57,13 @@ def test_baseline_predictions():
     secondary_bursts_meta = s1.metadata.extract_bursts_metadata(
         xml_content[1])
 
-    primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(primary_bursts_meta)
+    primary_orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
+    primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
+        primary_bursts_meta, primary_orbit)
 
-    secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(secondary_bursts_meta)
+    secondary_orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta))
+    secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
+        secondary_bursts_meta, secondary_orbit)
 
     pred = geoconfig.GeometryPredictor(primary_swath_model, [secondary_swath_model],
                                        grid_size=20, degree=7)

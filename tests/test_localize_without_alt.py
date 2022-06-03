@@ -3,6 +3,7 @@ import os
 import shapely
 from eos.sar import model, io, roi
 from eos.products import sentinel1
+from eos.sar.orbit import Orbit
 
 
 def test_localize_without_alt():
@@ -19,8 +20,10 @@ def test_localize_without_alt():
     burst_meta = sentinel1.metadata.extract_burst_metadata(
         xml_content, burst_id)
 
+    # create an orbit
+    orbit = Orbit(burst_meta["state_vectors"])
     # create a Sentinel1BurstModel
-    bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta)
+    bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, orbit)
     rows = np.round(np.random.rand(5) * 1000)
     cols = np.round(np.random.rand(5) * 20000)
     # test recursively shrinking the interval on a single point
