@@ -262,3 +262,59 @@ def update_statevectors_using_local_folder(path, product_info, burst, *, force_t
         return open(file, 'rb')
 
     return _update_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
+
+
+def update_statevectors_using_phoenix(phx_client, product_info, burst,
+                                      *, force_type=None, phx_source="asf:daac:sentinel-1"):
+    '''Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
+
+    Args
+        phx_client: phoenix client
+        product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
+        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
+        force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
+        phx_source (str, default to ASF): phoenix source from the esa-sentinel-1-csar-aux collection
+
+    Returns
+        str: the type of orbit found ('orbres' or 'orbpre')
+
+    Raises
+        FileNotFoundError: if no orbit file is found for the product_info
+    '''
+
+    import phoenix.catalog
+
+    def search_valid_orbit_files_from_phoenix(date, missionid, orbtype):
+        col = phx_client.get_collection("esa-sentinel-1-csar-aux").at(phx_source)
+
+        platform = f"sentinel-{missionid[1:].lower()}"
+        import dateutil.parser
+        date_ = dateutil.parser.parse(date)
+
+        filters = [
+            phoenix.catalog.Field("sentinel1:begin_position") < date_,
+            phoenix.catalog.Field("sentinel1:end_position") > date_,
+            phoenix.catalog.Field("platform") == platform,
+            phoenix.catalog.Field("sentinel1:product_type") == f"{orbtype.upper()}ORB",
+        ]
+
+        items = col.list_items(filters)
+
+        id_to_items = {it.id: it for it in items}
+        ids = list(id_to_items.keys())
+        try:
+            valid_ids = select_orbit_files_from_filelist(ids, date, missionid)
+        except FileNotFoundError:
+            return None
+
+        return id_to_items[valid_ids[-1]]
+
+    def source(date, missionid, type):
+        item = search_valid_orbit_files_from_phoenix(date, missionid, type)
+        if not item:
+            return None
+
+        xml = io.BytesIO(item.assets.download_as_bytes("PRODUCT"))
+        return xml
+
+    return _update_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
