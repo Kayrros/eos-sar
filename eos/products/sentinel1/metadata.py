@@ -424,6 +424,14 @@ def extract_grd_metadata(xml):
     corners = corners_of_geolocation_grid_points_list(gcp, 0)
     o['approx_geom'] = [(float(c['longitude']), float(c['latitude'])) for c in corners]
     o['approx_altitude'] = [float(c['height']) for c in corners]
+
+    d = i['imageAnnotation']['imageInformation']
+    o['image_start'] = string_to_timestamp(d['productFirstLineUtcTime'])
+    o['image_end'] = string_to_timestamp(d['productLastLineUtcTime'])
+
+    o['azimuth_time_interval'] = float(d['azimuthTimeInterval'])
+    o['range_pixel_spacing'] = float(d['rangePixelSpacing'])
+
     return o
 
 

@@ -10,7 +10,7 @@ def _avg_or_none(a, b):
     return (a + b) // 2
 
 
-class _Sentinel1AcquisitionCutter(coordinates.CoordinateMixin):
+class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
 
     def __init__(self,
                  range_frequency: float,

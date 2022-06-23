@@ -39,7 +39,7 @@ def burst_model_from_burst_meta(burst_meta, orbit,
                                **kwargs)
 
 
-class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
+class Sentinel1BaseModel(model.SensorModel):
     """Enables operations like projection and localization."""
 
     def __init__(self,
@@ -111,7 +111,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.projection_tolerance = tolerance \
             / np.linalg.norm(orbit.sv[0]['velocity'])
 
-        # set these for the CoordinateMixin
+        # set these for the SLCCoordinateMixin
         self.first_row_time = first_row_time
         self.first_col_time = first_col_time
 
@@ -303,7 +303,11 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         return x, y, z
 
 
-class Sentinel1BurstModel(Sentinel1BaseModel):
+class SLCSentinel1BaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
+    pass
+
+
+class Sentinel1BurstModel(SLCSentinel1BaseModel):
     """Enables operations like projection and localization at the burst."""
 
     def __init__(self,
@@ -361,7 +365,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
 
         """
 
-        # set these for the CoordinateMixin
+        # set these for the SLCCoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
 
@@ -382,7 +386,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         self.azt_init = (burst_times[1] + burst_times[2]) / 2
 
 
-class Sentinel1SwathModel(Sentinel1BaseModel):
+class Sentinel1SwathModel(SLCSentinel1BaseModel):
     """Enables operations like projection and localization at a swath."""
 
     def __init__(self,
@@ -439,7 +443,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         None.
 
         """
-        # set these for the CoordinateMixin
+        # set these for the SLCCoordinateMixin
         first_row_time = bursts_times[0][1]  # start valid
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
@@ -674,7 +678,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         return bsids, within_burst_rois, rois_write, out_shape
 
 
-class Sentinel1MosaicModel(Sentinel1BaseModel):
+class Sentinel1MosaicModel(SLCSentinel1BaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
@@ -825,6 +829,75 @@ def swath_model_from_bursts_meta(bursts_metadata, orbit, **kwargs):
                                bsids,
                                orbit,
                                **kwargs)
+
+
+class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
+    """Enables operations like projection and localization at a mosaic."""
+
+    def __init__(self,
+                 first_row_time,
+                 approx_geom,
+                 range_frequency,
+                 azimuth_frequency,
+                 width,
+                 height,
+                 wavelength,
+                 orbit,
+                 srgr,
+                 azimuth_time_interval,
+                 range_pixel_spacing,
+                 corrector,
+                 max_iterations=20,
+                 tolerance=0.001):
+        """Sentinel1MosaicModel used to perform projection and localization\
+        in a Sentinel1 mosaic.
+
+        Parameters
+        ----------
+        range_frequency : float
+            Two way range time sampling frequency .
+        azimuth_frequency : float
+            Azimuth time sampling frequency.
+        wavelength: float
+            wavelength in m
+        first_row_time: float
+            Azimuth time of the first line in the image
+        width: int
+            width of the image
+        height: int
+            height of the image
+        state_vectors : Iterable of dict
+            List of state vectors (time, position, velocity).
+        degree : int, optional
+            Degree of the orbit polynomial. The default is 11.
+        max_iterations : int, optional
+            Maximum iterations of the iterative projection and localization
+            algorithms. The default is 20.
+        tolerance : float, optional
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
+            iterations stop when the step in x, y, z is less than tolerance.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
+
+        """
+        super().__init__(first_row_time,
+                         None,
+                         approx_geom,
+                         range_frequency,
+                         azimuth_frequency,
+                         width,
+                         height,
+                         wavelength,
+                         orbit,
+                         corrector,
+                         max_iterations,
+                         tolerance)
+
+        self.srgr = srgr
+        self.azimuth_time_interval = azimuth_time_interval
+        self.range_pixel_spacing = range_pixel_spacing
 
 
 def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,

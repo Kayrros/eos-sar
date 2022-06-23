@@ -106,7 +106,6 @@ else:
             item = collection.get_item(product_id)
             return PhoenixSentinel1ProductInfo(item, index=index)
 
-
     class PhoenixSentinel1GRDProductInfo:
 
         def __init__(self, item):
