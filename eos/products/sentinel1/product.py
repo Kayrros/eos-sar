@@ -1,4 +1,5 @@
 import os
+
 from eos.sar.io import glob_single_file, open_image, read_xml_file
 
 
@@ -67,7 +68,7 @@ class SafeSentinel1ProductInfo(Sentinel1ProductInfo):
 try:
     import phoenix.catalog
 except ImportError:
-    print('Warning: phoenix backend for eos.products.sentinel1.mosaic not available.')
+    print('Warning: phoenix backend for eos.products.sentinel1.product not available.')
 else:
     from phoenix.catalog.plugins.slc_burster import Burster
     from bursterio import BursterSwathReader
@@ -104,3 +105,36 @@ else:
                     .at('asf:daac:sentinel-1')
             item = collection.get_item(product_id)
             return PhoenixSentinel1ProductInfo(item, index=index)
+
+
+    class PhoenixSentinel1GRDProductInfo:
+
+        def __init__(self, item):
+            self.product_id = item.id
+            self.item = item
+
+        def get_image_reader(self, pol):
+            key = pol.upper()
+            uri = self.item.assets.uri(key)
+            return open_image(uri)
+
+        def get_xml_annotation(self, pol):
+            xml_annotation_key = f'{pol.upper()}_ANNOTATION'
+            return self.item.assets.download_as_bytes(xml_annotation_key)
+
+        def get_xml_calibration(self, pol):
+            xml_annotation_key = f'{pol.upper()}_CALIBRATION'
+            return self.item.assets.download_as_bytes(xml_annotation_key)
+
+        def get_xml_noise(self, pol):
+            xml_annotation_key = f'{pol.upper()}_NOISE'
+            return self.item.assets.download_as_bytes(xml_annotation_key)
+
+        @staticmethod
+        def from_product_id(product_id, collection=None):
+            if collection is None:
+                collection = phoenix.catalog.Client() \
+                    .get_collection('esa-sentinel-1-csar-l1-grd') \
+                    .at('aws:proxima:sentinel-s1-l1c')
+            item = collection.get_item(product_id)
+            return PhoenixSentinel1GRDProductInfo(item)

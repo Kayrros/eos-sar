@@ -287,11 +287,16 @@ def extract_common_metadata(xml):
         o['dc_estimate_poly'].append(
             list(map(float, x[dc_polynomial_name]['#text'].split())))
 
-    # pulse things
-    d = i['generalAnnotation']['downlinkInformationList']['downlinkInformation']['downlinkValues']
-    o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
-    o['pri'] = float(d['pri'])    # used for full_bistatic_correction
-    o['rank'] = float(d['rank'])  # used for full_bistatic_correction
+    if i['adsHeader']['productType'] == 'SLC':
+        # pulse things
+        d = i['generalAnnotation']['downlinkInformationList']['downlinkInformation']['downlinkValues']
+        o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
+        o['pri'] = float(d['pri'])    # used for full_bistatic_correction
+        o['rank'] = float(d['rank'])  # used for full_bistatic_correction
+    else:
+        o['srgr'] = i['coordinateConversion']['coordinateConversionList']['coordinateConversion']
+        o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
+        o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
 
     return o, i
 
@@ -398,6 +403,28 @@ def extract_burst_metadata(xml, burst_id):
         The metadata of the burst.
     """
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
+
+
+def extract_grd_metadata(xml):
+    """Extract metadata for a GRD product.
+
+    Parameters
+    ----------
+    xml : str
+        Content of the xml annotation file.
+
+    Returns
+    -------
+    b_dicts: dicts
+        The metadata of the product.
+    """
+    o, i = extract_common_metadata(xml)
+
+    gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
+    corners = corners_of_geolocation_grid_points_list(gcp, 0)
+    o['approx_geom'] = [(float(c['longitude']), float(c['latitude'])) for c in corners]
+    o['approx_altitude'] = [float(c['height']) for c in corners]
+    return o
 
 
 def assemble_multiple_products_into_metas(metas_per_product):
