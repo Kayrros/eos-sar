@@ -34,15 +34,12 @@ class GRDCoordinateMixin:
 
     def to_azt_rng(self, row, col):
         azt = row * self.azimuth_time_interval + self.first_row_time
-
         gr = col * self.range_pixel_spacing
         rng = self.srgr.gr_to_rng(gr, azt)
-
         return azt, rng
 
     def to_row_col(self, azt, rng):
         row = (azt - self.first_row_time) / self.azimuth_time_interval
-
         gr = self.srgr.rng_to_gr(rng, azt)
         col = gr / self.range_pixel_spacing
         return row, col

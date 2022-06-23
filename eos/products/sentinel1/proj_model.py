@@ -1,9 +1,36 @@
 """Sentinel1 models for projection/localization."""
 import numpy as np
 import pyproj
+import eos.sar
 from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar import projection_correction
+
+
+def grd_model_from_meta(meta, orbit,
+                        coord_corrector=projection_correction.Corrector()):
+    srgr = eos.sar.srgr.SRGRConverter(
+        meta['srgr']['times'],
+        meta['srgr']['srgr_coeffs'],
+        meta['srgr']['grsr_coeffs'],
+        meta['srgr']['sr0'],
+        meta['srgr']['gr0'],
+    )
+    proj_model = Sentinel1GRDModel(
+        meta['image_start'],
+        meta['approx_geom'],
+        meta['range_frequency'],
+        meta['azimuth_frequency'],
+        meta['width'],
+        meta['height'],
+        meta['wave_length'],
+        orbit,
+        srgr,
+        meta['azimuth_time_interval'],
+        meta['range_pixel_spacing'],
+        coord_corrector,
+    )
+    return proj_model
 
 
 def burst_model_from_burst_meta(burst_meta, orbit,

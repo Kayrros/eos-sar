@@ -293,10 +293,6 @@ def extract_common_metadata(xml):
         o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
         o['pri'] = float(d['pri'])    # used for full_bistatic_correction
         o['rank'] = float(d['rank'])  # used for full_bistatic_correction
-    else:
-        o['srgr'] = i['coordinateConversion']['coordinateConversionList']['coordinateConversion']
-        o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
-        o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
 
     return o, i
 
@@ -431,6 +427,18 @@ def extract_grd_metadata(xml):
 
     o['azimuth_time_interval'] = float(d['azimuthTimeInterval'])
     o['range_pixel_spacing'] = float(d['rangePixelSpacing'])
+
+    srgr = i['coordinateConversion']['coordinateConversionList']['coordinateConversion']
+    o['srgr'] = {
+        'times': [string_to_timestamp(s["azimuthTime"]) for s in srgr],
+        'srgr_coeffs': [list(map(float, srgr[k]["srgrCoefficients"]["#text"].split())) for k in range(len(srgr))],
+        'grsr_coeffs': [list(map(float, srgr[k]["grsrCoefficients"]["#text"].split())) for k in range(len(srgr))],
+        'sr0': [float(srgr[k]["sr0"]) for k in range(len(srgr))],
+        'gr0': [float(srgr[k]["gr0"]) for k in range(len(srgr))],
+    }
+
+    o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
+    o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
 
     return o
 
