@@ -3,7 +3,7 @@ import os
 from eos.sar.io import glob_single_file, open_image, read_xml_file
 
 
-class Sentinel1ProductInfo:
+class Sentinel1SLCProductInfo:
 
     product_id: str
 
@@ -13,7 +13,7 @@ class Sentinel1ProductInfo:
     def get_image_reader(self, swath, pol):
         raise NotImplementedError
 
-    def get_xml_annotation(self, swath, pol):  # or get_bursts_metadatas?
+    def get_xml_annotation(self, swath, pol):
         raise NotImplementedError
 
     def get_xml_calibration(self, swath, pol):
@@ -27,7 +27,31 @@ class Sentinel1ProductInfo:
         return f'{name}(product_id="{self.product_id}")'
 
 
-class SafeSentinel1ProductInfo(Sentinel1ProductInfo):
+class Sentinel1GRDProductInfo:
+
+    product_id: str
+
+    def __init__(self, product_id):
+        self.product_id = product_id
+
+    def get_image_reader(self, pol):
+        raise NotImplementedError
+
+    def get_xml_annotation(self, pol):
+        raise NotImplementedError
+
+    def get_xml_calibration(self, pol):
+        raise NotImplementedError
+
+    def get_xml_noise(self, pol):
+        raise NotImplementedError
+
+    def __repr__(self):
+        name = self.__class__.__name__
+        return f'{name}(product_id="{self.product_id}")'
+
+
+class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
     def __init__(self, safe_path):
         prod_id = os.path.splitext(os.path.basename(safe_path))[0]
@@ -73,7 +97,7 @@ else:
     from phoenix.catalog.plugins.slc_burster import Burster
     from bursterio import BursterSwathReader
 
-    class PhoenixSentinel1ProductInfo(Sentinel1ProductInfo):
+    class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
         def __init__(self, item, index=True):
             super().__init__(item.id)
@@ -106,10 +130,10 @@ else:
             item = collection.get_item(product_id)
             return PhoenixSentinel1ProductInfo(item, index=index)
 
-    class PhoenixSentinel1GRDProductInfo:
+    class PhoenixSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
 
         def __init__(self, item):
-            self.product_id = item.id
+            super().__init__(item.id)
             self.item = item
 
         def get_image_reader(self, pol):

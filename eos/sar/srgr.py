@@ -1,5 +1,6 @@
 import abc
 
+
 class SRGRConverter(abc.ABC):
 
     @abc.abstractmethod

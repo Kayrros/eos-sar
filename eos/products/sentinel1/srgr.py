@@ -2,6 +2,7 @@ import numpy as np
 
 import eos.sar
 
+
 def _evaluate(azt, x, times, coeffs, origins):
     """
     (from s1m)
@@ -56,6 +57,7 @@ def _evaluate(azt, x, times, coeffs, origins):
 
     return y
 
+
 class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
 
     def __init__(self, times, srgr_coeffs, grsr_coeffs, sr0, gr0):
@@ -92,4 +94,3 @@ class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
         if len(gr) == 1:
             return gr[0]
         return gr
-
