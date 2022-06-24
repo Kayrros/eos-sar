@@ -10,3 +10,4 @@ from eos.products.sentinel1 import overlap
 from eos.products.sentinel1 import acquisition
 from eos.products.sentinel1 import assembler
 from eos.products.sentinel1 import product
+from eos.products.sentinel1 import coordinate_correction
