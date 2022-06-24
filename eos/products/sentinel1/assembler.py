@@ -56,7 +56,7 @@ class Sentinel1Assembler:
         self.bsids = bsids
         self.product_id_per_bsid = product_id_per_bsid
         self.meta_per_bsid_per_swath = meta_per_bsid_per_swath
-        self.set_orbit(orbit_degree)
+        self.__prepare_orbit(orbit_degree)
 
     @staticmethod
     def from_products(products, pol, *, swaths=('iw1', 'iw2', 'iw3'), orbit_provider=None, orbit_degree=11):
@@ -75,7 +75,7 @@ class Sentinel1Assembler:
         meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
         return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree)
 
-    def set_orbit(self, orbit_degree):
+    def __prepare_orbit(self, orbit_degree):
         all_state_vectors = [sv for meta_per_bsid in self.meta_per_bsid_per_swath.values()
                              for m in meta_per_bsid.values() for sv in m["state_vectors"]]
         unique_state_vectors = sentinel1.metadata._unique_sv(all_state_vectors)
@@ -155,10 +155,7 @@ class Sentinel1Assembler:
             product_id = self.product_id_per_bsid[bsid]
 
             # check if product already processed
-            if product_id in self._ref_per_product_id:
-                continue
-
-            else:
+            if product_id not in self._ref_per_product_id:
                 self._ref_per_product_id[product_id] = {}
                 for key in keys:
                     self._ref_per_product_id[product_id][key] = bmeta[key]

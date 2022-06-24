@@ -438,7 +438,6 @@ def warp_roi_read_resample(resampler, dst_roi_in_burst,
     resampler_on_roi : Sentinel1BurstResample
         Resampler that was applied on the array read using read_roi_src.
     """
-    # resampler , burst_roi_dst, read_roi_dst, image_reader, ** kwargs
     read_roi_src, resampler_on_roi = get_read_roi_src_and_resampler(
         resampler, dst_roi_in_burst, burst_orig_src_in_tiff, margin)
 

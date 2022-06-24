@@ -429,7 +429,7 @@ def _unique_sv(state_vectors: list[dict]):
         if sv["time"] - unique_state_vectors[-1]["time"]:
             # different sample
             unique_state_vectors.append(sv)
-            continue
+
     return unique_state_vectors
 
 
