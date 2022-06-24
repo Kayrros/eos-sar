@@ -1,12 +1,13 @@
 import numpy as np
 
 from eos.sar import const
-from eos.sar.projection_correction import CoordCorrection, CorrectionControlPoint, Corrector
+from eos.sar.projection_correction import ImageCorrection, ImagePoints, GeoImagePoints, Corrector
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.sar.orbit import Orbit
+from eos.sar.atmospheric_correction import ApdCorrection
 
 
-class IntraPulse(CoordCorrection):
+class IntraPulse(ImageCorrection):
     """Intra-Pulse motion range correction. azimuth dependent range shift\
     depending on the Doppler frequency under which the target has been observed.
 
@@ -39,14 +40,14 @@ class IntraPulse(CoordCorrection):
         self.chirp_rate = chirp_rate
         self.doppler = doppler
 
-    def estimate(self, ccp: CorrectionControlPoint):
+    def estimate(self, im_pt: ImagePoints):
         """
         Estimate the corrections dazt, drng. Here only drng will be set.
 
         Parameters
         ----------
-        ccp : CorrectionControlPoint
-            Control point on which to compute the corrections.
+        im_pt : ImagePoints
+            ImagePoints on which to compute the corrections.
 
         Returns
         -------
@@ -54,7 +55,7 @@ class IntraPulse(CoordCorrection):
 
         """
         # here self.dazt, self.drng will be estimated
-        azt, rng = ccp.get_azt_rng()
+        azt, rng = im_pt.get_azt_rng()
 
         _, _, f_geom, f = self.doppler.get_doppler_quantities(
             azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC)
@@ -62,7 +63,7 @@ class IntraPulse(CoordCorrection):
         self.drng = - (f + f_geom) / self.chirp_rate * const.LIGHT_SPEED_M_PER_SEC / 2
 
 
-class Bistatic(CoordCorrection):
+class Bistatic(ImageCorrection):
     """
     bistatic residual error correction, as described by Schubert et al in
     Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
@@ -93,21 +94,21 @@ class Bistatic(CoordCorrection):
         self.samples_per_burst = samples_per_burst
         self.range_frequency = range_frequency
 
-    def estimate(self, ccp: CorrectionControlPoint):
+    def estimate(self, im_pt: ImagePoints):
         """
         Estimate the corrections dazt, drng. Here only dazt will be set.
 
         Parameters
         ----------
-        ccp : CorrectionControlPoint
-            Control point on which to compute the corrections.
+        im_pt : ImagePoints
+            ImagePoints on which to compute the corrections.
 
         Returns
         -------
         None.
 
         """
-        _, rng = ccp.get_azt_rng()
+        _, rng = im_pt.get_azt_rng()
 
         # Simple bistatic correction
         self.dazt = - 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
@@ -115,7 +116,7 @@ class Bistatic(CoordCorrection):
                              0.5 * self.samples_per_burst / self.range_frequency)
 
 
-class FullBistatic(CoordCorrection):
+class FullBistatic(ImageCorrection):
     """
     full bistatic error correction, as described by Gisinger et al., in
     "Recent Findings on the Sentinel-1 Geolocation Accuracy Using the
@@ -157,21 +158,21 @@ class FullBistatic(CoordCorrection):
         self.pri = pri
         self.rank = rank
 
-    def estimate(self, ccp: CorrectionControlPoint):
+    def estimate(self, im_pt: ImagePoints):
         """
         Estimate the corrections dazt, drng. Here only dazt will be set.
 
         Parameters
         ----------
-        ccp : CorrectionControlPoint
-            Control point on which to compute the corrections.
+        im_pt : ImagePoints
+            ImagePoints on which to compute the corrections.
 
         Returns
         -------
         None.
 
         """
-        _, rng = ccp.get_azt_rng()
+        _, rng = im_pt.get_azt_rng()
 
         # Full bistatic correction
         dazt = - ((self.ref_slant_range_time + 0.5 * self.ref_samples_per_burst / self.ref_range_frequency) / 2
@@ -217,7 +218,7 @@ def get_k_geo(orbit: Orbit, azt, points, wavelength: float):
     return -2 * combined / (wavelength * np.linalg.norm(D, axis=1))
 
 
-class AltFmMismatch(CoordCorrection):
+class AltFmMismatch(ImageCorrection):
     """
     This correction corresponds to an azimuth shift, approx. linear w.r.t.
     the az. position in the burst, and dependent on the topography error
@@ -252,22 +253,22 @@ class AltFmMismatch(CoordCorrection):
         self.orbit = orbit
         self.wavelength = wavelength
 
-    def estimate(self, ccp: CorrectionControlPoint):
+    def estimate(self, geo_im_pt: GeoImagePoints):
         """
         Estimate the corrections dazt, drng. Here only dazt will be set.
 
         Parameters
         ----------
-        ccp : CorrectionControlPoint
-            Control point on which to compute the corrections.
+        geo_im_pt : GeoImagePoints
+            GeoImagePoints on which to compute the corrections.
 
         Returns
         -------
         None.
 
         """
-        azt, rng = ccp.get_azt_rng()
-        gx, gy, gz = ccp.get_geo()
+        azt, rng = geo_im_pt.get_azt_rng()
+        gx, gy, gz = geo_im_pt.get_geo()
 
         k_geo = get_k_geo(self.orbit, azt, np.column_stack([gx, gy, gz]),
                           self.wavelength)
@@ -313,7 +314,6 @@ def s1_corrections_from_meta(burst_meta: dict, orbit: Orbit, doppler: Sentinel1D
     coord_corrections = []
 
     if apd:
-        from eos.sar.atmospheric_correction import ApdCorrection
         coord_corrections.append(ApdCorrection(orbit))
 
     if bistatic:

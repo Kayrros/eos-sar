@@ -19,7 +19,7 @@ def burst_model_from_burst_meta(burst_meta, orbit,
     orbit: Orbit
          Orbit instance
     coord_corrector: eos.sar.projection_correction.Corrector
-        Corrector object containing a list of coord corrections in this case
+        Corrector object containing a list of ImageCorrection in this case
     **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
 
     Returns
@@ -52,7 +52,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  height,
                  wavelength,
                  orbit: Orbit,
-                 coord_corrector=projection_correction.Corrector(),
+                 coord_corrector: projection_correction.Corrector,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BaseModel used to perform projection and localization\
@@ -79,7 +79,7 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         orbit: Orbit
             Orbit instance
         coord_corrector: eos.sar.projection_correction.Corrector
-            Corrector object containing a list of coord corrections in this case
+            Corrector object containing a list of ImageCorrection in this case
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -181,14 +181,14 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             max_iterations=self.max_iterations,
             tol=self.projection_tolerance)
 
-        if self.coord_corrector.not_empty():
-            # create a ccp
-            ccp = projection_correction.CorrectionControlPoint(gx, gy, gz, azt, rng)
+        if not self.coord_corrector.empty():
+            # create a geo_im_pt
+            geo_im_pt = projection_correction.GeoImagePoints(gx, gy, gz, azt, rng)
 
             # apply corrections
-            ccp = self.coord_corrector.estimate_and_apply(ccp)
+            geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
 
-            azt, rng = ccp.get_azt_rng(squeeze=True)
+            azt, rng = geo_im_pt.get_azt_rng(squeeze=True)
 
         if as_azt_rng:
             return azt, rng, i
@@ -280,14 +280,14 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             max_iterations=self.max_iterations,
             tol=self.localization_tolerance)
 
-        if self.coord_corrector.not_empty():
-            # create a ccp
-            ccp = projection_correction.CorrectionControlPoint(gx, gy, gz, azt, rng)
+        if not self.coord_corrector.empty():
+            # create a geo_im_pt
+            geo_im_pt = projection_correction.GeoImagePoints(gx, gy, gz, azt, rng)
 
             # apply corrections
-            ccp = self.coord_corrector.estimate_and_apply(ccp, inverse=True)
+            geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)
 
-            azt, rng = ccp.get_azt_rng()
+            azt, rng = geo_im_pt.get_azt_rng()
 
             # Perform localization again with corrected coords
             # Should converge quickly (probably one iteration)
@@ -343,7 +343,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         orbit: Orbit
             Orbit instance
         coord_corrector: eos.sar.projection_correction.Corrector
-            Corrector object containing a list of coord corrections in this case
+            Corrector object containing a list of ImageCorrection in this case
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -882,14 +882,14 @@ def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,
         azt_no_correc[bsid], rng_no_correc[bsid], incidence = proj_model.projection(
             gx[burst_mask], gy[burst_mask], gz[burst_mask], crs='epsg:4978', as_azt_rng=True)
 
-        # create ccp
-        ccp = projection_correction.CorrectionControlPoint(gx[burst_mask], gy[burst_mask], gz[burst_mask],
-                                                           azt_no_correc[bsid], rng_no_correc[bsid])
+        # create geo_im_pt
+        geo_im_pt = projection_correction.GeoImagePoints(gx[burst_mask], gy[burst_mask], gz[burst_mask],
+                                                         azt_no_correc[bsid], rng_no_correc[bsid])
 
         # estimate and apply corrections
-        ccp = corrector.estimate_and_apply(ccp)
+        geo_im_pt = corrector.estimate_and_apply(geo_im_pt)
 
         # store corrected coords
-        azt_correc[bsid], rng_correc[bsid] = ccp.get_azt_rng()
+        azt_correc[bsid], rng_correc[bsid] = geo_im_pt.get_azt_rng()
 
     return azt_no_correc, rng_no_correc, azt_correc, rng_correc
