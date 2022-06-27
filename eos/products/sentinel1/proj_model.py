@@ -1,11 +1,14 @@
 """Sentinel1 models for projection/localization."""
 import numpy as np
 import pyproj
-from eos.sar import model, range_doppler, const, coordinates, orbit, roi, utils
-from . import doppler_info
+from eos.sar import model, range_doppler, coordinates, roi, utils
+from eos.sar.orbit import Orbit
+from eos.sar import projection_correction
 
 
-def burst_model_from_burst_meta(burst_meta, doppler=None, doppler_kwargs={}, **kwargs):
+def burst_model_from_burst_meta(burst_meta, orbit,
+                                coord_corrector=projection_correction.Corrector(),
+                                **kwargs):
     """Create a Sentinel1BurstModel from a burst meta dict.
 
     Parameters
@@ -13,10 +16,10 @@ def burst_model_from_burst_meta(burst_meta, doppler=None, doppler_kwargs={}, **k
     burst_meta : dict
         Dict containing all metadata of the burst and sentinel1 product needed
         for processing
-    doppler: eos.products.sentinel1.Sentinel1Doppler
-        Object used to compute the Doppler info within a burst
-    doppler_kwargs: dict
-        Keywords used to instantiate the doppler object if not given
+    orbit: Orbit
+         Orbit instance
+    coord_corrector: eos.sar.projection_correction.Corrector
+        Corrector object containing a list of ImageCorrection in this case
     **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
 
     Returns
@@ -24,21 +27,15 @@ def burst_model_from_burst_meta(burst_meta, doppler=None, doppler_kwargs={}, **k
     Sentinel1BurstModel instance.
 
     """
-    if not doppler:
-        doppler = doppler_info.doppler_from_meta(burst_meta, **doppler_kwargs)
-    return Sentinel1BurstModel(doppler,
-                               burst_meta['range_frequency'],
+    return Sentinel1BurstModel(burst_meta['range_frequency'],
                                burst_meta['azimuth_frequency'],
                                burst_meta['slant_range_time'],
-                               burst_meta['samples_per_burst'],
                                burst_meta['wave_length'],
                                burst_meta['burst_times'],
                                burst_meta['burst_roi'],
                                burst_meta['approx_geom'],
-                               burst_meta['state_vectors'],
-                               chirp_rate=burst_meta.get('chirp_rate'),
-                               pri=burst_meta.get('pri'),
-                               rank=burst_meta.get('rank'),
+                               orbit,
+                               coord_corrector=coord_corrector,
                                **kwargs)
 
 
@@ -54,14 +51,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
                  width,
                  height,
                  wavelength,
-                 state_vectors,
-                 degree=11,
-                 pri=None,
-                 rank=None,
-                 bistatic_correction=True,
-                 full_bistatic_correction_reference=None,
-                 apd_correction=True,
-                 intra_pulse_correction=False,
+                 orbit: Orbit,
+                 coord_corrector: projection_correction.Corrector,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BaseModel used to perform projection and localization\
@@ -85,24 +76,10 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             height of the image
         wavelength: float
             wavelength in m
-        state_vectors : Iterable of dict
-            List of state vectors (time, position, velocity).
-        degree : int, optional
-            Degree of the orbit polynomial. The default is 11.
-        pri: float, optional
-            Pulse Repetition Interval [s].
-            The default is None.
-        rank: float, optional
-            The number of PRI between transmitted pulse and return echo.
-            The default is None.
-        bistatic_correction : Boolean, optional
-            Apply bistatic correction on the azimuth time. The default is True.
-        full_bistatic_correction_reference: Dict, optional
-            Metadata of one of the bursts of IW2. The default is None.
-        apd_correction : Boolean, optional
-            Apply atmospheric correction on the range. The default is True.
-        intra_pulse_correction: Boolean, optional.
-            Whether to apply intra_pulse_correction. The default is False.
+        orbit: Orbit
+            Orbit instance
+        coord_corrector: eos.sar.projection_correction.Corrector
+            Corrector object containing a list of ImageCorrection in this case
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -126,20 +103,13 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.h = height
         self.wavelength = wavelength  # for TopoCorrection
 
-        self.orbit = orbit.Orbit(state_vectors, degree)
-        # processing params
-        self.pri = pri
-        self.rank = rank
-        self.bistatic_correction = bistatic_correction
-        self.full_bistatic_correction_reference = full_bistatic_correction_reference
-        self.apd_correction = apd_correction
-        self.intra_pulse_correction = intra_pulse_correction
+        self.orbit = orbit
         # stopping criteria
         self.max_iterations = max_iterations
         # setting the tolerance
         self.localization_tolerance = tolerance
         self.projection_tolerance = tolerance \
-            / np.linalg.norm(state_vectors[0]['velocity'])
+            / np.linalg.norm(orbit.sv[0]['velocity'])
 
         # set these for the CoordinateMixin
         self.first_row_time = first_row_time
@@ -148,6 +118,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         # set some params necessary for processing
         self.azt_init = first_row_time
         self.approx_geom = approx_geom
+
+        self.coord_corrector = coord_corrector
 
     def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None, as_azt_rng=False):
         """Projects a 3D point into the image coordinates.
@@ -209,12 +181,14 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             max_iterations=self.max_iterations,
             tol=self.projection_tolerance)
 
-        if self.apd_correction:
-            transformer = pyproj.Transformer.from_crs(
-                src_crs, 'epsg:4979', always_xy=True)
-            _, _, alt = transformer.transform(x, y, alt)
+        if not self.coord_corrector.empty():
+            # create a geo_im_pt
+            geo_im_pt = projection_correction.GeoImagePoints(gx, gy, gz, azt, rng)
 
-        azt, rng = self.apply_corrections_proj(azt, rng, alt.squeeze(), np.cos(i))
+            # apply corrections
+            geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
+
+            azt, rng = geo_im_pt.get_azt_rng(squeeze=True)
 
         if as_azt_rng:
             return azt, rng, i
@@ -223,82 +197,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         row, col = self.to_row_col(azt, rng)
 
         return row, col, i
-
-    def corrections_deactivated(self):
-        """Get a boolean indicating if all the corrections are deactivated."""
-        return not(self.apd_correction or self.intra_pulse_correction or self.bistatic_correction)
-
-    def apply_corrections_proj(self, azt, rng, alt=None, cos_i=None):
-        """
-        Apply (activated) corrections (in a specific order) to projected point location.
-
-        Parameters
-        ----------
-        azt : float or array
-            Azimuth time.
-        rng : float or array
-            Range distance in meters.
-        alt : float or array, optional
-            Altitude above wgs84 ellipsoid. The default is None.
-        cos_i : float or array, optional
-            Cosine of the incidence angle. The default is None.
-
-        Returns
-        -------
-        azt : float or array
-            Corrected azimuth time.
-        rng : float or array
-            Corrected range in meters.
-
-        """
-        # Apply corrections on rng and azt if needed
-        if self.apd_correction:
-            assert alt is not None and cos_i is not None, "Altitude or cosine incidence not provided "
-            rng += self._apd_correction(alt, cos_i)
-
-        if self.intra_pulse_correction:
-            rng += self._intra_pulse(azt, rng)
-
-        if self.bistatic_correction:
-            azt += self._bistatic_correction(rng)
-
-        return azt, rng
-
-    def apply_corrections_loc(self, azt, rng, alt=None, cos_i=None):
-        """
-        Apply (activated) corrections (in a specific order) before localizing a point.
-
-        Parameters
-        ----------
-        azt : float or array
-            Azimuth time.
-        rng : float or array
-            Range distance in meters.
-        alt : float or array, optional
-            Altitude above wgs84 ellipsoid. The default is None.
-        cos_i : float or array, optional
-            Cosine of the incidence angle. The default is None.
-
-        Returns
-        -------
-        azt : float or array
-            Corrected azimuth time.
-        rng : float or array
-            Corrected range in meters.
-
-        """
-        # Apply corrections on rng and azt if needed
-        if self.bistatic_correction:
-            azt -= self._bistatic_correction(rng)
-
-        if self.intra_pulse_correction:
-            rng -= self._intra_pulse(azt, rng)
-
-        if self.apd_correction:
-            assert alt is not None and cos_i is not None, "Altitude or cosine incidence not provided "
-            rng -= self._apd_correction(alt, cos_i)
-
-        return azt, rng
 
     def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None,
                      x_init=None, y_init=None, z_init=None):
@@ -343,26 +241,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         # image coordinates to range and az time
         azt, rng = self.to_azt_rng(row, col)
 
-        cos_incidence = None
-        if self.apd_correction:
-            # evaluate satellite position
-            positions = self.orbit.evaluate(azt)
-            # Rough estimation of geometry
-            os = np.linalg.norm(positions, axis=1)
-
-            # Earth radius taken at the intersection of the line joining
-            # satellite and earth center with the ellipsoid
-            ell_axis = np.array([const.EARTH_WGS84_AXIS_A_M,
-                                 const.EARTH_WGS84_AXIS_A_M,
-                                 const.EARTH_WGS84_AXIS_B_M])
-
-            earth_radius = os / np.sqrt(np.sum((positions / ell_axis)**2, axis=1))
-            op = earth_radius + alt
-            # cosine rule
-            cos_incidence = (os**2 - op**2 - rng**2) / (2 * op * rng)
-
-        azt, rng = self.apply_corrections_loc(azt, rng, alt, cos_incidence)
-
         if vert_crs is None:
             dst_crs = crs
         else:
@@ -395,11 +273,28 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
             y_init,
             z_init)
 
+        # First localization, no correction is enabled
         # localize each point
         gx, gy, gz = range_doppler.iterative_localization(
             self.orbit, azt, rng, alt, (gx_init, gy_init, gz_init),
             max_iterations=self.max_iterations,
             tol=self.localization_tolerance)
+
+        if not self.coord_corrector.empty():
+            # create a geo_im_pt
+            geo_im_pt = projection_correction.GeoImagePoints(gx, gy, gz, azt, rng)
+
+            # apply corrections
+            geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)
+
+            azt, rng = geo_im_pt.get_azt_rng()
+
+            # Perform localization again with corrected coords
+            # Should converge quickly (probably one iteration)
+            gx, gy, gz = range_doppler.iterative_localization(
+                self.orbit, azt, rng, alt, (gx, gy, gz),
+                max_iterations=self.max_iterations,
+                tol=self.localization_tolerance)
 
         todst = pyproj.Transformer.from_crs(
             'epsg:4978', dst_crs, always_xy=True)
@@ -412,24 +307,15 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at the burst."""
 
     def __init__(self,
-                 doppler: doppler_info.Sentinel1Doppler,
                  range_frequency,
                  azimuth_frequency,
                  slant_range_time,
-                 samples_per_burst,
                  wavelength,
                  burst_times,
                  burst_roi,
                  approx_geom,
-                 state_vectors,
-                 degree=11,
-                 chirp_rate=None,
-                 pri=None,
-                 rank=None,
-                 bistatic_correction=True,
-                 full_bistatic_correction_reference=None,
-                 apd_correction=True,
-                 intra_pulse_correction=False,
+                 orbit: Orbit,
+                 coord_corrector=projection_correction.Corrector(),
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BurstModel used to perform projection and localization\
@@ -443,8 +329,6 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
             Azimuth time sampling frequency.
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
-        samples_per_burst : int
-            Number of columns per burst in the sentinel1 raster.
         wavelength: float
             wavelength in m
         burst_times : (3,) ndarray/tuple (start_time, start_valid, end_valid)
@@ -456,27 +340,10 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         approx_geom : List of tuples
             Each tuple element is a (lon, lat) corner of the approx geom
             of the burst
-        state_vectors : Iterable of dict
-            List of state vectors (time, position, velocity).
-        degree : int, optional
-            Degree of the orbit polynomial. The default is 11.
-        chirp_rate: float, optional
-            The linear FM rate at which the frequency changes over the pulse duration [Hz/s].
-            The default is None.
-        pri: float, optional
-            Pulse Repetition Interval [s].
-            The default is None.
-        rank: float, optional
-            The number of PRI between transmitted pulse and return echo.
-            The default is None.
-        bistatic_correction : Boolean, optional
-            Apply bistatic correction on the azimuth time. The default is True.
-        full_bistatic_correction_reference: Dict, optional
-            Metadata of one of the bursts of IW2. The default is None.
-        apd_correction : Boolean, optional
-            Apply atmospheric correction on the range. The default is True.
-        intra_pulse_correction: Boolean, optional.
-            Whether to apply intra_pulse_correction. The default is False.
+        orbit: Orbit
+            Orbit instance
+        coord_corrector: eos.sar.projection_correction.Corrector
+            Corrector object containing a list of ImageCorrection in this case
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -497,7 +364,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         # set these for the CoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
-        self.slant_range_time = slant_range_time
+
         super().__init__(first_row_time,
                          first_col_time,
                          approx_geom,
@@ -506,124 +373,13 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
                          burst_roi[2],
                          burst_roi[3],
                          wavelength,
-                         state_vectors,
-                         degree,
-                         pri,
-                         rank,
-                         bistatic_correction,
-                         full_bistatic_correction_reference,
-                         apd_correction,
-                         intra_pulse_correction,
+                         orbit,
+                         coord_corrector,
                          max_iterations,
                          tolerance)
 
-        # specific to current burst
-        self.burst_times = burst_times
-        self.burst_roi = roi.Roi.from_roi_tuple(burst_roi)
-        self.samples_per_burst = samples_per_burst
-
-        # for _intra_pulse
-        self.chirp_rate = chirp_rate
-
         # reset the initial azimuth guess at the center of burst
-        self.azt_init = (self.burst_times[1] + self.burst_times[2]) / 2
-        self.doppler = doppler
-
-    def _intra_pulse(self, t, r):
-        """
-        Compute intra-pulse motion range correction (azimuth dependent range shift\
-        depending on the Doppler frequency under which the target has been observed).
-
-        Parameters
-        ----------
-        t : float or array
-            azimuth time.
-        r : float or array
-            range distance to sensor.
-
-        Returns
-        -------
-        dr : float or array
-            intra-pulse motion range correction.
-
-        Notes
-        -----
-        The correction is described in Piantanida, R., et al. "Accurate Geometric
-        Calibration of Sentinel-1 Data." EUSAR 2018; 12th European Conference on
-        Synthetic Aperture Radar. VDE, 2018. and Scheiber, R, et al. "Speckle
-        tracking and interferometric processing of TerraSAR-X TOPS data for mapping
-        nonstationary scenarios." IEEE Journal of Selected Topics in Applied Earth
-        Observations and Remote Sensing 8.4 (2015): 1709-1720.
-
-        """
-        if not isinstance(t, (list, np.ndarray)):
-            d = self._intra_pulse(np.asarray([t]), np.asarray([r]))
-            assert len(d) == 1
-            return d[0]
-
-        LIGHT_SPEED = const.LIGHT_SPEED_M_PER_SEC
-
-        # Doppler FM rate
-        range_dependent_doppler_rate = self.doppler.get_rg_dpt_dop_rate(2 * r / LIGHT_SPEED)
-        assert len(range_dependent_doppler_rate) == len(r)
-
-        # Doppler Centroid Rate
-        doppler_rate = self.doppler.get_dop_rate(range_dependent_doppler_rate)
-
-        # Doppler Centroid Frequency
-        f_geom = self.doppler.get_dop_centroid(2 * r / LIGHT_SPEED)
-
-        # azimuth dependent Doppler Centroid Frequency
-        mid_time = self.doppler.get_burst_mid_time()
-        ref_time = self.doppler.get_ref_time(f_geom, range_dependent_doppler_rate)
-        f = doppler_rate * (t - mid_time - ref_time)
-
-        dr = - (f + f_geom) / self.chirp_rate * LIGHT_SPEED / 2
-        return dr
-
-    def _bistatic_correction(self, r):
-        """
-        Compute the bistatic azimuth correction (range dependent azimuth shift)
-
-        Parameters
-        ----------
-        r : float or array
-            Range distance in meters from the point to the sensor.
-
-        Returns
-        -------
-        dazt : float or array
-            Azimuth shift to apply to correct the position of the point.
-
-        Notes
-        -----
-        If no reference IW2 swath is given:
-            bistatic residual error correction, as described by Schubert et al in
-            Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
-            Results. Remote Sens. 7, 9431-9449 (2015)
-            slant range (col coordinate)
-        Otherwise
-            full bistatic error correction, as described by Gisinger et al., in
-            "Recent Findings on the Sentinel-1 Geolocation Accuracy Using the
-            Australian Corner Reflector Array." IGARSS 2018-2018 IEEE International
-            Geoscience and Remote Sensing Symposium. IEEE, 2018.
-            this correction requires the IW2 values of slant_range_time,
-            samples_per_burst and range_frequency from the ref metadata
-
-        """
-        ref = self.full_bistatic_correction_reference
-        if ref is None:
-            # Simple bistatic correction
-            dazt = - 0.5 * (2 * r / const.LIGHT_SPEED_M_PER_SEC -
-                            self.slant_range_time -
-                            0.5 * self.samples_per_burst / self.range_frequency)
-        else:
-            assert self.pri is not None
-            assert self.rank is not None
-            # Full bistatic correction
-            dazt = - ((ref['slant_range_time'] + 0.5 * ref['samples_per_burst'] / ref['range_frequency']) / 2
-                      - self.rank * self.pri + (2 * r / const.LIGHT_SPEED_M_PER_SEC) / 2)
-        return dazt
+        self.azt_init = (burst_times[1] + burst_times[2]) / 2
 
 
 class Sentinel1SwathModel(Sentinel1BaseModel):
@@ -638,10 +394,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                  bursts_rois,
                  bursts_approx_geom,
                  bsids,
-                 state_vectors,
-                 degree=11,
-                 pri=None,
-                 rank=None,
+                 orbit: Orbit,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1SwathModel used to perform projection and localization\
@@ -668,16 +421,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             of the burst
         bsids: list of str
             BSID of each burst of the model
-        state_vectors : Iterable of dict
-            List of state vectors (time, position, velocity).
-        degree : int, optional
-            Degree of the orbit polynomial. The default is 11.
-        pri: float, optional
-            Pulse Repetition Interval [s].
-            The default is None.
-        rank: float, optional
-            The number of PRI between transmitted pulse and return echo.
-            The default is None.
+        orbit: Orbit
+            Orbit instance
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -699,7 +444,6 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
         first_col_time = slant_range_time + self.col_min / range_frequency
-        self.slant_range_time = slant_range_time
         # swath polygon
         approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
 
@@ -718,14 +462,8 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                          w,
                          h,
                          wavelength,
-                         state_vectors,
-                         degree,
-                         pri,
-                         rank,
-                         False,
-                         None,
-                         False,
-                         False,
+                         orbit,
+                         projection_correction.Corrector(),
                          max_iterations,
                          tolerance)
 
@@ -857,7 +595,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         """
         return request_roi.make_valid((self.h, self.w))
 
-    def get_read_write_rois(self, roi_in_swath=None, adjust_roi_to_swath=True):
+    def get_debursting_rois(self, roi_in_swath=None, adjust_roi_to_swath=True):
         """
         Compute the region to read from each burst if given a roi contained in
         a swath. The writing roi is also returned, with the corresponding burst
@@ -899,7 +637,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         previous_roi_h = 0  # current y in the output crop
 
         bsids = set()
-        rois_read = {}
+        within_burst_rois = {}
         rois_write = {}
 
         for bid, bsid in enumerate(self.bsids):
@@ -921,7 +659,11 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
                 write_roi = roi.Roi(col_min - col, previous_roi_h, col_size, row_size)
                 if write_roi.w > 0 and write_roi.h > 0:
                     bsids.add(bsid)
-                    rois_read[bsid] = roi.Roi(col_min, row_min, col_size, row_size)
+
+                    within_burst_rois[bsid] = roi.Roi(
+                        col_min - self.bursts_rois[bid].col,
+                        row_min - self.bursts_rois[bid].row,
+                        col_size, row_size)
                     rois_write[bsid] = write_roi
 
                 previous_roi_h += row_size
@@ -929,7 +671,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
             if previous_bursts_h >= row + h:
                 break
 
-        return bsids, rois_read, rois_write, out_shape
+        return bsids, within_burst_rois, rois_write, out_shape
 
 
 class Sentinel1MosaicModel(Sentinel1BaseModel):
@@ -944,8 +686,7 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
                  width,
                  height,
                  wavelength,
-                 state_vectors,
-                 degree=11,
+                 orbit: Orbit,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1MosaicModel used to perform projection and localization\
@@ -967,10 +708,8 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
             width of the image
         height: int
             height of the image
-        state_vectors : Iterable of dict
-            List of state vectors (time, position, velocity).
-        degree : int, optional
-            Degree of the orbit polynomial. The default is 11.
+        orbit: Orbit
+                Orbit instance
         max_iterations : int, optional
             Maximum iterations of the iterative projection and localization
             algorithms. The default is 20.
@@ -991,14 +730,8 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
                          width,
                          height,
                          wavelength,
-                         state_vectors,
-                         degree,
-                         None,
-                         None,
-                         False,
-                         None,
-                         False,
-                         False,
+                         orbit,
+                         projection_correction.Corrector(),
                          max_iterations,
                          tolerance)
 
@@ -1012,8 +745,7 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
             width=self.w,
             height=self.h,
             approx_geom=self.approx_geom,
-            state_vectors=self.orbit.sv,
-            degree=self.orbit.degree,
+            orbit=self.orbit.to_dict(),
             max_iterations=self.max_iterations,
             tolerance=self.localization_tolerance,
         )
@@ -1021,6 +753,7 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
 
     @staticmethod
     def from_dict(dict):
+        dict['orbit'] = Orbit.from_dict(dict['orbit'])
         return Sentinel1MosaicModel(**dict)
 
     def to_cropped_mosaic(self, roi: roi.Roi):
@@ -1038,15 +771,14 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
             roi.w,
             roi.h,
             self.wavelength,
-            self.orbit.sv,
-            degree=self.orbit.degree,
+            self.orbit,
             max_iterations=self.max_iterations,
             tolerance=self.localization_tolerance,
         )
         return model
 
 
-def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
+def swath_model_from_bursts_meta(bursts_metadata, orbit, **kwargs):
     """
     Generate Sentinel1SwathModel instance from list of bursts metadata.
 
@@ -1055,6 +787,8 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
     bursts_metadata : list of dicts
         each dict contains attribute metadata relative to the bursts of the
         swath.
+    orbit: Orbit
+        Orbit instance
     **kwargs : keyword arguments
         one of degree, bistatic_correction, apd_correction, max_iterations,
         tolerance. Processing parameters for the projection and localization.
@@ -1089,176 +823,12 @@ def swath_model_from_bursts_meta(bursts_metadata, **kwargs):
                                bursts_rois,
                                bursts_approx_geom,
                                bsids,
-                               bursts_metadata[0]['state_vectors'],
-                               pri=bursts_metadata[0].get('pri'),
-                               rank=bursts_metadata[0].get('rank'),
+                               orbit,
                                **kwargs)
 
 
-def get_burst_roi_in_swath(swath_model, bsid, without_ovl=True):
-    """
-    Get the roi of the burst in the swath coordinates.
-
-    Parameters
-    ----------
-    swath_model : Sentinel1SwathModel
-        Model of the swath containing the bursts.
-    burst_id : int
-        Id of burst (0 based) in the swath.
-    without_ovl : Boolean, optional
-        If True, get the roi of the burst without the overalp regions.
-        The default is True.
-
-    Returns
-    -------
-    roi_burst : eos.sar.roi.Roi
-        Roi of the burst.
-
-    """
-    bid = swath_model.bsids.index(bsid)
-    col_orig, row_orig = swath_model.burst_orig_in_swath(bid)
-    if without_ovl:
-        # get roi of burst without overlap in the swath
-        roi_burst = swath_model.burst_roi_without_ovl(bid).translate_roi(col_orig, row_orig)
-    else:
-        h, w = swath_model.bursts_rois[bid].get_shape()
-        roi_burst = roi.Roi(col_orig, row_orig, w, h)
-    return roi_burst
-
-
-def mask_pts_in_burst(swath_model, bsid, row_swath, col_swath, without_ovl=True):
-    """
-    Check which of the points are within the burst and get a mask.
-
-    Parameters
-    ----------
-    swath_model : Sentinel1SwathModel
-        Model of the swath containing the bursts.
-    burst_id : int
-        Id of burst (0 based) in the swath.
-    row_swath : array
-        row coord of the points in the swath.
-    col_swath : array
-        col coord of the points in the swath.
-    without_ovl : Boolean, optional
-        If true, the burst limits are considered without the overlap zones.
-        The default is True.
-
-    Returns
-    -------
-    burst_mask : array of boolean
-        Mask on the points within the burst.
-
-    """
-    # get burst roi
-    roi_burst = get_burst_roi_in_swath(swath_model, bsid, without_ovl)
-    # get a mask on the points that are within the roi
-    burst_mask = roi_burst.contains(col_swath, row_swath)
-
-    return burst_mask
-
-
-def estimate_corrected(burst_model, azt_no_correc, rng_no_correc, alt, incidence):
-    """
-    Estimate corrected swath coordinates ( the corrections are performed by the burst model).
-
-    Parameters
-    ----------
-    swath_model : Sentinel1SwathModel
-        Model of the swath containing the bursts.
-    burst_model : Sentinel1BurstModel
-        Model of the burst containing the points to be corrected.
-    azt_no_correc : array
-        Azimuth time of the points to be corrected in the swath.
-    rng_no_correc : array
-        Range of the points to be corrected in the swath.
-    alt : array
-        Altitude (wgs84 ellipsoid) of the points.
-    incidence : array
-        Incidence angle at the points.
-
-    Returns
-    -------
-    azt_correc: array
-        Corrected azt time.
-    rng_correc: array
-        Corrected rng time.
-
-    """
-    if burst_model.corrections_deactivated():
-        return azt_no_correc, rng_no_correc
-
-    azt_correc, rng_correc = burst_model.apply_corrections_proj(
-        azt_no_correc, rng_no_correc,
-        alt, np.cos(incidence))
-
-    return azt_correc, rng_correc
-
-
-def primary_project_and_correct(swath_model, x, y, alt, crs, bsids, burst_models):
-    """
-    Project points and correct them in the primary swath.
-
-    Parameters
-    ----------
-    swath_model : Sentinel1SwathModel
-        Model of the swath containing the bursts.
-    x : array
-        x coordinate of points.
-    y : array
-        y coordinate of points.
-    alt : array
-        Altitude of points.
-    crs : any crs type accepted by pyproj
-        CRS of the points.
-    bsids : Iterable
-        BSID of the specific bursts where we wish to have corrected coordinates.
-    burst_models : dict bsid -> model
-        Associated burst models to the previous ids.
-
-    Returns
-    -------
-    azt_no_correc : dict bsid -> array
-       Each element is an array of azimuth times without corrections.
-    rng_no_correc : dict bsid -> array
-       Each element is an array of ranges without corrections.
-    azt_correc : dict bsid -> array
-       Each element is an array of azimuth times with corrections.
-    rng_correc : dict bsid -> array
-        Each element is an array of ranges with corrections.
-    pts_in_burst_mask : dict bsid -> array
-        Each element is a mask defining which points from the initial x, y, alt arrays
-        were projected in the different bursts.
-
-    """
-    # project in swath_model
-    row_no_correc, col_no_correc, incidence = swath_model.projection(x, y, alt, crs=crs)
-    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4979', always_xy=True)
-    _, _, alt_ellipsoid = transformer.transform(x, y, alt)
-
-    azt_no_correc_flat, rng_no_correc_flat = swath_model.to_azt_rng(row_no_correc, col_no_correc)
-
-    pts_in_burst_mask = {}
-    azt_correc = {}
-    rng_correc = {}
-    azt_no_correc = {}
-    rng_no_correc = {}
-    for bsid in bsids:
-        burst_model = burst_models[bsid]
-        burst_mask = mask_pts_in_burst(swath_model, bsid, row_no_correc, col_no_correc)
-        pts_in_burst_mask[bsid] = burst_mask
-
-        azt_no_correc[bsid], rng_no_correc[bsid] = azt_no_correc_flat[burst_mask], rng_no_correc_flat[burst_mask]
-
-        azt_correc[bsid], rng_correc[bsid] = estimate_corrected(
-            burst_model, azt_no_correc[bsid],
-            rng_no_correc[bsid], alt_ellipsoid[burst_mask],
-            incidence[burst_mask])
-
-    return azt_no_correc, rng_no_correc, azt_correc, rng_correc, pts_in_burst_mask
-
-
-def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids, burst_models, pts_in_burst_mask):
+def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,
+                                  corrector_per_bsid, pts_in_burst_mask):
     """
     Project points and correct them in the primary swath.
 
@@ -1276,8 +846,8 @@ def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids, burst_model
         CRS of the points.
     bsids : Iterable
         BSIDs of the specific bursts where we wish to have corrected coordinates.
-    burst_models : dict bsid -> model
-        Associated burst models to the previous ids.
+    corrector_per_bsid : dict bsid -> eos.sar.projection_correction.Corrector
+        Associated correctors (for coords in this case) to the previous ids.
     pts_in_burst_mask : dict bsid -> ndarray
         Each element is a mask defining which points from the initial x, y, alt arrays
         should be projected in the different bursts.
@@ -1293,26 +863,33 @@ def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids, burst_model
         Each element is an array of ranges with corrections.
 
     """
-    transformer = pyproj.Transformer.from_crs(crs, 'epsg:4979', always_xy=True)
-    _, _, alt_ellipsoid = transformer.transform(x, y, alt)
+
+    transformer = pyproj.Transformer.from_crs(
+        crs, 'epsg:4978', always_xy=True)
+    # convert to geocentric cartesian
+    gx, gy, gz = transformer.transform(x, y, alt)
 
     azt_correc = {}
     rng_correc = {}
     azt_no_correc = {}
     rng_no_correc = {}
     for bsid in bsids:
-        burst_model = burst_models[bsid]
+        corrector = corrector_per_bsid[bsid]
         burst_mask = pts_in_burst_mask[bsid]
 
         # project points that should fall in secondary burst
         # (according to previous primary projection)
         azt_no_correc[bsid], rng_no_correc[bsid], incidence = proj_model.projection(
-            x[burst_mask], y[burst_mask], alt[burst_mask], crs=crs, as_azt_rng=True)
+            gx[burst_mask], gy[burst_mask], gz[burst_mask], crs='epsg:4978', as_azt_rng=True)
 
-        # Apply burst corrections
-        azt_correc[bsid], rng_correc[bsid] = estimate_corrected(
-            burst_model, azt_no_correc[bsid],
-            rng_no_correc[bsid], alt_ellipsoid[burst_mask],
-            incidence)
+        # create geo_im_pt
+        geo_im_pt = projection_correction.GeoImagePoints(gx[burst_mask], gy[burst_mask], gz[burst_mask],
+                                                         azt_no_correc[bsid], rng_no_correc[bsid])
+
+        # estimate and apply corrections
+        geo_im_pt = corrector.estimate_and_apply(geo_im_pt)
+
+        # store corrected coords
+        azt_correc[bsid], rng_correc[bsid] = geo_im_pt.get_azt_rng()
 
     return azt_no_correc, rng_no_correc, azt_correc, rng_correc

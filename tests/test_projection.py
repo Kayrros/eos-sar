@@ -2,6 +2,7 @@ import numpy as np
 import pyproj
 from eos.products import sentinel1
 from eos.sar import range_doppler
+from eos.sar.orbit import Orbit
 
 
 def test_projection():
@@ -10,15 +11,21 @@ def test_projection():
     with open(xml_path) as f:
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
+
+    # create an orbit
+    orbit = Orbit(burst_meta["state_vectors"])
+    # create a doppler
+    doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
+    # create a corrector
+    corrector = sentinel1.coordinate_correction.s1_corrector_from_meta(
+        burst_meta, orbit, doppler, apd=True, bistatic=True, intra_pulse=True,
+        alt_fm_mismatch=True)
+
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(
-        burst_meta,
-        bistatic_correction=True,
-        apd_correction=True,
-        intra_pulse_correction=True)
+        burst_meta, orbit, corrector)
     # create a grid of points
-    x, y, w, h = bmod.burst_roi.to_roi()
-    cols_grid, rows_grid = np.meshgrid(np.linspace(0, w - 1, 10), np.linspace(0, h - 1, 10))
+    cols_grid, rows_grid = np.meshgrid(np.linspace(0, bmod.w - 1, 10), np.linspace(0, bmod.h - 1, 10))
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 

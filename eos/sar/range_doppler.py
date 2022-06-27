@@ -2,6 +2,7 @@
 
 import numpy as np
 from eos.sar import const
+from eos.sar import geoconfig
 
 
 def iterative_projection(orbit, gx, gy, gz, azt_init=None,
@@ -53,10 +54,8 @@ def iterative_projection(orbit, gx, gy, gz, azt_init=None,
             break
     closest_positions = orbit.evaluate(azt_curr).reshape(-1, 3)
     # apply the cosine rule to get the incidence angle
-    op = np.linalg.norm(points, axis=1)
-    os = np.linalg.norm(closest_positions, axis=1)
-    rng = np.linalg.norm(closest_positions - points, axis=1)
-    i = np.arccos((os**2 - op**2 - rng**2) / (2 * op * rng))
+    cos_i, rng = geoconfig.compute_cosi_rng(points, closest_positions)
+    i = np.arccos(cos_i)
 
     # support for scalar input
     if len(azt_curr) == 1:

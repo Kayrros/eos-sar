@@ -3,9 +3,8 @@ from eos.sar import utils
 from eos.products.sentinel1 import burst_resamp
 
 
-def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
-                                    secondary_cutter, burst_resampling_matrices,
-                                    secondary_bursts_metas, image_readers,
+def warp_rois_read_resample_deburst(bsids, burst_resamplers, within_burst_rois_no_correc,
+                                    secondary_cutter, image_readers,
                                     write_rois, out_shape, out=None,
                                     get_complex=True, margin=5, reramp=True):
     """
@@ -13,19 +12,14 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
 
     Parameters
     ----------
-    read_rois_no_correc : Dict bsid -> eos.sar.roi.Roi
-        Each element is an roi in the ideal primary frame.
     bsids : Iterable
         List of BSID of interest.
-    primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
-        Primary acquisition cutter.
+    burst_resamplers : Dict bsid -> eos.products.sentinel1.burst_resamp.Sentinel1BurstResample
+        Eeach element is a resampler pre-set on a primary-secondary burst couple.
+    within_burst_rois_no_correc : Dict bsid -> eos.sar.roi.Roi
+        Each element is an roi in the ideal primary frame within a burst (referenced to burst outer origin).
     secondary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
         Secondary acquisition cutter.
-    burst_resampling_matrices : dict bsid -> matrix
-        Dict where the key is the bsid and the value is a 3x3 affine inverse
-        resampling matrix of the burst.
-    secondary_bursts_metas : Dict of bsid -> dict of metadatas
-        Metadatas of all bursts in a swath (even the ones we are not considering).
     image_readers : Dict bsid -> rasterio.DatasetReader
         Opened rasterio datasets.
     write_rois : dict bsid -> eos.sar.roi.Roi
@@ -50,85 +44,32 @@ def warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
         Each element is an roi in the imperfect (primary or secondary) frame.
         It is obtained by warping the input roi and adding a padding within the
         valid image boundaries.
-    resamplers : Dict bsid -> eos.products.sentinel1.Sentinel1BurstResample
-        Each resampler can be applied directly on the read array with read_rois_correc.
+    resamplers_on_rois : Dict bsid -> eos.products.sentinel1.Sentinel1BurstResample
+        Each resampler was applied on the read array with read_rois_correc.
 
     """
     read_rois_correc = {}
-    resamplers = {}
+    resamplers_on_rois = {}
 
     def gen():
         for bsid in bsids:
-            read_roi_dst = read_rois_no_correc[bsid]
+            dst_roi_in_burst = within_burst_rois_no_correc[bsid]
 
-            burst_roi_dst = primary_cutter.get_burst_outer_roi_in_tiff(bsid)
-            burst_roi_src = secondary_cutter.get_burst_outer_roi_in_tiff(bsid)
+            burst_orig_src_in_tiff = secondary_cutter.get_burst_outer_roi_in_tiff(bsid).get_origin()
 
-            burst_array_resamp, read_roi_src, resampler = burst_resamp.warp_roi_read_resample(
-                burst_resampling_matrices[bsid], burst_roi_dst, read_roi_dst, burst_roi_src,
-                secondary_bursts_metas[bsid], image_readers[bsid], get_complex, margin, reramp)
+            burst_array_resamp, read_roi_src, resampler_on_roi = burst_resamp.warp_roi_read_resample(
+                burst_resamplers[bsid], dst_roi_in_burst, burst_orig_src_in_tiff,
+                image_readers[bsid], get_complex, margin, reramp)
 
             read_rois_correc[bsid] = read_roi_src
-            resamplers[bsid] = resampler
+            resamplers_on_rois[bsid] = resampler_on_roi
+
             yield burst_array_resamp, write_rois[bsid]
 
     debursted_crop = utils.stitch_arrays(gen(), out_shape, out=out)
-    return debursted_crop, read_rois_correc, resamplers
+    return debursted_crop, read_rois_correc, resamplers_on_rois
 
 
-def deburst_primary(roi_in_swath_no_correc, primary_cutter,
-                    burst_resampling_matrices, bursts_metas, image_readers,
-                    get_complex=True):
-    """
-    Deburst an roi in the primary image.
-
-    Parameters
-    ----------
-    roi_in_swath_no_correc : eos.sar.roi.Roi
-        Region of interest to be deburst defined in the swath.
-    primary_cutter : eos.products.sentinel1.acquisition.Sentinel1AcquisitionCutter
-        Primary acquisition cutter.
-    burst_resampling_matrices : dict
-        Dict where the key is the burst id and the value is a 3x3 affine inverse
-        resampling matrix of the burst.
-    bursts_metas : List of dicts
-        List of metadata of all bursts in a swath (even the ones we are not considering).
-    image_readers : List of rasterio.DatasetReader
-        Opened rasterio datasets.
-    get_complex : boolean, optional
-        If set to True, get the complex array. Otherwise, all the processing is conducted
-        on the amplitude from the start. The default is True.
-
-    Returns
-    -------
-    bsids : list of bsid
-        BSID of each burst interesting the roi.
-    read_rois_no_correc : dict bsid -> eos.sar.roi.Roi
-        Each element is a "read" roi in the ideal primary frame.
-    write_rois_no_correc : dict bsid -> eos.sar.roi.Roi
-        Each element is a roi were the resampled data was written.
-    debursted_crop : ndarray
-        The debursted crop.
-    read_rois_correc : dict bsid -> eos.sar.roi.Roi
-        Each element is an roi in the imperfect (primary or secondary) frame.
-        It is obtained by warping the input roi and adding a padding within the
-        valid image boundaries.
-    resamplers : dict bsid -> eos.products.sentinel1.Sentinel1BurstResample
-        Each resampler can be applied directly on the read array with read_rois_correc.
-
-
-    """
-    bsids, read_rois_no_correc, write_rois_no_correc, out_shape = primary_cutter.get_read_write_rois(roi_in_swath_no_correc)
-    debursted_crop, read_rois_correc, resamplers = warp_rois_read_resample_deburst(read_rois_no_correc, bsids, primary_cutter,
-                                                                                   primary_cutter, burst_resampling_matrices,
-                                                                                   bursts_metas, image_readers,
-                                                                                   write_rois_no_correc, out_shape,
-                                                                                   get_complex)
-    return bsids, read_rois_no_correc,\
-        write_rois_no_correc, debursted_crop, read_rois_correc, resamplers
-
-
-# filter bursts common to all acquisitions in time series
 def get_bursts_intersection(num_bursts, burst_rel_ids):
     """
     Compute the burst id intersection of two swaths containing multiple bursts.
