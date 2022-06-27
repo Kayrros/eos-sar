@@ -1,4 +1,3 @@
-#!python
 #cython: binding=False
 #cython: language_level=3
 #cython: boundscheck=False
@@ -12,73 +11,29 @@
 #cython: profile=False
 #cython: infer_types=False
 
-import time
 import numpy as np
 cimport numpy as np
-from libc.math cimport M_PI, sin, cos, tan, sqrt, isnan, fmin, ceil, round, floor, atan, acos
-import rasterio
-import pyproj
+from libc.math cimport M_PI, sin, cos, sqrt, ceil, floor, acos
 
-import eos.sar
-from eos.sar import io
-from eos.sar import const
+from eos.sar import const, model
 from eos.sar.roi import Roi
-from eos.products import sentinel1
 import eos.dem
 
 from affine import Affine
+import rasterio
 import rasterio.crs
 import rasterio.transform
 from rasterio.warp import reproject, Resampling
 from rasterio.control import GroundControlPoint
 
-"""
-This code is a port of TerrainFlatteningOp.java from the sentinel1 toolbox.
-The code is thus following the corresponding license:
- * Copyright (C) 2014 by Array Systems Computing Inc. http://www.array.ca
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 3 of the License, or (at your option)
- * any later version.
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, see http://www.gnu.org/licenses/
-
-Assumptions compared to original code:
-isGDR=false
-isPolSAR=false
-srgrConvParams=null
-no need for sigma0
-"""
 
 # from GeoUtils (snap-engine)
-"""
-public interface WGS84 {
-        double a = 6378137.0; // m
-        double b = 6356752.3142451794975639665996337; //6356752.31424518; // m
-        double earthFlatCoef = 1.0 / ((a - b) / a); //298.257223563;
-        double e2 = 2.0 / earthFlatCoef - 1.0 / (earthFlatCoef * earthFlatCoef);
-        double e2inv = 1 - WGS84.e2;
-        double ep2 = e2 / (1 - e2);
-    }
-
-    public interface GRS80 {
-        double a = 6378137; // m
-        double b = 6356752.314140; // m
-        double earthFlatCoef = 1.0 / ((a - b) / a); //298.257222101;
-        double e2 = 2.0 / earthFlatCoef - 1.0 / (earthFlatCoef * earthFlatCoef);
-        double ep2 = e2 / (1 - e2);
-    }
-"""
-
 cdef inline (double, double, double) geo2xyzWGS84(double latitude, double longitude, double altitude) nogil:
     """"
     Convert geodetic coordinate into cartesian XYZ coordinate with specified geodetic system (WGS84)
+
+    Equivalent to pyproj.Transformer.from_crs('epsg:4979', 'epsg:4978') but faster.
+
     Inputs:
         latitude  The latitude of a given pixel (in degree).
         longitude The longitude of a given pixel (in degree).
@@ -106,11 +61,6 @@ cdef inline (double, double, double) geo2xyzWGS84(double latitude, double longit
 
     return x, y, z
 
-if True:
-    transformer_from_4326_to_4978 = pyproj.Transformer.from_crs('epsg:4979', 'epsg:4978', always_xy=True)
-    assert geo2xyzWGS84(39.361230359352405, 9.514164698791625, 1843.6623015093382) \
-            == transformer_from_4326_to_4978.transform(9.514164698791625, 39.361230359352405, 1843.6623015093382)
-
 cdef inline double computeElevationAngle(double earthPoint_x, double earthPoint_y, double earthPoint_z,
                                          double sensorPos_x, double sensorPos_y, double sensorPos_z):
     """
@@ -124,10 +74,10 @@ cdef inline double computeElevationAngle(double earthPoint_x, double earthPoint_
     cdef double xDiff = sensorPos_x - earthPoint_x
     cdef double yDiff = sensorPos_y - earthPoint_y
     cdef double zDiff = sensorPos_z - earthPoint_z
-    cdef double slantRange = sqrt(xDiff * xDiff + yDiff * yDiff + zDiff * zDiff)
+    cdef double slantRange2 = xDiff * xDiff + yDiff * yDiff + zDiff * zDiff
     cdef double H2 = sensorPos_x * sensorPos_x + sensorPos_y * sensorPos_y + sensorPos_z * sensorPos_z
     cdef double R2 = earthPoint_x * earthPoint_x + earthPoint_y * earthPoint_y + earthPoint_z * earthPoint_z
-    cdef double angle = acos((slantRange * slantRange + H2 - R2) / (2 * slantRange * sqrt(H2))) * (180.0 / M_PI)
+    cdef double angle = acos((slantRange2 + H2 - R2) / (2 * sqrt(slantRange2 * H2))) * (180.0 / M_PI)
     return angle
 
 cdef inline double computeIlluminatedArea(double t00_x, double t00_y, double t00_z,
@@ -186,9 +136,9 @@ cdef inline void saveIlluminationArea(int x0, int y0, int w, int h, double azimu
          y0                  The y coordinate of the pixel at the upper left corner of current tile.
          w                   The tile width (= gamma0ReferenceArea_view.shape[1])
          h                   The tile height (= gamma0ReferenceArea_view.shape[0])
-         gamma0Area          The illuminated area.
          azimuthIndex        Azimuth pixel index for the illuminated area.
          rangeIndex          Range pixel index for the illuminated area.
+         gamma0Area          The illuminated area.
          gamma0ReferenceArea Buffer for the simulated image.
     """
     cdef int ia0 = int(floor(azimuthIndex))
@@ -214,25 +164,24 @@ cdef inline void saveIlluminationArea(int x0, int y0, int w, int h, double azimu
             gamma0ReferenceArea_view[ia1 - y0][ir1 - x0] += wr * wa * gamma0Area
 
 
-class TerrainFlatteningOp:
+class SARSimulator:
 
-    def __init__(self, proj_model: eos.sar.model.SensorModel,
+    def __init__(self,
+                 proj_model: model.SensorModel,
                  dem_source: eos.dem.DEMSource=None,
-                 oversamplingMultiple=(4, 4),
-                 detectShadow=True):
+                 oversampling=(4, 4)):
         self.proj_model = proj_model
 
         if not dem_source:
             dem_source = eos.dem.get_any_source()
         self.dem_source = dem_source
 
-        self.overSamplingFactor = oversamplingMultiple
-        self.detectShadow = detectShadow
+        self.oversampling_x, self.oversampling_y = oversampling
 
-    def get_sar_resolutions(self, int col, int row):
+    def _get_sar_resolutions(self, int col, int row):
         # compute the azimuth and range 'resolution' by localizing two points in each direction
         # and measure the distance in xyz 4978 Coordinates
-        # it's not really a resolution, but more a sampling rate
+        # it's not really a resolution, but more a ground sampling distance
         rows = [row, row,   row+1]
         cols = [col, col+1, col]
         p = np.asarray(self.proj_model.localization(rows, cols, np.zeros_like(rows), crs='epsg:4978'))
@@ -240,7 +189,7 @@ class TerrainFlatteningOp:
         range_resolution, azimuth_resolution = np.linalg.norm(p, axis=0)
         return range_resolution, azimuth_resolution
 
-    def get_transform(self, proj_model, roi):
+    def _get_dem_transform(self, proj_model, roi):
         x0, y0, w, h = roi.to_roi()
         row = np.asarray([y0, y0, y0+h, y0+h])
         col = np.asarray([x0, x0+w, x0+w, x0])
@@ -251,29 +200,25 @@ class TerrainFlatteningOp:
 
         return dst_transform
 
-    def resample_dem(self, int x0, int y0, int w, int h):
-        roi = Roi(x0, y0, w, h)
-
-        print('download dem'); t = time.time()
+    def _resample_dem(self, roi: Roi):
+        h, w = roi.get_shape()
         geometry, _, _ = self.proj_model.get_approx_geom(roi)
         lons, lats = zip(*geometry)
         bounds = (min(lons), min(lats), max(lons), max(lats))
         src_raster, src_transform, crs = self.dem_source.crop(bounds)
-        print('download dem', time.time() - t)
 
         # NOTE: an affine transform is a poor approximation?
         # we could warp with a higher order model, and use it to get the lon,lat as well
-        transform = self.get_transform(self.proj_model, roi)
+        transform = self._get_dem_transform(self.proj_model, roi)
 
-        Fx, Fy = self.overSamplingFactor
-        print('oversampling:', Fx, Fy)
-        transform = transform * Affine.scale(1 / Fx, 1 / Fy)
-        nw = int(ceil(w * Fx))
-        nh = int(ceil(h * Fy))
-        print(nw, nh, w, h)
+        fx = self.oversampling_x
+        fy = self.oversampling_y
+        transform = transform * Affine.scale(1 / fx, 1 / fy)
+        nw = int(ceil(w * fx))
+        nh = int(ceil(h * fy))
         # TODO: add 0.5 pixel to the transform for pixel is point?
 
-        dem = np.zeros((nh, nw))
+        dem = np.zeros((nh, nw), dtype=np.float32)
         reproject(
             src_raster,
             dem,
@@ -287,41 +232,49 @@ class TerrainFlatteningOp:
 
         return dem, transform
 
-    def generateSimulatedImage(self, int x0, int y0, int w, int h, *, extends_roi=True):
+    def simulate(self, roi: Roi, *, extends_roi=True, detect_shadows=True):
         """
         Inputs:
-            x0/y0         top left coordinate of the rectangle region to compute
-            w/h           width and height of the rectangle region to compute
-            tileOverlap*  overlap percentages for the borders
+            roi: region of interest, defined according to the proj_model
+            extends_roi (optional): extends the roi internally due to SAR geometric distortion
+            detect_shadows (optional): sets to 0 values that are not visible by the sensor due to elevation
         Outputs:
-            gamma0ReferenceArea  2D double numpy array containing gamma0
+            array: simulated image of the shape of the roi
         """
-        cdef int detectShadow = self.detectShadow
-        cdef int i, j
+        cdef int _detect_shadows = detect_shadows
+        assert roi.col == int(roi.col)
+        assert roi.row == int(roi.row)
+        assert roi.w == int(roi.w)
+        assert roi.h == int(roi.h)
+
+        cdef int x0, y0, w, h
+        x0, y0, w, h = roi.to_roi()
 
         # NOTE: rangeSpacing and azimuthSpacing are defined by the IPF
         # here, we use a different definition for the azimuthSpacing simply because it is more convenient
+        cdef double azimuthSpacing = self._get_sar_resolutions(x0 + w // 2, y0 + h // 2)[1]
+        cdef double rangeSpacing
+        if hasattr(self.proj_model, 'range_pixel_spacing'):
+            rangeSpacing = self.proj_model.range_pixel_spacing
+        else:
+            rangeSpacing = const.LIGHT_SPEED_M_PER_SEC / (2 * self.proj_model.range_frequency)
+
         # TODO: make sure this definition of aBeta is ok
-        cdef double azimuthSpacing = self.get_sar_resolutions(x0 + w // 2, y0 + h // 2)[1]
-        cdef double rangeSpacing = const.LIGHT_SPEED_M_PER_SEC / (2 * self.proj_model.range_frequency)
         cdef double aBeta = azimuthSpacing * rangeSpacing
 
-        print('load the dem')
-        cdef int x0_out, y0_out, w_out, h_out
+        outer_roi = roi.copy()
         if extends_roi:
-            x0_out, y0_out, w_out, h_out = self.get_outer_roi(x0, y0, w, h)
-        else:
-            x0_out, y0_out, w_out, h_out = x0, y0, w, h
+            self._adjust_outer_roi(outer_roi)
         # add a bit of y margins for the bilinear splatting
-        dem_, dem_transform = self.resample_dem(x0_out, y0_out - 2, w_out, h_out + 3)
-        cdef np.ndarray[np.float64_t, ndim=2] dem = dem_
-        print('load the dem', 'ok')
+        outer_roi.row -= 2
+        outer_roi.h += 3
+        dem_, dem_transform = self._resample_dem(outer_roi)
+        cdef np.ndarray[np.float32_t, ndim=2] dem = dem_
 
         cdef int Nrows = dem.shape[0] - 1
         cdef int Ncols = dem.shape[1] - 1
         cdef np.ndarray[np.int64_t, ndim=1] rrow = np.arange(0, Nrows+1)
         cdef np.ndarray[np.int64_t, ndim=1] rcol = np.arange(0, Ncols+1)
-        print('Ncols, Nrows:', Ncols, Nrows)
 
         cdef double gamma0
         cdef double elevation
@@ -362,19 +315,16 @@ class TerrainFlatteningOp:
         cdef np.ndarray[np.float64_t, ndim=1] col0_lats = np.empty((Nrows+1,))
         cdef np.ndarray[np.float64_t, ndim=1] col0_alts = np.empty((Nrows+1,))
         cdef int mid = dem.shape[1] // 2
-        col0_alts = dem[rrow, mid]
+        col0_alts = dem[rrow, mid].astype(np.float64)
         col0_lons, col0_lats = dem_transform * (mid, rrow)
         row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
         azt0 = self.proj_model.to_azt(row0)
 
         cdef np.ndarray[np.float64_t, ndim=2] sats = self.proj_model.orbit.evaluate(azt0)
 
-        cdef double t = time.time()
+        cdef int i, j
         for i in range(0, Nrows):
             maxElevAngle = 0.0
-            if i % 100 == 0:
-                print(i // 100, time.time() - t)
-                t = time.time()
 
             # move previous row to row1_* and fill row0 with new data
             row1_gx, row0_gx = row0_gx, row1_gx
@@ -382,12 +332,12 @@ class TerrainFlatteningOp:
             row1_gz, row0_gz = row0_gz, row1_gz
 
             # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
-            row0_alts = dem[i]
+            row0_alts = dem[i].astype(np.float64)
             row0_lons, row0_lats = dem_transform * (rcol, i)
             for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
                 row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])
 
-            ok = self.getPositionConstantAzimuth(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
+            ok = self._compute_ground_coordinates(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
                             row0_successes, row0_rangeIndices, row0_azimuthIndices)
             if not ok:  # fast path in case the azimuth is outside [y0, y0+h]
                 continue
@@ -426,10 +376,8 @@ class TerrainFlatteningOp:
                                                 t10_x, t10_y, t10_z,
                                                 t11_x, t11_y, t11_z,
                                                 sld_x, sld_y, sld_z)
-                # assert not isnan(gamma0)
 
-                # because of the dem resampling to az/rg coordinates, this traversal order shouldn't be required
-                if detectShadow:
+                if _detect_shadows:
                     elevation = computeElevationAngle(earthPoint_x, earthPoint_y, earthPoint_z,
                                                       sensorPos_x, sensorPos_y, sensorPos_z)
                 else:
@@ -443,47 +391,7 @@ class TerrainFlatteningOp:
         gamma0ReferenceArea /= aBeta # Normalize (note: original code did it in outputSimulatedArea)
         return gamma0ReferenceArea
 
-    def computeNormalizedImage(self, np.ndarray[np.float64_t, ndim=2] gamma0ReferenceArea,
-                               np.ndarray[np.float64_t, ndim=2] image):
-        """
-        Replacement for outputNormalizedImage
-        The difference with outputNormalizedImage is that we already assume gamma0 was normalized by aBeta.
-        Inputs:
-            gamma0ReferenceArea: Image computed from generateSimulatedImage
-            image:               Image to normalize
-        Outputs:
-            normalized_image, a normalized image
-        """
-        cdef double threshold = 0.05
-        # TODO: we need incidenceAngleTPG for threshold / tan(incidenceAngleTPG(x, y) * dtor)
-
-    def computeImageGeoBoundary(self, int xmin, int xmax, int ymin, int ymax):
-        """
-        Port of function computeImageGeoBoundary
-        Inputs:
-            xmin/xmax/ymin/ymax: coordinates of an image rectangular region
-        Outputs:
-            latMin minimum latitude
-            latMax maximum latitude
-            lonMin minimum longitude
-            lonMax maximum longitude
-        """
-        cdef double latMin, latMax, lonMin, lonMax
-
-        # Note: original code source gives the names 'FirstNear', 'FirstFar',
-        # 'LastNear' and 'LastFar' to the points
-        lat1, lon1 = self.getGeoPos(xmin, ymin)
-        lat2, lon2 = self.getGeoPos(xmax, ymin)
-        lat3, lon3 = self.getGeoPos(xmin, ymax)
-        lat4, lon4 = self.getGeoPos(xmax, ymax)
-        latMin = min([90.0, lat1, lat2, lat3, lat4])
-        latMax = max([-90.0, lat1, lat2, lat3, lat4])
-        lonMin = min([180.0, lon1, lon2, lon3, lon4])
-        lonMax = max([-180.0, lon1, lon2, lon3, lon4])
-
-        return latMin, latMax, lonMin, lonMax
-
-    def getPositionConstantAzimuth(self, int x0, int y0, int w, int h,
+    def _compute_ground_coordinates(self, int x0, int y0, int w, int h,
                                    double[:] x,
                                    double[:] y,
                                    double[:] z,
@@ -494,28 +402,27 @@ class TerrainFlatteningOp:
                                    double[:] out_row
                                    ):
         """
-        Assumes that the azimuth is constant to speed up projections.
-        Assumes that the conversion azt/rng to col/row is without correction.
+        Project a set of ground points to col/row coordinates.
+        Each point also has a 'success' flag that is False if the point falls outside the ROI.
+        The azimuth is assumed constant in this function to speed up projections.
+        The function returns False if projected azimuth time falls outside the ROI.
+
         Inputs:
-            x0/y0/w/h    Bounds of the image
+            x0/y0/w/h    Region of interest
             x/y/z        Coordinates of the ground in 4978
+            azt0         Azimuth time of the current line
+            sat          Position of the satellite in 4978
+            out_col      x coordinate on the ROI
+            out_row      y coordinate on the ROI
         Outputs:
-            success      Whether the operation succeeed (projection is in the image)
-            col          x coordinate on the image (range)
-            row          y coordinate on the image (azimuth)
-            sensorPos    x/y/z coordinate of the satellite in 4978
+            out_success      Whether the operation succeeed (projection is in the ROI)
         """
         cdef double satx = sat[0]
         cdef double saty = sat[1]
         cdef double satz = sat[2]
-        cdef double c = const.LIGHT_SPEED_M_PER_SEC
-        cdef double range_frequency = self.proj_model.range_frequency
-        cdef double first_col_time = self.proj_model.first_col_time
-        cdef double first_row_time = self.proj_model.first_row_time
-        cdef double azimuth_frequency = self.proj_model.azimuth_frequency
 
         # if the row is not correct, stop early
-        cdef double row0 = (azt0 - first_row_time) * azimuth_frequency
+        cdef double row0 = self.proj_model.to_row(azt0)
         # one pixel margin for the bilinear splatting
         if row0 < y0 - 1 or row0 >= y0 + h:
             return False
@@ -527,8 +434,7 @@ class TerrainFlatteningOp:
         for i in range(x.size):
             rng[i] = sqrt((satx - x[i]) ** 2 + (saty - y[i]) ** 2 + (satz - z[i]) ** 2)
 
-        # TODO: find a better way to copy to out_col
-        cdef np.ndarray[np.float64_t, ndim=1] col = self.proj_model.to_col(rng)
+        cdef np.ndarray[np.float64_t, ndim=1] col = self.proj_model.to_col(rng, azt=azt0)
         for i in range(x.size):
             out_col[i] = col[i]
 
@@ -537,10 +443,11 @@ class TerrainFlatteningOp:
 
         return True
 
-    def get_outer_roi(self, int x0, int y0, int w, int h, int N=10):
+    def _adjust_outer_roi(self, roi: Roi, int N=10):
         """
-        Compute the outer ROI. Each 3D point from the outer roi should be projected inside the inner ROI.
+            Compute the outer ROI. Each 3D point from the outer roi should be projected inside the inner ROI.
         """
+        x0, y0, w, h = roi.to_roi()
         xx = np.linspace(x0, x0 + w, N)
         yy = np.linspace(y0, y0 + h, N)
         cols, rows = np.meshgrid(xx, yy)
@@ -549,15 +456,10 @@ class TerrainFlatteningOp:
 
         lon, lat, alt = self.proj_model.localization(rows, cols, alt=np.zeros_like(rows))
         alt = self.dem_source.elevation(lon, lat)
-        rows2, cols2, _ = self.proj_model.projection(lon, lat, alt)
+        _, cols2, _ = self.proj_model.projection(lon, lat, alt)
 
-        # offset due to negative altitude
-        min_range_offset = max(0, int(ceil(- np.nanmin(cols - cols2))))
-        # offset due to positive altitude
-        max_range_offset = max(0, int(ceil(np.nanmax(cols - cols2))))
-        print('range offset for outer roi:', min_range_offset, max_range_offset)
+        # over-estimate a bit
+        max_offset = int(ceil(np.nanmax(np.abs(cols - cols2)))) + 10
 
-        x0 -= min_range_offset
-        w += min_range_offset + max_range_offset
-        return x0, y0, w, h
-
+        roi.col -= max_offset
+        roi.w += max_offset * 2

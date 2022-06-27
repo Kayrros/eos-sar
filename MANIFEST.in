@@ -6,4 +6,4 @@ include LICENCE
 include README.md
 include requirements.txt
 include eos/products/sentinel1/_calibration.pyx
-include eos/sar/terrain_flattening_cython.pyx
+include eos/sar/simulator.pyx

@@ -12,6 +12,9 @@ class Roi:
     def __repr__(self):
         return f"ROI (col={self.col}, row={self.row}, w={self.w}, h={self.h})"
 
+    def copy(self):
+        return Roi.from_roi_tuple(self.to_roi())
+
     def set_from_roi(self, col, row, w, h):
         self.col = col
         self.row = row
@@ -327,7 +330,6 @@ class Roi:
         return arr_cropped
 
     def get_meshgrid(self):
-
         col, row, w, h = self.to_roi()
         cols_grid, rows_grid = np.meshgrid(np.arange(col, col + w),
                                            np.arange(row, row + h))

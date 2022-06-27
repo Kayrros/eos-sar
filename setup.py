@@ -10,7 +10,7 @@ with open('README.md', 'r') as f:
 with open('requirements.txt') as f:
     required = f.read().splitlines()
 
-ext_module = cythonize(('eos/products/sentinel1/_calibration.pyx', 'eos/sar/terrain_flattening_cython.pyx'))
+ext_module = cythonize(('eos/products/sentinel1/_calibration.pyx', 'eos/sar/simulator.pyx'))
 for m in ext_module:
     m.include_dirs = [np.get_include()]
 

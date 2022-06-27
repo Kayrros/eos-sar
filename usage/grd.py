@@ -2,9 +2,9 @@ import numpy as np
 import rasterio
 
 import phoenix.catalog
-import eos.products.sentinel1 as sentinel1
 import eos.sar
 import eos.dem
+import eos.products.sentinel1 as sentinel1
 
 client = phoenix.catalog.Client()
 
@@ -51,15 +51,10 @@ def main(
     r, c, _ = proj_model.projection(lon, lat, alt)
     print(r, c)
 
-    roi = eos.sar.roi.Roi(c - crop_size // 2, r - crop_size // 2, crop_size, crop_size)
-    m = 5
-    roi_margin = roi.add_margin(m)
-    roi_margin.col = int(roi_margin.col)
-    roi_margin.row = int(roi_margin.row)
-
-    dx = roi.col - roi_margin.col
-    dy = roi.row - roi_margin.row
-    A = eos.sar.regist.translation_matrix(dx, dy)
+    roi = eos.sar.roi.Roi(int(c) - crop_size // 2,
+                          int(r) - crop_size // 2,
+                          crop_size,
+                          crop_size)
 
     reader = product.get_image_reader(pol)
 
@@ -69,9 +64,15 @@ def main(
         calibrator = sentinel1.calibration.Sentinel1Calibrator(cal_xml, noise_xml)
         reader = sentinel1.calibration.CalibrationReader(reader, calibrator, method=calibration)
 
-    raster = eos.sar.io.read_window(reader, roi_margin, get_complex=False, out_dtype=np.float32)
-    dst_shape = roi.get_shape()
-    raster = eos.sar.regist.apply_affine(raster, A, dst_shape)
+    raster = eos.sar.io.read_window(reader, roi, get_complex=False,
+                                    out_dtype=np.float32, boundless=True)
+    np.save('raster', raster)
+
+    rtc = eos.sar.rtc.RadiometricTerrainCorrector(proj_model, roi)
+    raster = rtc.apply(raster)
+
+    sim = rtc.get_simulation()
+    np.save('sim', sim)
 
     with rasterio.open(output, 'w+',
                        width=crop_size,
