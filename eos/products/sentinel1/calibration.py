@@ -95,6 +95,8 @@ def _read_lut_from_noise_xml(xml):
         # for some reason, when @count is 1, the list is not considered as such
         if int(noise_azimuth_vector_list['@count']) == 1:
             noise_azimuth_vector_list = [noise_azimuth_vector_list["noiseAzimuthVector"], ]
+        else:
+            noise_azimuth_vector_list = noise_azimuth_vector_list["noiseAzimuthVector"]
         azimuth_blocks = _get_noise_azimuth_blocks(noise_azimuth_vector_list)
 
         noise_vector_list = d["noiseRangeVectorList"]["noiseRangeVector"]
