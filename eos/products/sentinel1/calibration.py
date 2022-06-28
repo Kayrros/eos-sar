@@ -322,7 +322,7 @@ class CalibrationReader:
         self.method = method
         self.dont_clip_noise = dont_clip_noise
 
-    def read(self, index, window):
+    def read(self, index, window, **kwargs):
         """
         Read and calibrate the data.
 
@@ -339,7 +339,7 @@ class CalibrationReader:
             Array read and calibrated.
 
         """
-        array = self.reader.read(index, window=window)
+        array = self.reader.read(index, window=window, **kwargs)
 
         (y, yh), (x, xw) = window
         h = yh - y
