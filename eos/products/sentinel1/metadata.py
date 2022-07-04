@@ -287,11 +287,12 @@ def extract_common_metadata(xml):
         o['dc_estimate_poly'].append(
             list(map(float, x[dc_polynomial_name]['#text'].split())))
 
-    # pulse things
-    d = i['generalAnnotation']['downlinkInformationList']['downlinkInformation']['downlinkValues']
-    o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
-    o['pri'] = float(d['pri'])    # used for full_bistatic_correction
-    o['rank'] = float(d['rank'])  # used for full_bistatic_correction
+    if i['adsHeader']['productType'] == 'SLC':
+        # pulse things
+        d = i['generalAnnotation']['downlinkInformationList']['downlinkInformation']['downlinkValues']
+        o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
+        o['pri'] = float(d['pri'])    # used for full_bistatic_correction
+        o['rank'] = float(d['rank'])  # used for full_bistatic_correction
 
     return o, i
 
@@ -398,6 +399,48 @@ def extract_burst_metadata(xml, burst_id):
         The metadata of the burst.
     """
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
+
+
+def extract_grd_metadata(xml):
+    """Extract metadata for a GRD product.
+
+    Parameters
+    ----------
+    xml : str
+        Content of the xml annotation file.
+
+    Returns
+    -------
+    b_dicts: dicts
+        The metadata of the product.
+    """
+    o, i = extract_common_metadata(xml)
+
+    gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
+    corners = corners_of_geolocation_grid_points_list(gcp, 0)
+    o['approx_geom'] = [(float(c['longitude']), float(c['latitude'])) for c in corners]
+    o['approx_altitude'] = [float(c['height']) for c in corners]
+
+    d = i['imageAnnotation']['imageInformation']
+    o['image_start'] = string_to_timestamp(d['productFirstLineUtcTime'])
+    o['image_end'] = string_to_timestamp(d['productLastLineUtcTime'])
+
+    o['azimuth_time_interval'] = float(d['azimuthTimeInterval'])
+    o['range_pixel_spacing'] = float(d['rangePixelSpacing'])
+
+    srgr = i['coordinateConversion']['coordinateConversionList']['coordinateConversion']
+    o['srgr'] = {
+        'times': [string_to_timestamp(s["azimuthTime"]) for s in srgr],
+        'srgr_coeffs': [list(map(float, srgr[k]["srgrCoefficients"]["#text"].split())) for k in range(len(srgr))],
+        'grsr_coeffs': [list(map(float, srgr[k]["grsrCoefficients"]["#text"].split())) for k in range(len(srgr))],
+        'sr0': [float(srgr[k]["sr0"]) for k in range(len(srgr))],
+        'gr0': [float(srgr[k]["gr0"]) for k in range(len(srgr))],
+    }
+
+    o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
+    o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
+
+    return o
 
 
 def assemble_multiple_products_into_metas(metas_per_product):

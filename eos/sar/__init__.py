@@ -15,3 +15,4 @@ from eos.sar import geom_phase
 from eos.sar import coherence
 from eos.sar import projection_correction
 from eos.sar import atmospheric_correction
+from eos.sar import srgr

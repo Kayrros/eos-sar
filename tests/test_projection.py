@@ -1,6 +1,7 @@
 import numpy as np
 import pyproj
 from eos.products import sentinel1
+import eos.sar
 from eos.sar import range_doppler
 from eos.sar.orbit import Orbit
 
@@ -77,3 +78,45 @@ def test_projection():
                                                       init_gxyz)
     assert isinstance(
         gx, float), "vectorized iterative localization func failed on scalar input"
+
+
+def test_projection_grd():
+    xml_path = './tests/data/S1A_IW_GRDH_1SDV_20220609T022354_20220609T022419_043580_053410_DF62-vv-annotation.xml'
+    with open(xml_path) as f:
+        xml_content = f.read()
+    meta = sentinel1.metadata.extract_grd_metadata(xml_content)
+
+    # create an orbit
+    orbit = Orbit(meta["state_vectors"])
+    # create a corrector
+    corrector = eos.sar.projection_correction.Corrector()
+
+    # create a proj model
+    proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit, corrector)
+
+    # create a grid of points
+    cols_grid, rows_grid = np.meshgrid(np.linspace(0, proj_model.w - 1, 100),
+                                       np.linspace(0, proj_model.h - 1, 100))
+    cols, rows = cols_grid.ravel(), rows_grid.ravel()
+    alts = np.zeros_like(cols)
+
+    # localize the points
+    lon, lat, alt = proj_model.localization(rows, cols, alts)
+
+    # check if localized points are at alt = 0
+    np.testing.assert_allclose(alts, alt, atol=1e-5)
+
+    # now project these points back in the burst
+    rows_pred, cols_pred, _ = proj_model.projection(lon, lat, alt)
+
+    # check if point fall back in the same location
+    np.testing.assert_allclose(cols_pred, cols, rtol=1e-3, atol=1e-2)
+    np.testing.assert_allclose(rows_pred, rows, rtol=1e-3)
+
+    # check ability to query one point
+    ptlon, ptlat, ptalt = proj_model.localization(rows[0], cols[0], alts[0])
+    assert isinstance(ptlon, float), "vectorized localization func failed on scalar input"
+
+    # check ability to query one point
+    ptrow, ptcol, pti = proj_model.projection(lon[0], lat[0], alt[0])
+    assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
