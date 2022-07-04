@@ -76,7 +76,7 @@ def read_xml_file(xml_path, s3_client=None, requester_pays=False):
     return xml_content
 
 
-def read_window(image_reader, roi, get_complex=True):
+def read_window(image_reader, roi, get_complex=True, **kwargs):
     """Read window inside the tiff of a complex image.
 
     Parameters
@@ -88,6 +88,8 @@ def read_window(image_reader, roi, get_complex=True):
     get_complex : bool
         If True, the complex image is returned. Otherwise, only the amplitude
         is returned.
+    kwargs : dict
+        Additional arguments given to reader.read()
 
     Returns
     -------
@@ -97,7 +99,7 @@ def read_window(image_reader, roi, get_complex=True):
     """
     col, row, w, h = roi.to_roi()
     img = image_reader.read(1, window=(
-        (row, row + h), (col, col + w)))
+        (row, row + h), (col, col + w)), **kwargs)
     complex_flg = np.iscomplexobj(img)
     if get_complex:
         # check if reader returned a complex image
@@ -117,7 +119,7 @@ def read_window(image_reader, roi, get_complex=True):
             return amp.astype(np.float32)
 
 
-def read_windows(image_reader, rois, get_complex=True):
+def read_windows(image_reader, rois, get_complex=True, **kwargs):
     """Read windows inside the tiff of a complex image.
 
     Parameters
@@ -129,6 +131,8 @@ def read_windows(image_reader, rois, get_complex=True):
     get_complex : bool
         If True, the complex imagettes are returned. Otherwise, only the amplitude
         are returned.
+    kwargs : dict
+        Additional arguments given to reader.read()
 
     Returns
     -------
@@ -138,7 +142,8 @@ def read_windows(image_reader, rois, get_complex=True):
     """
     arrays = []
     for roi in rois:
-        arrays.append(read_window(image_reader, roi, get_complex))
+        raster = read_window(image_reader, roi, get_complex, **kwargs)
+        arrays.append(raster)
     return arrays
 
 

@@ -4,6 +4,48 @@ import pyproj
 from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar import projection_correction
+from eos.products import sentinel1
+
+
+def grd_model_from_meta(meta, orbit,
+                        coord_corrector=projection_correction.Corrector()):
+    """ Create a Sentinel1GRDModel from a GRD meta dict.
+
+    Parameters
+    ----------
+    meta : dict
+        Dict containing all metadata of the GRD Sentinel-1 product needed
+        for processing
+    orbit: Orbit
+         Orbit instance
+    coord_corrector: eos.sar.projection_correction.Corrector
+        Corrector object containing a list of ImageCorrection in this case
+
+    Returns
+    -------
+    Sentinel1GRDModel instance.
+
+    """
+    srgr = sentinel1.srgr.Sentinel1SRGRConverter(
+        meta['srgr']['times'],
+        meta['srgr']['srgr_coeffs'],
+        meta['srgr']['grsr_coeffs'],
+        meta['srgr']['sr0'],
+        meta['srgr']['gr0'],
+    )
+    proj_model = Sentinel1GRDModel(
+        meta['image_start'],
+        meta['approx_geom'],
+        meta['range_pixel_spacing'],
+        meta['azimuth_time_interval'],
+        meta['width'],
+        meta['height'],
+        meta['wave_length'],
+        orbit,
+        srgr,
+        coord_corrector,
+    )
+    return proj_model
 
 
 def burst_model_from_burst_meta(burst_meta, orbit,
@@ -39,15 +81,12 @@ def burst_model_from_burst_meta(burst_meta, orbit,
                                **kwargs)
 
 
-class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
+class Sentinel1BaseModel(model.SensorModel):
     """Enables operations like projection and localization."""
 
     def __init__(self,
                  first_row_time,
-                 first_col_time,
                  approx_geom,
-                 range_frequency,
-                 azimuth_frequency,
                  width,
                  height,
                  wavelength,
@@ -62,14 +101,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         ----------
         first_row_time: float
             Azimuth time of the first line in the image
-        first_col_time: float
-            Two way slant range time of the first column in the image
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
-        range_frequency : float
-            Two way range time sampling frequency .
-        azimuth_frequency : float
-            Azimuth time sampling frequency.
         width: int
             width of the image
         height: int
@@ -96,9 +129,6 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         None.
 
         """
-        self.range_frequency = range_frequency
-        self.azimuth_frequency = azimuth_frequency
-
         self.w = width
         self.h = height
         self.wavelength = wavelength  # for TopoCorrection
@@ -111,9 +141,8 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         self.projection_tolerance = tolerance \
             / np.linalg.norm(orbit.sv[0]['velocity'])
 
-        # set these for the CoordinateMixin
+        # set for the CoordinateMixin
         self.first_row_time = first_row_time
-        self.first_col_time = first_col_time
 
         # set some params necessary for processing
         self.azt_init = first_row_time
@@ -303,7 +332,71 @@ class Sentinel1BaseModel(coordinates.CoordinateMixin, model.SensorModel):
         return x, y, z
 
 
-class Sentinel1BurstModel(Sentinel1BaseModel):
+class Sentinel1SLCBaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
+    def __init__(self,
+                 first_row_time,
+                 first_col_time,
+                 approx_geom,
+                 range_frequency,
+                 azimuth_frequency,
+                 width,
+                 height,
+                 wavelength,
+                 orbit,
+                 coord_corrector,
+                 max_iterations=20,
+                 tolerance=0.001):
+        """
+        Parameters
+        ----------
+        first_row_time: float
+            Azimuth time of the first line in the image
+        first_col_time: float
+            Two way slant range time of the first column in the image
+        approx_geom: list of tuples (lon, lat)
+            Approximate geometry of the image (represented by 4 corners)
+        range_frequency : float
+            Two way range time sampling frequenc
+        azimuth_frequency : float
+            Azimuth time sampling frequency
+        width: int
+            width of the image
+        height: int
+            height of the image
+        wavelength: float
+            wavelength in m
+        orbit: Orbit
+            Orbit instance
+        coord_corrector: eos.sar.projection_correction.Corrector
+            Corrector object containing a list of ImageCorrection in this case
+        max_iterations : int, optional
+            Maximum iterations of the iterative projection and localization
+            algorithms. The default is 20.
+        tolerance : float, optional
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
+            iterations stop when the step in x, y, z is less than tolerance.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
+        ...
+        """
+        super().__init__(first_row_time,
+                         approx_geom,
+                         width,
+                         height,
+                         wavelength,
+                         orbit,
+                         coord_corrector,
+                         max_iterations,
+                         tolerance)
+
+        self.first_col_time = first_col_time
+        self.range_frequency = range_frequency
+        self.azimuth_frequency = azimuth_frequency
+
+
+class Sentinel1BurstModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at the burst."""
 
     def __init__(self,
@@ -324,9 +417,9 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         Parameters
         ----------
         range_frequency : float
-            Two way range time sampling frequency .
+            Two way range time sampling frequency
         azimuth_frequency : float
-            Azimuth time sampling frequency.
+            Azimuth time sampling frequency
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
         wavelength: float
@@ -361,7 +454,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
 
         """
 
-        # set these for the CoordinateMixin
+        # set these for the SLCCoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
 
@@ -382,7 +475,7 @@ class Sentinel1BurstModel(Sentinel1BaseModel):
         self.azt_init = (burst_times[1] + burst_times[2]) / 2
 
 
-class Sentinel1SwathModel(Sentinel1BaseModel):
+class Sentinel1SwathModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at a swath."""
 
     def __init__(self,
@@ -403,9 +496,9 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         Parameters
         ----------
         range_frequency : float
-            Two way range time sampling frequency .
+            Two way range time sampling frequency
         azimuth_frequency : float
-            Azimuth time sampling frequency.
+            Azimuth time sampling frequency
         slant_range_time : float
             Two way time to the first column in the sentinel1 raster.
         wavelength: float
@@ -439,7 +532,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         None.
 
         """
-        # set these for the CoordinateMixin
+        # set these for the SLCCoordinateMixin
         first_row_time = bursts_times[0][1]  # start valid
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
@@ -674,7 +767,7 @@ class Sentinel1SwathModel(Sentinel1BaseModel):
         return bsids, within_burst_rois, rois_write, out_shape
 
 
-class Sentinel1MosaicModel(Sentinel1BaseModel):
+class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
@@ -694,16 +787,16 @@ class Sentinel1MosaicModel(Sentinel1BaseModel):
 
         Parameters
         ----------
+        first_row_time: float
+            Azimuth time of the first line in the image
+        first_col_time: float
+            Two way slant range time of the first column in the image
         range_frequency : float
             Two way range time sampling frequency .
         azimuth_frequency : float
             Azimuth time sampling frequency.
         wavelength: float
             wavelength in m
-        first_row_time: float
-            Azimuth time of the first line in the image
-        first_col_time: float
-            Two way slant range time of the first column in the image
         width: int
             width of the image
         height: int
@@ -825,6 +918,72 @@ def swath_model_from_bursts_meta(bursts_metadata, orbit, **kwargs):
                                bsids,
                                orbit,
                                **kwargs)
+
+
+class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
+    """Enables operations like projection and localization at a mosaic."""
+
+    def __init__(self,
+                 first_row_time,
+                 approx_geom,
+                 range_pixel_spacing,
+                 azimuth_time_interval,
+                 width,
+                 height,
+                 wavelength,
+                 orbit,
+                 srgr,
+                 corrector,
+                 max_iterations=20,
+                 tolerance=0.001):
+        """Sentinel1MosaicModel used to perform projection and localization\
+        in a Sentinel1 mosaic.
+
+        Parameters
+        ----------
+        first_row_time: float
+            Azimuth time of the first line in the image
+        approx_geom: list of tuples (lon, lat)
+            Approximate geometry of the image (represented by 4 corners)
+        range_pixel_spacing: float
+        azimuth_time_interval: float
+        width: int
+            width of the image
+        height: int
+            height of the image
+        wavelength: float
+            wavelength in m
+        orbit: Orbit
+            Orbit instance
+        srgr: eos.sar.srgr.SRGRConverter
+            SRGR converter for the GRDCoordinateMixin
+        corrector: eos.sar.projection_correction.Corrector
+            Corrector object containing a list of ImageCorrection in this case
+        max_iterations : int, optional
+            Maximum iterations of the iterative projection and localization
+            algorithms. The default is 20.
+        tolerance : float, optional
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
+            iterations stop when the step in x, y, z is less than tolerance.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
+
+        """
+        super().__init__(first_row_time,
+                         approx_geom,
+                         width,
+                         height,
+                         wavelength,
+                         orbit,
+                         corrector,
+                         max_iterations,
+                         tolerance)
+
+        self.srgr = srgr
+        self.azimuth_time_interval = azimuth_time_interval
+        self.range_pixel_spacing = range_pixel_spacing
 
 
 def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,

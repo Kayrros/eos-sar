@@ -7,7 +7,7 @@ from eos.sar.roi import Roi
 import eos.sar
 import eos.dem
 
-from eos.products.sentinel1.product import Sentinel1ProductInfo
+from eos.products.sentinel1.product import Sentinel1SLCProductInfo
 
 
 def _get_bursts(products, swath, pol, orbit_provider):
@@ -21,7 +21,7 @@ def _get_bursts(products, swath, pol, orbit_provider):
     return bursts
 
 
-def _get_image_reader(product: Sentinel1ProductInfo, swath: str, pol: str, calibration):
+def _get_image_reader(product: Sentinel1SLCProductInfo, swath: str, pol: str, calibration):
     reader = product.get_image_reader(swath, pol)
 
     if calibration is not None:
@@ -128,7 +128,7 @@ class Sentinel1Assembler:
     def get_cropper(self, roi):
         return Sentinel1AssemblyCropper(self, roi)
 
-    def get_image_readers(self, products: list[Sentinel1ProductInfo], bsids, pol, calibration):
+    def get_image_readers(self, products: list[Sentinel1SLCProductInfo], bsids, pol, calibration):
         product_per_id = {p.product_id: p for p in products}
 
         readers = {}

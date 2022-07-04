@@ -203,6 +203,13 @@ def orbital_registration(row_primary, col_primary, secondary_model,
     return matrix
 
 
+def translation_matrix(col, row):
+    T = np.eye(3)
+    T[0, 2] = row
+    T[1, 2] = col
+    return T
+
+
 def apply_affine(src_array, matrix, destination_array_shape):
     """Resamples an image with the provided matrix using Lanczos interpolation.
 
@@ -322,10 +329,6 @@ def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
         Adapted affine matrix
 
     """
-    T_dst_inv = np.eye(3)
-    T_dst_inv[0, 2] = row_dst
-    T_dst_inv[1, 2] = col_dst
-    T_src = np.eye(3)
-    T_src[0, 2] = - row_src
-    T_src[1, 2] = - col_src
+    T_dst_inv = translation_matrix(col_dst, row_dst)
+    T_src = translation_matrix(- col_src, - row_src)
     return T_src.dot(A.dot(T_dst_inv))

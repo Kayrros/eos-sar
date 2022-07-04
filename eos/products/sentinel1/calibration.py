@@ -95,6 +95,8 @@ def _read_lut_from_noise_xml(xml):
         # for some reason, when @count is 1, the list is not considered as such
         if int(noise_azimuth_vector_list['@count']) == 1:
             noise_azimuth_vector_list = [noise_azimuth_vector_list["noiseAzimuthVector"], ]
+        else:
+            noise_azimuth_vector_list = noise_azimuth_vector_list["noiseAzimuthVector"]
         azimuth_blocks = _get_noise_azimuth_blocks(noise_azimuth_vector_list)
 
         noise_vector_list = d["noiseRangeVectorList"]["noiseRangeVector"]
@@ -322,7 +324,7 @@ class CalibrationReader:
         self.method = method
         self.dont_clip_noise = dont_clip_noise
 
-    def read(self, index, window):
+    def read(self, index, window, **kwargs):
         """
         Read and calibrate the data.
 
@@ -339,7 +341,7 @@ class CalibrationReader:
             Array read and calibrated.
 
         """
-        array = self.reader.read(index, window=window)
+        array = self.reader.read(index, window=window, **kwargs)
 
         (y, yh), (x, xw) = window
         h = yh - y
