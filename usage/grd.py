@@ -27,8 +27,11 @@ def main(
     output='example_grd.tif',
     product_id='S1A_IW_GRDH_1SDV_20220621T055930_20220621T055955_043757_053958_F640',
     pol='vv',
-    calibration='sigma',
     crop_size=500,
+    calibration=None,
+    do_rtc=False,
+    do_ortho=False,
+    rtc_after_ortho=False,
 ):
     product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
 
@@ -64,26 +67,50 @@ def main(
         calibrator = sentinel1.calibration.Sentinel1Calibrator(cal_xml, noise_xml)
         reader = sentinel1.calibration.CalibrationReader(reader, calibrator, method=calibration)
 
+    print('reading raster')
     raster = eos.sar.io.read_window(reader, roi, get_complex=False,
                                     out_dtype=np.float32, boundless=True)
-    np.save('raster', raster)
+    raster[raster == 0] = np.nan
 
-    rtc = eos.sar.rtc.RadiometricTerrainCorrector(proj_model, roi)
-    raster = rtc.apply(raster)
+    profile = dict(
+        width=crop_size,
+        height=crop_size,
+        count=1,
+        dtype=raster.dtype,
+        nodata=np.nan
+    )
 
-    sim = rtc.get_simulation()
-    np.save('sim', sim)
+    if do_rtc:
+        print('computing rtc')
+        rtc = eos.sar.rtc.RadiometricTerrainCorrector(proj_model, roi)
+        if not rtc_after_ortho:
+            raster = rtc.apply(raster)
+        sim = rtc.get_simulation()
 
-    with rasterio.open(output, 'w+',
-                       width=crop_size,
-                       height=crop_size,
-                       count=1,
-                       dtype=raster.dtype,
-                       ) as dst:
+    print(raster.dtype)
+    raster = raster.astype(np.float32)
+
+    if do_ortho:
+        print('computing ortho')
+        res = 10.0
+        orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(proj_model, roi, res)
+        raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
+        profile['crs'] = orthorectifier.crs
+        profile['transform'] = orthorectifier.transform
+        profile['width'] = raster.shape[1]
+        profile['height'] = raster.shape[0]
+
+        if do_rtc and rtc_after_ortho:
+            sim = orthorectifier.apply(sim, eos.sar.ortho.LanczosInterpolation)
+            raster = eos.sar.rtc.normalize(raster, sim)
+
+    with rasterio.open(output, 'w+', **profile) as dst:
         dst.write(raster, 1)
 
-        gcps = _get_gcps(proj_model, roi)
-        dst.gcps = (gcps, 4979)
+        if 'transform' not in profile:
+            print('computing gcps')
+            gcps = _get_gcps(proj_model, roi)
+            dst.gcps = (gcps, 4979)
 
 
 if __name__ == '__main__':
