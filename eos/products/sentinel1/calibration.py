@@ -262,13 +262,24 @@ class Sentinel1Calibrator:
         lines, pixels, values, azimuth_blocks = _read_lut_from_noise_xml(noise_xml_content)
 
         self._noise_lines = np.array(lines)
-        self._noise_pixels = np.array(pixels[0])
-        self._noise_values = np.array(values)
 
+        # re-define the pixel array as the pixels positions of the first line:
+        # min and max positions for all the noise LUT are covered.
+        # this could be necessary for the GRD products when the pixels arrays sizes vary with the line
+        self._noise_pixels = np.array(pixels[0])
+
+        # get the noise values according to the new pixels
+        self._noise_values = np.zeros((len(lines), self._noise_pixels.size))
+        for i in range(len(values)):
+            self._noise_values[i, :] = np.interp(self._noise_pixels, pixels[i], values[i])
+
+        # assertions
         assert self._noise_lines[0] <= 0
         assert self._noise_pixels[0] <= 0
-        # we kept only the first row of pixels, because they are all the same (it's a grid)
-        assert all((p == self._noise_pixels).all() for p in pixels)
+
+        # check again that all pixels used for the new grid correspond to the first row of pixels
+        assert all(self._noise_pixels == np.array(pixels[0]))
+
         # we should have one value per grid node
         assert len(self._noise_lines) == len(self._noise_values)
         assert len(self._noise_lines) * len(self._noise_pixels) == np.asarray(self._noise_values).size
