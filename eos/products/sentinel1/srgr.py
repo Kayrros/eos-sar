@@ -35,8 +35,8 @@ def _evaluate(azt, x, times, coeffs, origins):
     # linear interpolation of the slant/ground range origin
     ra = origins[a]
     rb = origins[b]
-    s = np.abs((azt - ta) / (tb - ta))
-    r0 = (1 - s) * ra + s * rb
+    s = (azt - ta) / (tb - ta)
+    r0 = ra + s * (rb - ra)
 
     # linear interpolation of the polynomial coefficients to convert slant
     # range to ground range (or the opposite):
@@ -47,7 +47,7 @@ def _evaluate(azt, x, times, coeffs, origins):
     pa = coeffs[a]
     pb = coeffs[b]
     s = s[:, np.newaxis]
-    p = (1 - s) * pa + s * pb
+    p = pa + s * (pb - pa)
 
     # revert the polynomial's coefficients to get them in decreasing powers
     p = np.fliplr(p)
@@ -72,9 +72,6 @@ class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
         gr = np.atleast_1d(gr)
         azt = np.atleast_1d(azt)
 
-        if any(azt < self.times[0]) or any(azt > self.times[-1]):
-            raise ValueError("Azimuth time not included in GRD image bounds")
-
         rng = _evaluate(azt, gr, self.times, self.grsr_coeffs, self.gr0)
 
         # support for scalar input
@@ -85,8 +82,6 @@ class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
     def rng_to_gr(self, rng, azt):
         rng = np.atleast_1d(rng)
         azt = np.atleast_1d(azt)
-        if any(azt < self.times[0]) or any(azt > self.times[-1]):
-            raise ValueError("Azimuth time not included in GRD image bounds")
 
         gr = _evaluate(azt, rng, self.times, self.srgr_coeffs, self.sr0)
 
