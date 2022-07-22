@@ -95,8 +95,8 @@ def test_projection_grd():
     proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit, corrector)
 
     # create a grid of points
-    cols_grid, rows_grid = np.meshgrid(np.linspace(0, proj_model.w - 1, 100),
-                                       np.linspace(0, proj_model.h - 1, 100))
+    cols_grid, rows_grid = np.meshgrid(np.linspace(-1000, proj_model.w + 1000, 100),
+                                       np.linspace(-1000, proj_model.h + 1000, 100))
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 
@@ -110,7 +110,7 @@ def test_projection_grd():
     rows_pred, cols_pred, _ = proj_model.projection(lon, lat, alt)
 
     # check if point fall back in the same location
-    np.testing.assert_allclose(cols_pred, cols, rtol=1e-3, atol=1e-2)
+    np.testing.assert_allclose(cols_pred, cols, rtol=1e-3)
     np.testing.assert_allclose(rows_pred, rows, rtol=1e-3)
 
     # check ability to query one point
