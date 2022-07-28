@@ -94,41 +94,44 @@ try:
 except ImportError:
     print('Warning: phoenix backend for eos.products.sentinel1.product not available.')
 else:
-    from phoenix.catalog.plugins.slc_burster import Burster
-    from bursterio import BursterSwathReader
+    try:
+        from phoenix.catalog.plugins.slc_burster import Burster
+        from bursterio import BursterSwathReader
+    except ImportError:
+        print('Warning: phoenix burster backend or bursterio for eos.products.sentinel1.product not available.')
+    else:
+        class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
-    class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
+            def __init__(self, item, index=True):
+                super().__init__(item.id)
+                self.item = item
+                self.burstem = Burster.from_item(self.item)
+                if index:
+                    self.burstem.index()
 
-        def __init__(self, item, index=True):
-            super().__init__(item.id)
-            self.item = item
-            self.burstem = Burster.from_item(self.item)
-            if index:
-                self.burstem.index()
+            def get_image_reader(self, swath, pol):
+                return BursterSwathReader(self.burstem, swath, pol)
 
-        def get_image_reader(self, swath, pol):
-            return BursterSwathReader(self.burstem, swath, pol)
+            def get_xml_annotation(self, swath, pol):
+                xml_annotation_key = f'{swath.upper()}_{pol.upper()}_ANNOTATION_XML'
+                return self.burstem.download_as_bytes(xml_annotation_key)
 
-        def get_xml_annotation(self, swath, pol):
-            xml_annotation_key = f'{swath.upper()}_{pol.upper()}_ANNOTATION_XML'
-            return self.burstem.download_as_bytes(xml_annotation_key)
+            def get_xml_calibration(self, swath, pol):
+                xml_annotation_key = f'{swath.upper()}_{pol.upper()}_CALIBRATION_XML'
+                return self.burstem.download_as_bytes(xml_annotation_key)
 
-        def get_xml_calibration(self, swath, pol):
-            xml_annotation_key = f'{swath.upper()}_{pol.upper()}_CALIBRATION_XML'
-            return self.burstem.download_as_bytes(xml_annotation_key)
+            def get_xml_noise(self, swath, pol):
+                xml_annotation_key = f'{swath.upper()}_{pol.upper()}_NOISE_XML'
+                return self.burstem.download_as_bytes(xml_annotation_key)
 
-        def get_xml_noise(self, swath, pol):
-            xml_annotation_key = f'{swath.upper()}_{pol.upper()}_NOISE_XML'
-            return self.burstem.download_as_bytes(xml_annotation_key)
-
-        @staticmethod
-        def from_product_id(product_id, index=True, collection=None):
-            if collection is None:
-                collection = phoenix.catalog.Client() \
-                    .get_collection('esa-sentinel-1-csar-l1-slc') \
-                    .at('asf:daac:sentinel-1')
-            item = collection.get_item(product_id)
-            return PhoenixSentinel1ProductInfo(item, index=index)
+            @staticmethod
+            def from_product_id(product_id, index=True, collection=None):
+                if collection is None:
+                    collection = phoenix.catalog.Client() \
+                        .get_collection('esa-sentinel-1-csar-l1-slc') \
+                        .at('asf:daac:sentinel-1')
+                item = collection.get_item(product_id)
+                return PhoenixSentinel1ProductInfo(item, index=index)
 
     class PhoenixSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
 
