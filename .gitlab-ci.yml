@@ -22,7 +22,7 @@ test:
 checkstyle:
   stage: test
   before_script:
-    - pip install flake8
+    - pip install flake8==4.0.1
   script:
     - flake8 . --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
 
