@@ -258,7 +258,7 @@ class Sentinel1Calibrator:
         else:
             scaling_factor = 1.0
 
-        noise_array = noise_array * scaling_factor
+        noise_array = noise_array * np.float32(scaling_factor)
 
         return _apply_radiometric_calibration(image, calib_array, noise_array, dont_clip_noise)
 
