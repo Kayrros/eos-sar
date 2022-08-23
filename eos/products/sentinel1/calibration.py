@@ -1,5 +1,6 @@
 import numpy as np
 import xmltodict
+import datetime
 
 from eos.sar.roi import Roi
 from . import _calibration as _cal
@@ -194,6 +195,12 @@ def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_no
         return img
 
 
+def _get_product_date(calibration_xml_content):
+    year, month, day = xmltodict.parse(calibration_xml_content)["calibration"][
+        "adsHeader"]["startTime"].split('T')[0].split('-')
+    return datetime.datetime(int(year), int(month), int(day))
+
+
 class Sentinel1Calibrator:
     """
     Radiometric calibration for Sentinel1 SLC products.
@@ -214,6 +221,7 @@ class Sentinel1Calibrator:
             self.has_noise = True
         else:
             self.has_noise = False
+        self._date = _get_product_date(calibration_xml_content)
 
     def calibrate_inplace(self, image, roi, method, dont_clip_noise=False):
         """
