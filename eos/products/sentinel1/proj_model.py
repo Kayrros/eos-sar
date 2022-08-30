@@ -846,6 +846,8 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
 
     @staticmethod
     def from_dict(dict):
+        # do a copy since it gets modified
+        dict = dict.copy()
         dict['orbit'] = Orbit.from_dict(dict['orbit'])
         return Sentinel1MosaicModel(**dict)
 
