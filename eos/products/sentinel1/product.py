@@ -1,6 +1,9 @@
 import os
+import logging
 
 from eos.sar.io import glob_single_file, open_image, read_xml_file
+
+logger = logging.Logger(__name__)
 
 
 class Sentinel1SLCProductInfo:
@@ -92,13 +95,13 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
 try:
     import phoenix.catalog
 except ImportError:
-    print('Warning: phoenix backend for eos.products.sentinel1.product not available.')
+    logger.warning('phoenix backend for eos.products.sentinel1.product not available.')
 else:
     try:
         from phoenix.catalog.plugins.slc_burster import Burster
         from bursterio import BursterSwathReader
     except ImportError:
-        print('Warning: phoenix burster backend or bursterio for eos.products.sentinel1.product not available.')
+        logger.warning('phoenix burster backend or bursterio for eos.products.sentinel1.product not available.')
     else:
         class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
