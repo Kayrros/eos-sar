@@ -232,6 +232,7 @@ def extract_common_metadata(xml):
     o['azimuth_frequency'] = float(d['azimuthFrequency'])
     o['slant_range_time'] = float(d['slantRangeTime'])
     o['anx_time'] = string_to_timestamp(d['ascendingNodeTime'])
+    o['slice_number'] = int(d['sliceNumber'])
 
     d = i['swathTiming']
     o['lines_per_burst'] = int(d['linesPerBurst'])
