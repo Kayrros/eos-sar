@@ -1,10 +1,11 @@
-"""Fill needed metadata of a burst."""
+"""Fill needed metadata of a burst or a product."""
 import math
 import dateutil.parser
 import datetime
 import xmltodict
 import numpy as np
 import logging
+import shapely.geometry
 
 from eos.sar import const
 
@@ -232,6 +233,7 @@ def extract_common_metadata(xml):
     o['azimuth_frequency'] = float(d['azimuthFrequency'])
     o['slant_range_time'] = float(d['slantRangeTime'])
     o['anx_time'] = string_to_timestamp(d['ascendingNodeTime'])
+    o['slice_number'] = int(d['sliceNumber'])
 
     d = i['swathTiming']
     o['lines_per_burst'] = int(d['linesPerBurst'])
@@ -446,6 +448,76 @@ def extract_grd_metadata(xml):
 def assemble_multiple_products_into_metas(metas_per_product):
     bursts = list(sum(metas_per_product, []))
     return bursts
+
+
+def assemble_multiple_grd_products_into_meta(metas):
+    # make sure the product are ordered by time
+    metas = sorted(metas, key=lambda m: m["image_start"])
+
+    # make sure all products start at the same range time
+    assert all(abs(m["slant_range_time"] - metas[0]["slant_range_time"]) < 1e-9 for m in metas)
+    # and some quantities should be equal
+    assert all(abs(m["azimuth_time_interval"] - metas[0]["azimuth_time_interval"]) < 1e-9 for m in metas)
+    assert all(m["range_pixel_spacing"] == metas[0]["range_pixel_spacing"] for m in metas)
+    assert all(m["wave_length"] == metas[0]["wave_length"] for m in metas)
+    assert all(m["steering_rate"] == metas[0]["steering_rate"] for m in metas)
+    assert all(m["state_vectors_origin"] == metas[0]["state_vectors_origin"] for m in metas)
+    assert all(m["range_frequency"] == metas[0]["range_frequency"] for m in metas)
+    assert all(m["azimuth_frequency"] == metas[0]["azimuth_frequency"] for m in metas)
+
+    meta = dict(**metas[0])
+
+    # combine state vectors
+    all_state_vectors = [sv for m in metas for sv in m["state_vectors"]]
+    meta["state_vectors"] = _unique_sv(all_state_vectors)
+
+    # for now, we do not support assembling these quantities
+    del meta["az_fm_info"]
+    del meta["az_fm_times"]
+    del meta["dc_estimate_poly"]
+    del meta["dc_estimate_t0"]
+    del meta["dc_estimate_time"]
+
+    # combine srgr info
+    all_times = sum((m["srgr"]["times"] for m in metas), [])
+    all_srgr_coeffs = sum((m["srgr"]["srgr_coeffs"] for m in metas), [])
+    all_grsr_coeffs = sum((m["srgr"]["grsr_coeffs"] for m in metas), [])
+    all_gr0 = sum((m["srgr"]["gr0"] for m in metas), [])
+    all_sr0 = sum((m["srgr"]["sr0"] for m in metas), [])
+
+    all_srgr = zip(all_times, all_srgr_coeffs, all_grsr_coeffs, all_gr0, all_sr0)
+    all_srgr = sorted(all_srgr, key=lambda e: e[0])
+    all_times, all_srgr_coeffs, all_grsr_coeffs, all_gr0, all_sr0 = zip(*all_srgr)
+
+    _, indices = np.unique(all_times, return_index=True)
+    times = [all_times[i] for i in indices]
+    srgr_coeffs = [all_srgr_coeffs[i] for i in indices]
+    grsr_coeffs = [all_grsr_coeffs[i] for i in indices]
+    gr0 = [all_gr0[i] for i in indices]
+    sr0 = [all_sr0[i] for i in indices]
+
+    meta['srgr'] = {
+        'times': times,
+        'srgr_coeffs': srgr_coeffs,
+        'grsr_coeffs': grsr_coeffs,
+        'gr0': gr0,
+        'sr0': sr0,
+    }
+
+    # merge geometries
+    geoms = [m['approx_geom'] for m in metas]
+    multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
+    meta["approx_geom"] = list(multipolygon.convex_hull.exterior.coords)
+    del meta["approx_altitude"]
+
+    # adjust the size of the mosaic
+    meta["width"] = max(m["width"] for m in metas)
+    meta["height"] = sum(m["height"] for m in metas)
+    meta["image_start"] = min(m["image_start"] for m in metas)
+    meta["image_end"] = max(m["image_end"] for m in metas)
+    del meta["slice_number"]
+
+    return meta
 
 
 def _unique_sv(state_vectors: list[dict]):

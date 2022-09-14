@@ -7,7 +7,7 @@ from eos.sar.roi import Roi
 import eos.sar
 import eos.dem
 
-from eos.products.sentinel1.product import Sentinel1SLCProductInfo
+from eos.products.sentinel1.product import Sentinel1SLCProductInfo, Sentinel1GRDProductInfo
 
 
 def _get_bursts(products, swath, pol, orbit_provider):
@@ -35,11 +35,6 @@ def _get_image_reader(product: Sentinel1SLCProductInfo, swath: str, pol: str, ca
 
 def _swath_from_bsid(bsid: str):
     return bsid.split("_")[1].lower()
-
-
-def all_svs(meta_per_bsid_per_swath: dict[str, dict[str, dict]]):
-    return [sv for meta_per_bsid in meta_per_bsid_per_swath.values()
-            for m in meta_per_bsid.values() for sv in m["state_vectors"]]
 
 
 class Sentinel1Assembler:
@@ -322,3 +317,77 @@ class Sentinel1AssemblyCropper:
     def get_proj_model(self):
         mosaic_model = self.assembler.get_mosaic_model()
         return mosaic_model.to_cropped_mosaic(self.roi)
+
+
+def _get_metas(products, pol, orbit_provider):
+    xmls = [p.get_xml_annotation(pol) for p in products]
+    metas = [sentinel1.metadata.extract_grd_metadata(xml) for xml in xmls]
+
+    if orbit_provider:
+        for p, meta in zip(products, metas):
+            orbit_provider(p.product_id, meta)
+
+    return metas
+
+
+class Sentinel1GRDAssembler:
+
+    def __init__(self, rois, meta, orbit_degree):
+        self._rois = rois
+        self._meta = meta
+        self.orbit = eos.sar.orbit.Orbit(meta["state_vectors"], orbit_degree)
+
+    @staticmethod
+    def from_products(products: list[Sentinel1GRDProductInfo], pol: str, *, orbit_provider=None, orbit_degree=11):
+        products = sorted(products, key=lambda p: p.product_id)
+        metas = _get_metas(products, pol, orbit_provider)
+
+        # make sure the products are consecutive
+        assert (np.diff([m['slice_number'] for m in metas]) == 1).all()
+
+        meta_per_pid = {product.product_id: prod_meta
+                        for product, prod_meta in zip(products, metas)}
+
+        # for each product, find its ROI with respect to the origin of the mosaic
+        rois = {}
+        row = 0
+        for product in products:
+            pid = product.product_id
+            prod_meta = meta_per_pid[pid]
+
+            w = prod_meta["width"]
+            h = prod_meta["height"]
+            col = 0
+            rois[pid] = Roi(col, row, w, h)
+
+            row += h
+
+        meta = sentinel1.metadata.assemble_multiple_grd_products_into_meta(metas)
+        return Sentinel1GRDAssembler(rois, meta, orbit_degree)
+
+    def get_proj_model(self, coord_corrector=eos.sar.projection_correction.Corrector()):
+        return sentinel1.proj_model.grd_model_from_meta(self._meta, self.orbit, coord_corrector)
+
+    def crop(self, roi: Roi, readers: dict[str, object]):
+        out_raster = np.zeros(roi.get_shape(), dtype=np.float32)
+
+        for pid, reader in readers.items():
+            proi = self._rois[pid]
+
+            if not roi.intersects_roi(proi):
+                continue
+
+            col, row = proi.get_origin()
+            read_roi = roi.translate_roi(-col, -row)
+
+            raster = eos.sar.io.read_window(
+                reader,
+                read_roi,
+                get_complex=False,
+                out_dtype=np.float32,
+                boundless=True,
+            )
+            m = raster > 0
+            out_raster[m] = raster[m]
+
+        return out_raster
