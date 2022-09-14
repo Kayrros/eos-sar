@@ -265,7 +265,7 @@ def update_statevectors_using_local_folder(path, product_info, burst, *, force_t
 
 
 def update_statevectors_using_phoenix(phx_client, product_info, burst,
-                                      *, force_type=None, phx_source="asf:daac:sentinel-1"):
+                                      *, force_type=None, phx_source="asf:daac:sentinel-1-aux"):
     '''Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
 
     Args
