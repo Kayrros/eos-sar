@@ -369,25 +369,27 @@ class Sentinel1GRDAssembler:
         return sentinel1.proj_model.grd_model_from_meta(self._meta, self.orbit, coord_corrector)
 
     def crop(self, roi: Roi, readers: dict[str, object]):
-        out_raster = np.zeros(roi.get_shape(), dtype=np.float32)
+        def gen():
+            for pid, reader in readers.items():
+                proi = self._rois[pid]
 
-        for pid, reader in readers.items():
-            proi = self._rois[pid]
+                if not roi.intersects_roi(proi):
+                    continue
 
-            if not roi.intersects_roi(proi):
-                continue
+                col, row = proi.get_origin()
 
-            col, row = proi.get_origin()
-            read_roi = roi.translate_roi(-col, -row)
+                clipped = roi.clip(proi)
+                read_roi = clipped.translate_roi(-col, -row)
+                write_roi = clipped.translate_roi(-roi.col, -roi.row)
 
-            raster = eos.sar.io.read_window(
-                reader,
-                read_roi,
-                get_complex=False,
-                out_dtype=np.float32,
-                boundless=True,
-            )
-            m = raster > 0
-            out_raster[m] = raster[m]
+                raster = eos.sar.io.read_window(
+                    reader,
+                    read_roi,
+                    get_complex=False,
+                    out_dtype=np.float32,
+                )
+                yield raster, write_roi
 
-        return out_raster
+        out_shape = roi.get_shape()
+        out = np.zeros(out_shape, dtype=np.float32)
+        return eos.sar.utils.stitch_arrays(gen(), out_shape, out=out)
