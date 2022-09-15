@@ -1,6 +1,4 @@
-import os
 import glob
-import re
 import rasterio
 from urllib.parse import urlparse
 import numpy as np
@@ -35,6 +33,33 @@ def open_image(path, requester_pays=False):
         image_reader = rasterio.open(path)
 
     return image_reader
+
+
+def open_image_osio(uri, requester_pays=False):
+    """
+    Open an image using OSIO.
+
+    Parameters
+    ----------
+    uri : str
+        uri to the image.
+    requester_pays : bool, optional
+        Set this to True for AWS requester-pays buckets.
+        The requester will be charged by AWS for the request.
+        The default is False.
+
+    Returns
+    -------
+    image_reader : rasterio.DatasetReader
+        opened image.
+    """
+    import osio
+    if uri.startswith('s3://'):
+        reader = osio.AWSS3ReaderAt(uri, requester_pays=requester_pays)
+    else:
+        reader = osio.HTTPReaderAt(uri)
+    fh = osio.Adapter(reader)
+    return rasterio.open(fh)
 
 
 def read_xml_file(xml_path, s3_client=None, requester_pays=False):
