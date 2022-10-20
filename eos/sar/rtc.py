@@ -3,10 +3,13 @@ import numpy as np
 from eos.sar import model, roi, simulator
 
 
-def normalize(raster, simulation):
+def normalize(raster, simulation, shadow_threshold=0.05, shadow_value=0.0):
     normalized = np.sqrt(np.abs(raster)**2 / (simulation + 1e-30))
+
+    if shadow_value is not None:
+        normalized[simulation < shadow_threshold] = shadow_value
+
     # TODO: check if it requires normalization with incidence angle as well
-    normalized[simulation < 0.05] = 0
     return normalized
 
 
