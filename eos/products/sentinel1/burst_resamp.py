@@ -457,87 +457,94 @@ class Sentinel1BurstResample(regist.SarResample):
         return dst_array * reramping_func.reshape(self.dst_shape)
 
 
+class ResampledBurstResampler(regist.SarResample):
+    """Class to Resample a roi again within a resampled roi."""
+
+    def __init__(self, src_roi_within_dst_roi, backward_matrix, dst_shape,
+                 previous_burst_resampler):
         """
-        Compute the doppler quantities on a set of points in the destination \
-            coordinate system (i.e. after resampling).
+        Constructor.
 
         Parameters
         ----------
-        row_dst : 1darray
-            Rows in the new coord system within the dst roi.
-        col_dst : 1d array
-            Cols in the new coord system within the dst roi.
+        src_roi_within_dst_roi : eos.sar.roi.Roi
+            Roi to resample again referenced to the roi produced by the first resampling.
+        backward_matrix : np.ndarray
+            Backward resampling matrix to apply to the roi.
+        dst_shape : tuple
+            (h, w) of the resampled output array. Should be set for regist.SarResample base Class.
+        previous_burst_resampler : Sentinel1BurstResample
+            Resampler used in the first (previous) resampling.
 
         Returns
         -------
-        eta : 1darray
-            Azimuth time referenced to burst mid time.
-        ref_time : 1darray
-            Azimuth doppler reference time.
-        dop_centroid : 1darray
-            Doppler centroid.
-        dop_rate : 1darray
-            Doppler rate.
+        None.
 
         """
-        # homogeneous coordinates
-        dst_points = np.vstack(
-            [row_dst, col_dst, np.ones(row_dst.size)])
-        del col_dst, row_dst
+        # set matrix and dst_shape
+        self.src_roi_within_dst_roi = src_roi_within_dst_roi
+        self.dst_shape = dst_shape
+        self.matrix = backward_matrix
+        self.previous_burst_resampler = previous_burst_resampler
 
-        # irregular grid at src
-        row_src, col_src = self.matrix.dot(dst_points)[:2]
-        del dst_points
+    def deramp(self, src_array):
+        """
+        Deramp the src array corresponding to src_roi_within_dst_roi, i.e.
+        the array after the first resampling.
 
-        # reference row_src and col_src w.r.t. the burst origin
-        col_roi, row_roi = self.src_roi_in_burst.to_roi()[:2]
-        row_src += row_roi
-        col_src += col_roi
+        Parameters
+        ----------
+        src_array : np.ndarray
+            Array to be deramped.
 
-        eta, slrt = self.to_eta_slrt(row_src, col_src)
-        del row_src, col_src
+        Returns
+        -------
+        np.ndarray
+            Deramped array.
 
-        # all Doppler quantities
-        rg_dpt_dop_rate = self.doppler.get_rg_dpt_dop_rate(slrt)
-        dop_centroid = self.doppler.get_dop_centroid(slrt)
-        del slrt
+        """
+        col, row, w, h = self.src_roi_within_dst_roi.to_roi()
 
-        ref_time = self.doppler.get_ref_time(dop_centroid, rg_dpt_dop_rate)
-        dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
-        del rg_dpt_dop_rate
+        assert src_array.shape == (h, w), "source array is not of the expected shape"
 
-        return eta, ref_time, dop_centroid, dop_rate
+        phi = - self.previous_burst_resampler.get_phi_ramp(
+            np.arange(row, row + h), np.arange(col, col + w),
+            self.previous_burst_resampler.src_roi_in_burst.get_origin(),
+            matrix_to_doppler_frame_roi=self.previous_burst_resampler.matrix)
+
+        deramping_func = np.exp(1j * phi, dtype=np.complex64)
+
+        return src_array * deramping_func
 
     def reramp(self, dst_array):
-        """Reramp on the regular grid of the destination array\
-        after resampling. Therefore, this corresponds to an irregular grid in\
-        the source array. The deramping phase is estimated at each pixel of\
-        the irregular grid and compensated.
+        """
+        Reramp resampled array (after the second resampling)
 
         Parameters
         ----------
-        dst_array : ndarray
-            Resampled burst.
+        dst_array : np.ndarray
+            Array to be reramped.
 
         Returns
         -------
-        ndarray
-            Reramped burst.
+        np.ndarray
+            Reramped array.
 
         """
         assert dst_array.shape == self.dst_shape, "destination array is not of the expected shape"
-        # regular dst grid
-        col_dst, row_dst = np.meshgrid(
-            np.arange(self.dst_shape[1]), np.arange(self.dst_shape[0]))
 
-        eta, ref_time, dop_centroid, dop_rate = self.resampled_doppler(
-            row_dst.ravel(), col_dst.ravel())
+        # All of the work is in the matrix to doppler params
+        # self.matrix takes from dst to src
+        # a translation must be added to go the dst roi of the previous resampler
+        # then previous resampler matrix should be enough
+        matrix_to_doppler_frame_roi = self.previous_burst_resampler.matrix.dot(
+            regist.translation_matrix(*self.src_roi_within_dst_roi.get_origin())).dot(
+                self.matrix)
 
-        # Compute reramping func
-        deta = eta - ref_time
-        del eta, ref_time
-        phi = np.pi * dop_rate * deta ** 2 +\
-            2 * np.pi * dop_centroid * deta
+        phi = self.previous_burst_resampler.get_phi_ramp(
+            np.arange(self.dst_shape[0]), np.arange(self.dst_shape[1]),
+            self.previous_burst_resampler.src_roi_in_burst.get_origin(),
+            grid_eval=True, matrix_to_doppler_frame_roi=matrix_to_doppler_frame_roi)
 
         reramping_func = np.exp(1j * phi, dtype=np.complex64)
 
