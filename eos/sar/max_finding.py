@@ -1,61 +1,93 @@
 import numpy as np
 from scipy.optimize import least_squares
+from eos.sar import regist
 
-def max_2d(x):
-    '''Return the coordinates of the maximum of a 2D numpy array.
-    '''
-    return np.unravel_index(np.argmax(x), x.shape)
 
-def get_local_maxima(vector):
-        '''
-        Find all local maxima within a vector of pixels.
-        Local maxima are pixels whose intensity is greater than all of their neighbors.
-        This excludes points on the edge of the vector.
-        
-        Args:
-            vector (np.array): Section of the image to search.
+def max_2d(array):
+    """
+    Return the coordinates of the maximum of a 2D numpy array.
 
-        Returns:
-            list: Found local maxima. Each element of the list is a tuple containing:
-                    tuple: the (y, x)-coords of the maximum.
-                    float: the intensity of the pixel.
-                the list is sorted by intensity (decreasing).
-        '''
-        
-        out = []
-        for i in range(1, vector.shape[0]-1):
-            for j in range(1, vector.shape[1]-1):
-                window = vector[i-1:i+2, j-1:j+2]
-                if max_2d(window) == (1, 1):
-                    out.append(((i, j), window[1, 1]))
-        
+    Parameters
+    ----------
+    array : np.2darray
+        Input array where we wish to find the maximum.
+
+    Returns
+    -------
+    tuple of ints
+        (row, col) indices of the maximum.
+
+    """
+    return np.unravel_index(np.argmax(array), array.shape)
+
+
+def get_local_maxima(array, *, sort=True):
+    """
+    Find all local maxima within an array of pixels.
+    Local maxima are pixels whose intensity is greater than all of their neighbors.
+    This excludes points on the edge of the vector.
+
+    Parameters
+    ----------
+    array : np.2darray
+        Section of the image to search.
+    sort : bool
+        If True, the results are sorted in descending order of intensities.
+    Returns
+    -------
+    list[tuple[tuple, float]]
+        The local maximas that were found. Each element of the list is a tuple containing:
+            tuple: the (row, col)-coords of the maximum.
+            float: the intensity of the pixel.
+        the list is sorted by intensity (decreasing) if sort is True.
+
+    """
+    out = []
+    for i in range(1, array.shape[0] - 1):
+        for j in range(1, array.shape[1] - 1):
+            window = array[i - 1:i + 2, j - 1:j + 2]
+            if max_2d(window) == (1, 1):
+                out.append(((i, j), window[1, 1]))
+    if sort:
         return sorted(out, key=lambda x: x[1], reverse=True)
+    else:
+        return out
+
 
 def interpolate_window(image):
-    '''
+    """
     Performs quadratic interpolation to find the sub-pixel maximum of a 3x3
     image.
-    
-    Args:
-        image (np.array): section of the image to interpolate.
 
-    Returns:
-        float: x-coordinate of the interpolated maximum.
-        float: y-coordinate of the interpolated maximum.
-        float: Interpolated intensity of the maximum.
-    '''
+    Parameters
+    ----------
+    image : np.2darray
+        Section of the image to interpolate.
+
+    Returns
+    -------
+    float
+        col coordinate of the interpolated maximum.
+    float
+        row coordinate of the interpolated maximum..
+    float
+        Interpolated intensity of the maximum.
+
+    """
     discrete_max = max_2d(image)
-    
+
     if image.shape[0] < 3 or image.shape[1] < 3:
-        y_max, x_max = discrete_max
-        intensity = np.max(image)
-    
+        print("Image too small, reverting to absolute max")
+        row_max, col_max = discrete_max
+        intensity = image[row_max, col_max]
+        raise Exception
+
     else:
         # Fit a bivariate second-order polynomial to the data
-        
-        y = np.arange(image.shape[0])
-        x = np.arange(image.shape[1])
-        
+
+        rows = np.arange(image.shape[0])
+        cols = np.arange(image.shape[1])
+
         def parse_coefs(c):
             '''Parse bivariate second-order polynomial coefficients into a
             matrix which can be passed to np.polynomial.polynomial functions.
@@ -67,96 +99,96 @@ def interpolate_window(image):
             A, B, C, D, E, F = c
             return np.array([F, D, B, C, E, 0, A, 0, 0]).reshape(3, 3)
 
-        objective_function = lambda coefs: (
-            np.polynomial.polynomial.polygrid2d(y, x, parse_coefs(coefs))
+        def objective_function(coefs): return (
+            np.polynomial.polynomial.polygrid2d(rows, cols, parse_coefs(coefs))
             - image
         ).ravel()
-            
+
         c = least_squares(objective_function, [1, 1, 1, 1, 1, 1], method='lm')
         c = c.x
         A, B, C, D, E, F = c
 
         # Now that the polynomial has been fit, we compute its maximum.
-        y_max = np.clip(-(2*B*C-D*E)/(4*A*B-E**2), y.min(), y.max())
-        x_max = np.clip(-(2*A*D-C*E)/(4*A*B-E**2), x.min(), x.max())
-        
-        if np.isnan(y_max):
-            y_max = discrete_max[0]
-        if np.isnan(x_max):
-            x_max = discrete_max[1]
-        
-        intensity = np.polynomial.polynomial.polyval2d(y_max, x_max, parse_coefs(c))
+        # closed form equations from setting the gradient to 0
+        denum = 4 * A * B - E**2
 
-    return x_max, y_max, intensity
+        if denum:
+            row_max = (D * E - 2 * B * C) / denum
+            col_max = (C * E - 2 * A * D) / denum
+            intensity = np.polynomial.polynomial.polyval2d(row_max, col_max, parse_coefs(c))
+        else:
+            print("Not possible to find maxium with polynomial, reverting to absolute max")
+            row_max, col_max = discrete_max
+            intensity = image[row_max, col_max]
 
-def sub_pixel_maxima(image, y, x_left, x_right, dy, zoom_factor=1):
-    '''
+    return row_max, col_max, intensity
+
+
+def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
+                     zoom_factor=1):
+    """
     Finds all local maxima in a rectangular section of an image and calculate
-    their sub-pixel coordinates.
+    their sub-pixel coordinates. The returned values are in the orginal (not zoomed)
+    coordinate system.
 
-    Args:
-        image (np.array): Input image.
-        y (int): y-coordinate of the center of the rectangle.
-        x_left (int): x-coordinate of the left edge of the rectangle.
-        x_right (int): x-coordinate of the right edge of the rectangle.
-        dy (int): Vertical freedom from the center of the rectangle. For
-            instance, if dy=1 (and zoom_factor=1), then the height of the
-            rectangle is 3.
-        zoom_factor (int): Factor to scale everything by, in case the image has
-            been zoomed. When greater than 1, arguments passed to this function
-            must be in unscaled coordinates. The function will also return
-            maxima coordinates in unscaled coordinates.
-            Leave at 1 for standard max finding.
+    Parameters
+    ----------
+    zoomed_image : np.ndarray
+        Zoomed image from which to take a crop for the search.
+    search_roi_in_original_image : eos.sar.roi.Roi
+        Search region in the original image (before zoom), all local maximas in this
+        region will be found.
+    zoom_factor : float, optional
+        Zoom factor that was applied on the image. The default is 1.
 
-    Returns:
-        float: x-coordinate of V point for a given tank, in pixels (Vx).
-        float: intensity of V (i.e. roof) point for a given tank (VIntensity).
-    '''
-    # TODO potentially should have a better definition of the window
-    y, x_left, x_right, dy = np.round(np.array([y, x_left, x_right, dy]) * zoom_factor).astype(int)
-    
-    # Checking that the window isn't off the side of the image
-    if x_left < 0:
-        print('sub_pixel_maxima warning: x_left = {} < 0!'.format(x_left))
-        x_left = 0
-    if x_right > image.shape[1] - 1:
-        print('sub_pixel_maxima warning: x_right = {} > {}!'.format(x_right, image.shape[1]-1))
-        x_right = image.shape[1] - 1
-    if (x_right <= 0) or (x_left > image.shape[1]-1):
-        return None, None, None
-    
-    x_left = int(np.clip(x_left - zoom_factor, 0, np.inf))
-    x_right = x_right + zoom_factor
-    
-    vector = image[y-dy:y+(zoom_factor-1)+dy+1, x_left:x_right+(zoom_factor-1)+1]
-    maxima = get_local_maxima(vector)
-    
-    x_maxima = []
-    y_maxima = []
-    intensities = []
-    for maximum, _ in maxima:
-        window = vector[
-            maximum[0]-1:maximum[0]+2,
-            maximum[1]-1:maximum[1]+2
+    Returns
+    -------
+    row_maxima : np.1darray
+        Subpixel row locations of the local maximas, in the original (not zoomed) image
+        coordinate system.
+    col_maxima : np.1darray
+        Subpixel col locations of the local maximas, in the original (not zoomed) image
+        coordinate system.
+    intensities : np.1darray
+        Intensity at the maximum locations, sorted by descending order (i.e. most to least significant max).
+
+    """
+    search_roi = regist.zoom_roi(search_roi_in_original_image, zoom_factor)
+    search_roi_orig = search_roi.get_origin()
+    search_array = search_roi.crop_array(zoomed_image)
+    # maxima are in search_array coordinates (i.e. the crop of the zoomed image)
+    maxima = get_local_maxima(search_array, sort=False)
+
+    n_maxima = len(maxima)
+    row_maxima = np.zeros(n_maxima)
+    col_maxima = np.zeros(n_maxima)
+    intensities = np.zeros(n_maxima)
+
+    for idx, (maximum, _) in enumerate(maxima):
+        # crop again around each local maximum and do quadratic max finding
+        window = search_array[
+            maximum[0] - 1:maximum[0] + 2,
+            maximum[1] - 1:maximum[1] + 2
         ]
-        
-        x_max, y_max, intensity = interpolate_window(window)
-        # Now that we have the coords of the max relative to the subwindow "window", we have to get them back in image coordinates.
-        # First we go from "window" coordinates to "vector" coordinates, then from "vector" to "image".
-        # For the first step we use the coordinates of the window center relative to the vector (contained in "maximum").
-        # For the second step we will use x_left and y.
-        
-        # First step
-        y_max = y_max - 1 + maximum[0]
-        x_max = x_max - 1 + maximum[1]
-        
-        # Second step
-        x_max = (x_max + x_left) / zoom_factor
-        y_max = (y_max + y-dy) / zoom_factor
-        
-        x_maxima.append(x_max)
-        y_maxima.append(y_max)
-        intensities.append(intensity)
-    
-    return x_maxima, y_maxima, intensities
 
+        # row_max and col_max are subpixel maximas in the (3, 3) window coord system
+        row_max, col_max, intensity = interpolate_window(window)
+
+        # Now that we have the coords of the max relative to the subwindow "window", we have to get them back in image coordinates.
+        # First we go from "window" coordinates to "search_array" coordinates, then from "search_array" to "zoomed_image".
+
+        # First step
+        row_max = row_max + maximum[0] - 1
+        col_max = col_max + maximum[1] - 1
+
+        # Second step
+        col_max = (col_max + search_roi_orig[0]) / zoom_factor
+        row_max = (row_max + search_roi_orig[1]) / zoom_factor
+
+        col_maxima[idx] = col_max
+        row_maxima[idx] = row_max
+        intensities[idx] = intensity
+
+    # at this stage, we sort
+    sorting_idx = np.argsort(intensities)[::-1]
+    return row_maxima[sorting_idx], col_maxima[sorting_idx], intensities[sorting_idx]
