@@ -332,3 +332,50 @@ def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
     T_dst_inv = translation_matrix(col_dst, row_dst)
     T_src = translation_matrix(- col_src, - row_src)
     return T_src.dot(A.dot(T_dst_inv))
+
+
+def get_zoom_mat(zoom_factor):
+    """
+    Get an Affine FORWARD matrix for zooming.
+
+    Parameters
+    ----------
+    zoom_factor : float
+        Factor that determines how much we zoom.
+
+    Returns
+    -------
+    mat : np.ndarray (3, 3)
+        FORWARD resampling matrix.
+
+    """
+    mat = np.eye(3)
+    mat[:2, :2] *= zoom_factor
+    return mat
+
+
+def zoom_roi(roi, zoom_factor):
+    """
+    Zoom a region of interest.
+
+    Parameters
+    ----------
+    roi : eos.sar.roi.Roi
+        roi to be zoomed.
+    zoom_factor : float
+        Factor that determines how much we zoom.
+
+    Returns
+    -------
+    dst_roi : eos.sar.roi.Roi
+        Output zoomed roi.
+
+    """
+    # get the initial dst_roi_in_burst
+    dst_roi = roi.warp(get_zoom_mat(zoom_factor))
+
+    # add values to get size_zoomed = zoom_factor * size on both axis
+    dst_roi.w += zoom_factor - 1
+    dst_roi.h += zoom_factor - 1
+
+    return dst_roi

@@ -227,7 +227,7 @@ class Test_Resample_Stitch:
         primary_cutter = s1.acquisition.make_primary_cutter_from_bursts_meta(primary_bursts_meta)
 
         # If you wish to deburst a "crop" defined by a roi in the swath coordinates
-        roi_in_swath = eos.sar.roi.Roi(5000, 750, 40, 3000)
+        roi_in_swath = eos.sar.roi.Roi(5000, 750, 100, 3000)
 
         # compute read/write rois
         bsids, within_burst_rois, write_rois, out_shape = primary_swath_model.get_debursting_rois(
@@ -267,18 +267,18 @@ class Test_Resample_Stitch:
                     _get_objects(metas_per_bsid[bsid])[1]) for bsid in bsids
             }
 
-            debursted_crop, _, _ = s1.deburst.warp_rois_read_resample_deburst(
+            debursted_crop, _, resamplers_on_roi = s1.deburst.warp_rois_read_resample_deburst(
                 bsids, resamplers, within_burst_rois, cutter,
                 readers, write_rois, out_shape,
                 get_complex=True, reramp=True)
 
             assert debursted_crop.shape == out_shape, "crop shape mismatch"
             assert np.isnan(debursted_crop).sum() / debursted_crop.size < 0.05
-            return debursted_crop
+            return debursted_crop, resamplers_on_roi
 
-        regist(primary_swath_model, primary_cutter,
-               primary_correctors, primary_image_readers,
-               primary_bursts_meta)
+        primary_crop, primary_resamplers = regist(primary_swath_model, primary_cutter,
+                                                  primary_correctors, primary_image_readers,
+                                                  primary_bursts_meta)
 
         # construct secondary swath model and burst models
         orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta))
@@ -290,8 +290,22 @@ class Test_Resample_Stitch:
                                 for b in secondary_bursts_meta if b['bsid'] in bsids}
         secondary_bursts_meta = {b['bsid']: b for b in secondary_bursts_meta}
 
-        regist(secondary_swath_model,
-               secondary_cutter,
-               secondary_correctors,
-               secondary_image_readers,
-               secondary_bursts_meta)
+        secondary_crop, _ = regist(secondary_swath_model,
+                                   secondary_cutter,
+                                   secondary_correctors,
+                                   secondary_image_readers,
+                                   secondary_bursts_meta)
+
+        # test mosaic zoom
+        crop_roi = eos.sar.roi.Roi(1, 1500, 90, 300)
+        zoom_factor = 2
+        mosaic_zoomer = s1.mosaic_zoom.MosaicZoomer(
+            bsids, write_rois, crop_roi, zoom_factor=zoom_factor,
+            previous_resamplers=primary_resamplers)
+
+        lanczos_zoom = mosaic_zoomer.resample(crop_roi.crop_array(primary_crop))
+        assert np.isnan(lanczos_zoom).sum() / lanczos_zoom.size < 0.1
+        zoomed_with_fourier = mosaic_zoomer.resample_fourier(crop_roi.crop_array(primary_crop))
+        assert np.isnan(zoomed_with_fourier).sum() / zoomed_with_fourier.size < 0.05
+        zoomed_with_fourier_separate = mosaic_zoomer.resample_fourier(crop_roi.crop_array(primary_crop), joint_resampling=False)
+        assert np.isnan(zoomed_with_fourier_separate).sum() / zoomed_with_fourier_separate.size < 0.05
