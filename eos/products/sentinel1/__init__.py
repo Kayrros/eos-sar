@@ -13,3 +13,4 @@ from eos.products.sentinel1 import product
 from eos.products.sentinel1 import coordinate_correction
 from eos.products.sentinel1 import srgr
 from eos.products.sentinel1 import border_noise_grd
+from eos.products.sentinel1 import mosaic_zoom
