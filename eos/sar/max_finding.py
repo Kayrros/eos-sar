@@ -56,7 +56,7 @@ def get_local_maxima(array, *, sort=True):
 
 def interpolate_window(image):
     """
-    Performs quadratic interpolation to find the sub-pixel maximum of a 3x3
+    Performs quadratic interpolation to find the sub-pixel maximum of an
     image.
 
     Parameters
@@ -66,62 +66,54 @@ def interpolate_window(image):
 
     Returns
     -------
-    float
-        col coordinate of the interpolated maximum.
-    float
-        row coordinate of the interpolated maximum..
+    tuple(float, float)
+        row, col coordinate of the interpolated maximum.
     float
         Interpolated intensity of the maximum.
 
     """
-    discrete_max = max_2d(image)
+    h, w = image.shape
 
-    if image.shape[0] < 3 or image.shape[1] < 3:
-        print("Image too small, reverting to absolute max")
-        row_max, col_max = discrete_max
-        intensity = image[row_max, col_max]
-        raise Exception
+    assert h > 2 and w > 2, "Image too small"
 
-    else:
-        # Fit a bivariate second-order polynomial to the data
+    # Fit a bivariate second-order polynomial to the data
 
-        rows = np.arange(image.shape[0])
-        cols = np.arange(image.shape[1])
+    rows = np.arange(image.shape[0])
+    cols = np.arange(image.shape[1])
 
-        def parse_coefs(c):
-            '''Parse bivariate second-order polynomial coefficients into a
-            matrix which can be passed to np.polynomial.polynomial functions.
-            Args:
-                c (list): Coefficients to parse.
-                    c must be of length 6 of the form: [A, B, C, D, E, F] where
-                    P = Ax**2 + By**2 + Cx + Dy + Exy + F
-            '''
-            A, B, C, D, E, F = c
-            return np.array([F, D, B, C, E, 0, A, 0, 0]).reshape(3, 3)
-
-        def objective_function(coefs): return (
-            np.polynomial.polynomial.polygrid2d(rows, cols, parse_coefs(coefs))
-            - image
-        ).ravel()
-
-        c = least_squares(objective_function, [1, 1, 1, 1, 1, 1], method='lm')
-        c = c.x
+    def parse_coefs(c):
+        '''Parse bivariate second-order polynomial coefficients into a
+        matrix which can be passed to np.polynomial.polynomial functions.
+        Args:
+            c (list): Coefficients to parse.
+                c must be of length 6 of the form: [A, B, C, D, E, F] where
+                P = Ax**2 + By**2 + Cx + Dy + Exy + F
+        '''
         A, B, C, D, E, F = c
+        return np.array([F, D, B, C, E, 0, A, 0, 0]).reshape(3, 3)
 
-        # Now that the polynomial has been fit, we compute its maximum.
-        # closed form equations from setting the gradient to 0
-        denum = 4 * A * B - E**2
+    def objective_function(coefs):
+        return (np.polynomial.polynomial.polygrid2d(rows, cols, parse_coefs(coefs))
+                - image).ravel()
 
-        if denum:
-            row_max = (D * E - 2 * B * C) / denum
-            col_max = (C * E - 2 * A * D) / denum
-            intensity = np.polynomial.polynomial.polyval2d(row_max, col_max, parse_coefs(c))
-        else:
-            print("Not possible to find maxium with polynomial, reverting to absolute max")
-            row_max, col_max = discrete_max
-            intensity = image[row_max, col_max]
+    c = least_squares(objective_function, [1, 1, 1, 1, 1, 1], method='lm')
 
-    return row_max, col_max, intensity
+    assert c.success, "Polynomial fitting failed"
+
+    c = c.x
+    A, B, C, D, E, F = c
+
+    # Now that the polynomial has been fit, we compute its maximum.
+    # closed form equations from setting the gradient to 0
+    denum = 4 * A * B - E**2
+
+    assert denum, "Not possible to find maxium with polynomial"
+
+    row_max = (D * E - 2 * B * C) / denum
+    col_max = (C * E - 2 * A * D) / denum
+    intensity = np.polynomial.polynomial.polyval2d(row_max, col_max, parse_coefs(c))
+
+    return (row_max, col_max), intensity
 
 
 def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
@@ -159,12 +151,8 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
     # maxima are in search_array coordinates (i.e. the crop of the zoomed image)
     maxima = get_local_maxima(search_array, sort=False)
 
-    n_maxima = len(maxima)
-    row_maxima = np.zeros(n_maxima)
-    col_maxima = np.zeros(n_maxima)
-    intensities = np.zeros(n_maxima)
-
-    for idx, (maximum, _) in enumerate(maxima):
+    result = []
+    for maximum, _ in maxima:
         # crop again around each local maximum and do quadratic max finding
         window = search_array[
             maximum[0] - 1:maximum[0] + 2,
@@ -172,7 +160,7 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
         ]
 
         # row_max and col_max are subpixel maximas in the (3, 3) window coord system
-        row_max, col_max, intensity = interpolate_window(window)
+        (row_max, col_max), intensity = interpolate_window(window)
 
         # Now that we have the coords of the max relative to the subwindow "window", we have to get them back in image coordinates.
         # First we go from "window" coordinates to "search_array" coordinates, then from "search_array" to "zoomed_image".
@@ -185,10 +173,8 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
         col_max = (col_max + search_roi_orig[0]) / zoom_factor
         row_max = (row_max + search_roi_orig[1]) / zoom_factor
 
-        col_maxima[idx] = col_max
-        row_maxima[idx] = row_max
-        intensities[idx] = intensity
+        result.append(((row_max, col_max), intensity))
 
     # at this stage, we sort
-    sorting_idx = np.argsort(intensities)[::-1]
-    return row_maxima[sorting_idx], col_maxima[sorting_idx], intensities[sorting_idx]
+    result = sorted(result, key=lambda x: x[1], reverse=True)
+    return result

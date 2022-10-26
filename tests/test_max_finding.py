@@ -70,7 +70,7 @@ def test_max_finding(image_shape):
 
     gt_image, gt_coeffs, mr, mc = get_paraboloid(h, w)
 
-    max_row, max_col, intensity = max_finding.interpolate_window(gt_image)
+    (max_row, max_col), intensity = max_finding.interpolate_window(gt_image)
 
     np.testing.assert_allclose(mr, max_row, atol=1e-3)
     np.testing.assert_allclose(mc, max_col, atol=1e-3)
@@ -202,10 +202,20 @@ def test_sub_pixel_max():
                  col * zoom_factor:(col + w) * zoom_factor] += simulated_image
 
     # now test subpixel maxima
-    row_maxima, col_maxima, intensities = max_finding.sub_pixel_maxima(
+    max_results = max_finding.sub_pixel_maxima(
         image_zoomed,
         area_with_maximas,
         zoom_factor)
+
+    n_maxs = len(max_results)
+    row_maxima = np.zeros(n_maxs)
+    col_maxima = np.zeros(n_maxs)
+    intensities = np.zeros(n_maxs)
+
+    for i in range(n_maxs):
+        row_maxima[i] = max_results[i][0][0]
+        col_maxima[i] = max_results[i][0][1]
+        intensities[i] = max_results[i][1]
 
     assert len(mrs) == len(row_maxima)
     np.testing.assert_allclose(row_maxima, mrs / zoom_factor,
