@@ -1,5 +1,8 @@
 import os
 import logging
+import re
+
+from eos.products.sentinel1 import metadata
 
 from eos.sar import io
 
@@ -57,34 +60,85 @@ class Sentinel1GRDProductInfo:
 class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
     def __init__(self, safe_path):
+        """
+        Instantiate a SAFE product info.
+
+        Parameters
+        ----------
+        safe_path : str
+            Path to .SAFE directory, should be already unzipped.
+
+        Returns
+        -------
+        None.
+
+        """
+        if safe_path.endswith(".SAFE/"):
+            safe_path = safe_path[:-1]
+        assert safe_path.endswith(".SAFE"), "Unrecognized format"
+
         prod_id = os.path.splitext(os.path.basename(safe_path))[0]
         super().__init__(prod_id)
         self.safe_path = safe_path
+        self.parse_manifest()
 
-    def _file_search(self, *args):
-        path = os.path.join(self.safe_path, *args)
-        return io.glob_single_file(path)
+    def get_file_pattern(self, swath, polarization, prefix=""):
+        """
+        Parse the name of the SAFE according to esa doc [1], then generate the
+        file regex pattern.
+
+        Returns
+        -------
+        None.
+
+        Notes
+        -----
+        [1] https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-1-sar/naming-conventions
+        """
+        mission = self.product_id[:3]
+        mode_beam = self.product_id[4:6]
+        product_type = self.product_id[7:10]
+        swath_match = re.search(r'\d', swath)
+        if swath_match is None:
+            swath_integer = ""
+        else:
+            swath_integer = swath_match.group()
+
+        return f"{prefix}{mission.lower()}-{mode_beam.lower()}{swath_integer}-{product_type.lower()}(.)*{polarization.lower()}"
+
+    def parse_manifest(self):
+        manifest_content = io.read_xml_file(os.path.join(self.safe_path, "manifest.safe"))
+        self.links = [l.replace("./", "") for l in metadata.get_file_links_from_manifest(manifest_content)]
+
+    def search_in_links(self, swath, pol, prefix=""):
+        found = False
+        for link in self.links:
+            match = re.search(self.get_file_pattern(swath, pol, prefix), link)
+            if match is not None:
+                found = True
+                break
+        assert found, "Requested file not found in SAFE"
+        return os.path.join(self.safe_path, link)
 
     def get_image_reader(self, swath, pol):
-        tiff_path = self._file_search("measurement",
-                                      f"*-{swath.lower()}-*-{pol.lower()}-*.tiff")
+        tiff_path = self.search_in_links(swath, pol, "measurement/")
         # instantiate a reader (objects having function .read())
         return io.open_image(tiff_path)
 
     def get_xml_annotation(self, swath, pol):  # or get_bursts_metadatas?
         # get the path to the xml annotation
-        xml_path = self._file_search("annotation", f"*{swath.lower()}*{pol.lower()}*xml")
+        xml_path = self.search_in_links(swath, pol, "annotation/")
         # read the file into a string xml_content
         return io.read_xml_file(xml_path)
 
     def get_xml_calibration(self, swath, pol):
-        calibration_xml_path = self._file_search(
-            "annotation", "calibration", f"calibration-*-{swath.lower()}-*-{pol.lower()}-*.xml")
+        calibration_xml_path = self.search_in_links(swath, pol,
+                                                    "annotation/calibration/calibration-")
         return io.read_xml_file(calibration_xml_path)
 
     def get_xml_noise(self, swath, pol):
-        noise_xml_path = self._file_search(
-            "annotation", "calibration", f"noise-*-{swath.lower()}-*-{pol.lower()}-*.xml")
+        noise_xml_path = self.search_in_links(swath, pol,
+                                              "annotation/calibration/noise-")
         # read the file into a string xml_content
         return io.read_xml_file(noise_xml_path)
 
