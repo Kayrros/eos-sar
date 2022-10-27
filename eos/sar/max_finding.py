@@ -54,6 +54,14 @@ def get_local_maxima(array, *, sort=True):
         return out
 
 
+class NoConvergenceError(ArithmeticError):
+    """Raised when an optimization algorithm doesn't converge."""
+
+
+class NoSolutionError(ArithmeticError):
+    """Raised when a problem, such as a system of equations, doesn't have a solution."""
+
+
 def interpolate_window(image):
     """
     Performs quadratic interpolation to find the sub-pixel maximum of an
@@ -71,6 +79,10 @@ def interpolate_window(image):
     float
         Interpolated intensity of the maximum.
 
+    Raises
+    ------
+    NoConvergenceError if polynomial fitting failed to converge.
+    NoSolutionError if polynomial max can't be found
     """
     h, w = image.shape
 
@@ -98,16 +110,28 @@ def interpolate_window(image):
 
     c = least_squares(objective_function, [1, 1, 1, 1, 1, 1], method='lm')
 
-    assert c.success, "Polynomial fitting failed"
+    if not c.success:
+        # Polynomial fitting failed
+        raise NoConvergenceError("Least-Squares polynomial fitting failed to converge")
 
     c = c.x
     A, B, C, D, E, F = c
 
-    # Now that the polynomial has been fit, we compute its maximum.
-    # closed form equations from setting the gradient to 0
-    denum = 4 * A * B - E**2
+    # Now that the polynomial has been fit, we check that it indeed has a maximum
+    # requirement: negative definite hessian matrix
+    # eigen values of the hessian matrix
+    # both should be strictly negative
 
-    assert denum, "Not possible to find maxium with polynomial"
+    delta = (A - B) ** 2 + E ** 2
+    sqrt_delta = np.sqrt(delta)
+    e1 = (A + B) + sqrt_delta
+    e2 = (A + B) - sqrt_delta
+
+    if e1 >= 0 or e2 >= 0:
+        # Not possible to find maxium with polynomial
+        raise NoSolutionError("Problem has no solution: Not possible to find maximum with polynomial")
+
+    denum = 4 * A * B - E**2
 
     row_max = (D * E - 2 * B * C) / denum
     col_max = (C * E - 2 * A * D) / denum
@@ -135,15 +159,17 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
 
     Returns
     -------
-    row_maxima : np.1darray
-        Subpixel row locations of the local maximas, in the original (not zoomed) image
-        coordinate system.
-    col_maxima : np.1darray
-        Subpixel col locations of the local maximas, in the original (not zoomed) image
-        coordinate system.
-    intensities : np.1darray
-        Intensity at the maximum locations, sorted by descending order (i.e. most to least significant max).
-
+    subpix_max :  list[tuple[tuple, float]]
+        The local subpixel maximas that were found. Each element of the list is a tuple containing:
+            tuple:  The (row, col) subpixel coords of the maximum, in the original (not zoomed) image.
+                    Set to (None, None) if refinement of discrete maximum is unsuccessful.
+            float:  The intensity at the subpixel maximum.
+                    Set to -inf if refinement of discrete maximum is unsuccessful.
+        the list is sorted by intensity (decreasing).
+    discrete_max: list[tuple[tuple, float]]
+        The local discrete maximas that were found. In the case the refinement failed, it is useful to
+        have this value. The list has the same length as subpix_max and each item are sorted in the same
+        order (one to one relationship).
     """
     search_roi = regist.zoom_roi(search_roi_in_original_image, zoom_factor)
     search_roi_orig = search_roi.get_origin()
@@ -151,30 +177,42 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
     # maxima are in search_array coordinates (i.e. the crop of the zoomed image)
     maxima = get_local_maxima(search_array, sort=False)
 
-    result = []
-    for maximum, _ in maxima:
+    discrete_max = []
+    subpix_max = []
+
+    for (row_dis, col_dis), i_dis in maxima:
         # crop again around each local maximum and do quadratic max finding
         window = search_array[
-            maximum[0] - 1:maximum[0] + 2,
-            maximum[1] - 1:maximum[1] + 2
+            row_dis - 1:row_dis + 2,
+            col_dis - 1:col_dis + 2
         ]
 
-        # row_max and col_max are subpixel maximas in the (3, 3) window coord system
-        (row_max, col_max), intensity = interpolate_window(window)
+        dis_col_max = (col_dis + search_roi_orig[0]) / zoom_factor
+        dis_row_max = (row_dis + search_roi_orig[1]) / zoom_factor
+        discrete_max.append(((dis_row_max, dis_col_max), i_dis))
+
+        try:
+            # row_max and col_max are subpixel maximas in the (3, 3) window coord system
+            (row_max, col_max), intensity = interpolate_window(window)
+
+        except (NoConvergenceError, NoSolutionError):
+            subpix_max.append(((None, None), float('-inf')))
+            continue
 
         # Now that we have the coords of the max relative to the subwindow "window", we have to get them back in image coordinates.
         # First we go from "window" coordinates to "search_array" coordinates, then from "search_array" to "zoomed_image".
 
         # First step
-        row_max = row_max + maximum[0] - 1
-        col_max = col_max + maximum[1] - 1
+        row_max = row_max + row_dis - 1
+        col_max = col_max + col_dis - 1
 
         # Second step
         col_max = (col_max + search_roi_orig[0]) / zoom_factor
         row_max = (row_max + search_roi_orig[1]) / zoom_factor
 
-        result.append(((row_max, col_max), intensity))
+        subpix_max.append(((row_max, col_max), intensity))
 
     # at this stage, we sort
-    result = sorted(result, key=lambda x: x[1], reverse=True)
-    return result
+    subpix_max, discrete_max = zip(*sorted(zip(subpix_max, discrete_max), key=lambda x: x[0][1], reverse=True))
+
+    return list(subpix_max), list(discrete_max)

@@ -76,6 +76,20 @@ def test_max_finding(image_shape):
     np.testing.assert_allclose(mc, max_col, atol=1e-3)
 
 
+zeros = np.zeros((3, 3))
+peak = zeros.copy()
+peak[1, 1] = -1
+line = zeros.copy()
+line[1] = 1
+bad_arrays = (zeros, peak, line)
+
+
+@pytest.mark.parametrize("input_array", bad_arrays)
+def test_without_max(input_array):
+    with pytest.raises(max_finding.NoSolutionError):
+        max_finding.interpolate_window(input_array)
+
+
 def get_gaussian(h, w):
     """
     Simulate a spatial guassian
@@ -202,7 +216,7 @@ def test_sub_pixel_max():
                  col * zoom_factor:(col + w) * zoom_factor] += simulated_image
 
     # now test subpixel maxima
-    max_results = max_finding.sub_pixel_maxima(
+    max_results, _ = max_finding.sub_pixel_maxima(
         image_zoomed,
         area_with_maximas,
         zoom_factor)
@@ -216,8 +230,10 @@ def test_sub_pixel_max():
         row_maxima[i] = max_results[i][0][0]
         col_maxima[i] = max_results[i][0][1]
         intensities[i] = max_results[i][1]
+        assert row_maxima[i] is not None, r"problem with subpix fit for {i}th maxima"
 
     assert len(mrs) == len(row_maxima)
+
     np.testing.assert_allclose(row_maxima, mrs / zoom_factor,
                                atol=1e-2, verbose=True)
     np.testing.assert_allclose(col_maxima, mcs / zoom_factor,
