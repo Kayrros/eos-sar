@@ -15,6 +15,7 @@ test:
     - pip install cython numpy
     - pip install -e ".[test]"
     - pip install pytest-parallel
+    - pip install py  # see https://github.com/browsertron/pytest-parallel/issues/118
   script:
     - pip install multidem
     - pytest . --workers auto
