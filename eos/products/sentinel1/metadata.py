@@ -1,6 +1,5 @@
 """Fill needed metadata of a burst or a product."""
 import math
-import dateutil.parser
 import datetime
 import xmltodict
 import numpy as np
@@ -25,10 +24,9 @@ N_bursts_per_cycle = 375887
 T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
-def string_to_timestamp(s):
+def isostring_to_timestamp(s):
     """Convert a string representing a date and time to a float number."""
-    return dateutil.parser.parse(s).replace(
-        tzinfo=datetime.timezone.utc).timestamp()
+    return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=datetime.timezone.utc).timestamp()
 
 
 def corners_of_geolocation_grid_points_list(l, only_burst_id):
@@ -232,7 +230,7 @@ def extract_common_metadata(xml):
     d = i['imageAnnotation']['imageInformation']
     o['azimuth_frequency'] = float(d['azimuthFrequency'])
     o['slant_range_time'] = float(d['slantRangeTime'])
-    o['anx_time'] = string_to_timestamp(d['ascendingNodeTime'])
+    o['anx_time'] = isostring_to_timestamp(d['ascendingNodeTime'])
     o['slice_number'] = int(d['sliceNumber'])
 
     d = i['swathTiming']
@@ -250,7 +248,7 @@ def extract_common_metadata(xml):
     o['state_vectors'] = []
     for s in i['generalAnnotation']['orbitList']['orbit']:
         o['state_vectors'].append({
-            'time': string_to_timestamp(s['time']),
+            'time': isostring_to_timestamp(s['time']),
             'position': [float(s['position'][k]) for k in ['x', 'y', 'z']],
             'velocity': [float(s['velocity'][k]) for k in ['x', 'y', 'z']]
         })
@@ -271,13 +269,13 @@ def extract_common_metadata(xml):
             azp = az['azimuthFmRatePolynomial']['#text'].split()
         except KeyError:  # old xml files were formatted differently
             azp = [az['c0'], az['c1'], az['c2']]
-        o['az_fm_times'].append(string_to_timestamp(az['azimuthTime']))
+        o['az_fm_times'].append(isostring_to_timestamp(az['azimuthTime']))
         o['az_fm_info'].append(
             list(map(float, [az['t0'], azp[0], azp[1], azp[2]])))
 
     # doppler centroid estimates
     dc_estimate = i['dopplerCentroid']['dcEstimateList']['dcEstimate']
-    o['dc_estimate_time'] = [string_to_timestamp(
+    o['dc_estimate_time'] = [isostring_to_timestamp(
         x['azimuthTime']) for x in dc_estimate]
     o['dc_estimate_t0'] = [float(x['t0']) for x in dc_estimate]
     if i['imageAnnotation']['processingInformation']['dcMethod'] == 'Data Analysis':
@@ -347,7 +345,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
         h = valid_rows_left[-1][1] - y + 1
 
         # time interval corresponding to the valid burst domain
-        start = string_to_timestamp(b['azimuthTime'])
+        start = isostring_to_timestamp(b['azimuthTime'])
         start_valid = start + y / o['azimuth_frequency']
         end_valid = start_valid + h / o['azimuth_frequency']
         burst['burst_times'] = (start, start_valid, end_valid)
@@ -357,7 +355,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
         burst['burst_roi'] = (x, y, w, h)
 
         burst['azimuth_anx_time'] = float(b['azimuthAnxTime'])
-        burst['burst_sensing_time'] = string_to_timestamp(b['sensingTime'])
+        burst['burst_sensing_time'] = isostring_to_timestamp(b['sensingTime'])
 
         corners = corners_of_geolocation_grid_points_list(gcp,
                                                           only_burst_id=bid)
@@ -424,15 +422,15 @@ def extract_grd_metadata(xml):
     o['approx_altitude'] = [float(c['height']) for c in corners]
 
     d = i['imageAnnotation']['imageInformation']
-    o['image_start'] = string_to_timestamp(d['productFirstLineUtcTime'])
-    o['image_end'] = string_to_timestamp(d['productLastLineUtcTime'])
+    o['image_start'] = isostring_to_timestamp(d['productFirstLineUtcTime'])
+    o['image_end'] = isostring_to_timestamp(d['productLastLineUtcTime'])
 
     o['azimuth_time_interval'] = float(d['azimuthTimeInterval'])
     o['range_pixel_spacing'] = float(d['rangePixelSpacing'])
 
     srgr = i['coordinateConversion']['coordinateConversionList']['coordinateConversion']
     o['srgr'] = {
-        'times': [string_to_timestamp(s["azimuthTime"]) for s in srgr],
+        'times': [isostring_to_timestamp(s["azimuthTime"]) for s in srgr],
         'srgr_coeffs': [list(map(float, srgr[k]["srgrCoefficients"]["#text"].split())) for k in range(len(srgr))],
         'grsr_coeffs': [list(map(float, srgr[k]["grsrCoefficients"]["#text"].split())) for k in range(len(srgr))],
         'sr0': [float(srgr[k]["sr0"]) for k in range(len(srgr))],

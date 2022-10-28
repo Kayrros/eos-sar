@@ -1,12 +1,18 @@
 import os
 import io
 import glob
+import datetime
 
 from lxml import etree
 
-from .metadata import string_to_timestamp
+from .metadata import isostring_to_timestamp
 
 S1_ORBITS_BUCKET = 'kayrros-prod-acquisition-s1-orbits'
+
+
+def _string_to_timestamp(s):
+    """Convert a string representing a date and time to a float number."""
+    return datetime.datetime.strptime(s, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc).timestamp()
 
 
 def _parse_start_end_date_from_orbit_file(s):
@@ -26,7 +32,7 @@ def _parse_start_end_date_from_orbit_file(s):
 
 
 def select_orbit_files_from_filelist(files, date, missionid):
-    date = string_to_timestamp(date)
+    date = _string_to_timestamp(date)
     missionid = missionid.lower()
 
     candidates = []
@@ -37,8 +43,8 @@ def select_orbit_files_from_filelist(files, date, missionid):
             continue
 
         s, e = _parse_start_end_date_from_orbit_file(filename)
-        s = string_to_timestamp(s)
-        e = string_to_timestamp(e)
+        s = _string_to_timestamp(s)
+        e = _string_to_timestamp(e)
 
         # time buffer of 10 state vectors with 10 seconds per state vector before the date
         buffer_pre = 10 * 10
@@ -93,7 +99,7 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
 
     context = etree.iterparse(xml_content, events=('end',), tag='OSV')
     for _, element in context:
-        date = string_to_timestamp(element.findtext('UTC')[4:])
+        date = isostring_to_timestamp(element.findtext('UTC')[4:])
 
         if date < mid - 90:
             continue
