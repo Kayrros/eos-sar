@@ -564,3 +564,25 @@ def unique_sv_from_bursts_meta(bursts_meta: list[dict]):
     """
     state_vectors = [sv for bmeta in bursts_meta for sv in bmeta["state_vectors"]]
     return _unique_sv(state_vectors)
+
+
+def get_file_links_from_manifest(manifest_content: str):
+    """
+    Get the links to the files in the SAFE directory from the content of the manifest.safe.
+
+    Parameters
+    ----------
+    manifest_content : str
+        Content of the manifest file.
+
+    Returns
+    -------
+    links : list[str]
+        List of links to files.
+
+    """
+    i = xmltodict.parse(manifest_content)
+    links = []
+    for data_obj in i['xfdu:XFDU']['dataObjectSection']['dataObject']:
+        links.append(data_obj['byteStream']['fileLocation']['@href'])
+    return links
