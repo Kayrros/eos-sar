@@ -104,21 +104,20 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
         else:
             swath_integer = swath_match.group()
 
-        return f"{prefix}{mission.lower()}-{mode_beam.lower()}{swath_integer}-{product_type.lower()}(.)*{polarization.lower()}"
+        return f"{prefix}{mission.lower()}-{mode_beam.lower()}{swath_integer}-{product_type.lower()}.*{polarization.lower()}"
 
     def parse_manifest(self):
         manifest_content = io.read_xml_file(os.path.join(self.safe_path, "manifest.safe"))
         self.links = [l.replace("./", "") for l in metadata.get_file_links_from_manifest(manifest_content)]
 
     def search_in_links(self, swath, pol, prefix=""):
-        found = False
+        pattern = self.get_file_pattern(swath, pol, prefix)
         for link in self.links:
-            match = re.search(self.get_file_pattern(swath, pol, prefix), link)
+            match = re.search(pattern, link)
             if match is not None:
-                found = True
-                break
-        assert found, "Requested file not found in SAFE"
-        return os.path.join(self.safe_path, link)
+                return os.path.join(self.safe_path, link)
+
+        raise FileNotFoundError
 
     def get_image_reader(self, swath, pol):
         tiff_path = self.search_in_links(swath, pol, "measurement/")
