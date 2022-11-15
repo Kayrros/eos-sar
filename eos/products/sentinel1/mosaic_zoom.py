@@ -80,10 +80,10 @@ class MosaicZoomer(regist.SarResample):
         self.bsids, self.clipped_rois_in_mosaic, self.clipped_rois_in_crop = clip_crop_roi_in_mosaic(
             mosaic_bsids, mosaic_write_rois, crop_roi)
 
-        self.write_rois = {bsid: regist.zoom_roi(
-            self.clipped_rois_in_crop[bsid], zoom_factor) for bsid in self.bsids}
-
         self.zoom_factor = int(np.round(zoom_factor))
+
+        self.write_rois = {bsid: regist.zoom_roi(
+            self.clipped_rois_in_crop[bsid], self.zoom_factor) for bsid in self.bsids}
 
         backward_matrix = regist.get_zoom_mat(1 / self.zoom_factor)
 
