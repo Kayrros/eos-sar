@@ -240,9 +240,10 @@ class Sentinel1BurstResample(regist.SarResample):
         return eta, slrt
 
     def get_doppler_params(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                           grid_eval=True, matrix_to_doppler_frame_roi=None):
+                           matrix_to_doppler_frame_roi=None):
         """
         Get the Doppler parameters for a set of rows, cols locations within a roi.
+        The roi in this function is with respect to the burst.
         Also supports computation on a roi that has already been resampled if the
         matrix is provided.
 
@@ -255,58 +256,32 @@ class Sentinel1BurstResample(regist.SarResample):
         roi_origin_in_doppler_frame : tuple
             (col, row) in the original BURST frame provided by ESA, on which the provided
             ESA polynomials for the Doppler parameters can be applied.
-        grid_eval : bool, optional
-            If True, the evaluation needs to be performed on a regular grid.
-            If there is no matrix provided, then we are already in the Doppler Frame,
-            and the evaluation is done only on rows_roi and cols_roi (with reshaping).
-            Otherwise, a meshgrid is created. The default is True.
         matrix_to_doppler_frame_roi : np.2darray, optional
-            Backward matrix between the resampled roi and the original src roi. The default is None.
+            Backward matrix between the resampled roi and the original src roi.
+            If provided, input coordinates are assumed to be for a set of points and
+            the condition nrows == ncols is checked. Otherwise, it is possible to compute
+            the parameters even if nrows != ncols. The default is None.
 
         Returns
         -------
-        eta : np.ndarray, see Notes for shape
+        eta : np.ndarray, (nrows, )
             Azimuth time referenced to burst mid time.
-        ref_time : np.ndarray, see Notes for shape
+        ref_time : np.ndarray, (ncols, )
             Azimuth doppler reference time.
-        dop_centroid : np.ndarray, see Notes for shape
+        dop_centroid : np.ndarray, (ncols, )
             Doppler centroid.
-        dop_rate : np.ndarray, see Notes for shape
+        dop_rate : np.ndarray, (ncols, )
             Doppler rate.
-
-        Notes
-        -----
-        All rois in this function are with respect to the burst origin.
-        As for the shape of the output:
-            if not grid_eval:
-                if matrix_to_doppler_frame_roi is None:
-                    eta_shape = (nrows, )
-                    others_shape = (ncols, )
-                else:
-                    assert nrows = ncols = n
-                    all_shapes = (n, )
-            else:
-                if matrix_to_doppler_frame_roi is None:
-                    eta_shape = (nrows, 1)
-                    others_shape = (1, ncols)
-                else:
-                    all_shapes = (nrows, ncols)
         """
+        # reference row_src and col_src w.r.t. the burst origin
+        col_roi, row_roi = roi_origin_in_doppler_frame
 
         rows_roi_in_dop_frame = rows_roi
         cols_roi_in_dop_frame = cols_roi
 
-        if grid_eval and matrix_to_doppler_frame_roi is not None:
-
-            cols_roi_mesh, rows_roi_mesh = np.meshgrid(cols_roi, rows_roi)
-            rows_roi_in_dop_frame = rows_roi_mesh.ravel()
-            cols_roi_in_dop_frame = cols_roi_mesh.ravel()
-            del rows_roi_mesh
-            del cols_roi_mesh
-
         if matrix_to_doppler_frame_roi is not None:
-            if not grid_eval:
-                assert len(rows_roi) == len(cols_roi), "Must provide rows an cols of same length"
+            # in this case, ensure that given arrays are of the same length (points)
+            assert len(rows_roi) == len(cols_roi), "Cols and Rows arrays must be of same length."
             # homogeneous coordinates
             dst_points = np.vstack(
                 [rows_roi_in_dop_frame, cols_roi_in_dop_frame, np.ones_like(rows_roi_in_dop_frame)])
@@ -314,17 +289,10 @@ class Sentinel1BurstResample(regist.SarResample):
             rows_roi_in_dop_frame, cols_roi_in_dop_frame = matrix_to_doppler_frame_roi.dot(dst_points)[:2]
             del dst_points
 
-        # reference row_src and col_src w.r.t. the burst origin
-        col_roi, row_roi = roi_origin_in_doppler_frame
-
-        rows_burst_in_dop_frame = rows_roi_in_dop_frame + row_roi
+        eta, slrt = self.to_eta_slrt(rows_roi_in_dop_frame + row_roi,
+                                     cols_roi_in_dop_frame + col_roi)
         del rows_roi_in_dop_frame
-
-        cols_burst_in_dop_frame = cols_roi_in_dop_frame + col_roi
         del cols_roi_in_dop_frame
-
-        eta, slrt = self.to_eta_slrt(rows_burst_in_dop_frame,
-                                     cols_burst_in_dop_frame)
 
         # all Doppler quantities
         rg_dpt_dop_rate = self.doppler.get_rg_dpt_dop_rate(slrt)
@@ -334,27 +302,97 @@ class Sentinel1BurstResample(regist.SarResample):
         dop_rate = self.doppler.get_dop_rate(rg_dpt_dop_rate)
         del rg_dpt_dop_rate
 
-        if grid_eval:
-            if matrix_to_doppler_frame_roi is None:
-                # reshape the 1D vectors for broadcasting
-                dop_centroid = dop_centroid[None, :]
-                ref_time = ref_time[None, :]
-                dop_rate = dop_rate[None, :]
-                eta = eta[:, None]
-            else:
-                out_shape = (len(rows_roi), (len(cols_roi)))
-                dop_centroid = dop_centroid.reshape(out_shape)
-                ref_time = ref_time.reshape(out_shape)
-                dop_rate = dop_rate.reshape(out_shape)
-                eta = eta.reshape(out_shape)
+        return eta, ref_time, dop_centroid, dop_rate
+
+    def get_doppler_params_gridded(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
+                                   matrix_to_doppler_frame_roi=None):
+        """
+        Get the Doppler parameters for a set of locations within a roi (reference to a burst)
+        defined by the meshgrid of the given rows_roi, cols_roi.
+        Also supports computation on a roi that has already been resampled if the
+        matrix is provided.
+
+        Parameters
+        ----------
+        rows_roi : np.1darray (nrows, )
+            Rows within the roi on which to compute the Doppler parameters.
+        cols_roi : np.1darray (ncols, )
+            Cols within the roi on which to compute the Doppler parameters.
+        roi_origin_in_doppler_frame : tuple
+            (col, row) in the original BURST frame provided by ESA, on which the provided
+            ESA polynomials for the Doppler parameters can be applied.
+        matrix_to_doppler_frame_roi : np.2darray, optional
+            Backward matrix between the resampled roi and the original src roi.
+            The default is None.
+
+        Returns
+        -------
+        eta : np.ndarray, (nrows, ncols)
+            Azimuth time referenced to burst mid time.
+        ref_time : np.ndarray, (nrows, ncols)
+            Azimuth doppler reference time.
+        dop_centroid : np.ndarray, (nrows, ncols)
+            Doppler centroid.
+        dop_rate : np.ndarray, (nrows, ncols)
+            Doppler rate.
+        """
+        cols_roi_mesh, rows_roi_mesh = np.meshgrid(cols_roi, rows_roi)
+        rows_roi_pts = rows_roi_mesh.ravel()
+        cols_roi_pts = cols_roi_mesh.ravel()
+        del rows_roi_mesh
+        del cols_roi_mesh
+
+        eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
+            rows_roi_pts, cols_roi_pts, roi_origin_in_doppler_frame, matrix_to_doppler_frame_roi)
+
+        out_shape = (len(rows_roi), (len(cols_roi)))
+
+        eta = eta.reshape(out_shape)
+        ref_time = ref_time.reshape(out_shape)
+        dop_centroid = dop_centroid.reshape(out_shape)
+        dop_rate = dop_rate.reshape(out_shape)
 
         return eta, ref_time, dop_centroid, dop_rate
 
     def get_phi_ramp(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                     grid_eval=True, matrix_to_doppler_frame_roi=None):
+                     matrix_to_doppler_frame_roi=None):
         """
-        Get the phase ramp present in the data at certain rows, cols within a
-        roi (reference to a burst).
+        Get the phase ramp present in the data at certain locations within a
+        roi (reference to a burst) defined by the points (rows_roi, cols_roi).
+
+        Parameters
+        ----------
+        rows_roi : np.1darray (npts, )
+            Row coordinates of the points within the roi on which to compute the phase ramp.
+        cols_roi : np.1darray (npts, )
+            Col coordinates of the points within the roi on which to compute the phase ramp.
+        roi_origin_in_doppler_frame : tuple
+            (col, row) in the original BURST frame provided by ESA, on which the provided
+            ESA polynomials for the Doppler parameters can be applied.
+        matrix_to_doppler_frame_roi : np.2darray, optional
+            Backward matrix between the resampled roi and the original src roi. The default is None.
+
+        Returns
+        -------
+        phi : np.ndarray, (npts, ).
+            Phase ramp, i.e. the parabola present in the data because of the TOPSAR mode.
+        """
+        assert len(rows_roi) == len(cols_roi), "Cols and Rows arrays must be of same length."
+        eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
+            rows_roi, cols_roi, roi_origin_in_doppler_frame, matrix_to_doppler_frame_roi)
+
+        deta = eta - ref_time
+
+        phi = (np.pi * dop_rate * deta +
+               2 * np.pi * dop_centroid) * deta
+
+        return phi
+
+    def get_phi_ramp_gridded(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
+                             matrix_to_doppler_frame_roi=None):
+        """
+        Get the phase ramp present in the data at certain locations within a
+        roi (reference to a burst) defined by the meshgrid of the given rows_roi, cols_roi.
 
         Parameters
         ----------
@@ -365,34 +403,27 @@ class Sentinel1BurstResample(regist.SarResample):
         roi_origin_in_doppler_frame : tuple
             (col, row) in the original BURST frame provided by ESA, on which the provided
             ESA polynomials for the Doppler parameters can be applied.
-        grid_eval : bool, optional
-            If True, the evaluation needs to be performed on the regular meshgrid defined by rows_roi
-            and cols_roi. Otherwise, the evaluation will be only on the given points (rows_roi, cols_roi).
-            The default is True.
         matrix_to_doppler_frame_roi : np.2darray, optional
             Backward matrix between the resampled roi and the original src roi. The default is None.
 
         Returns
         -------
-        phi : np.ndarray, see Notes for shape.
+        phi : np.ndarray, (nrows, ncols).
             Phase ramp, i.e. the parabola present in the data because of the TOPSAR mode.
-
-        Notes
-        -----
-        The shape of the output is :
-            if grid_eval:
-                phi_shape = (nrows, ncols)
-            else:
-                assert nrows = ncols = n
-                phi_shape = (n, )
-
         """
-        if not grid_eval:
-            assert len(rows_roi) == len(cols_roi), "Must have the same number of elements in row and col array."
-
-        eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
-            rows_roi, cols_roi, roi_origin_in_doppler_frame,
-            grid_eval, matrix_to_doppler_frame_roi)
+        if matrix_to_doppler_frame_roi is None:
+            # already in the doppler frame
+            eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
+                rows_roi, cols_roi, roi_origin_in_doppler_frame)
+            # reshape the 1D vectors for broadcasting
+            dop_centroid = dop_centroid[None, :]
+            ref_time = ref_time[None, :]
+            dop_rate = dop_rate[None, :]
+            eta = eta[:, None]
+        else:
+            eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params_gridded(
+                rows_roi, cols_roi, roi_origin_in_doppler_frame,
+                matrix_to_doppler_frame_roi)
 
         deta = eta - ref_time
 
@@ -422,8 +453,8 @@ class Sentinel1BurstResample(regist.SarResample):
 
         col0, row0, w, h = self.src_roi_in_burst.to_roi()
 
-        phi = - self.get_phi_ramp(np.arange(h), np.arange(w),
-                                  (col0, row0))
+        phi = - self.get_phi_ramp_gridded(np.arange(h), np.arange(w),
+                                          (col0, row0))
 
         deramping_func = np.exp(1j * phi, dtype=np.complex64)
 
@@ -448,9 +479,9 @@ class Sentinel1BurstResample(regist.SarResample):
         """
         assert dst_array.shape == self.dst_shape, "destination array is not of the expected shape"
 
-        phi = self.get_phi_ramp(np.arange(self.dst_shape[0]), np.arange(self.dst_shape[1]),
-                                self.src_roi_in_burst.get_origin(),
-                                grid_eval=True, matrix_to_doppler_frame_roi=self.matrix)
+        phi = self.get_phi_ramp_gridded(np.arange(self.dst_shape[0]), np.arange(self.dst_shape[1]),
+                                        self.src_roi_in_burst.get_origin(),
+                                        matrix_to_doppler_frame_roi=self.matrix)
 
         reramping_func = np.exp(1j * phi, dtype=np.complex64)
 
@@ -507,7 +538,7 @@ class ResampledBurstResampler(regist.SarResample):
 
         assert src_array.shape == (h, w), "source array is not of the expected shape"
 
-        phi = - self.previous_burst_resampler.get_phi_ramp(
+        phi = - self.previous_burst_resampler.get_phi_ramp_gridded(
             np.arange(row, row + h), np.arange(col, col + w),
             self.previous_burst_resampler.src_roi_in_burst.get_origin(),
             matrix_to_doppler_frame_roi=self.previous_burst_resampler.matrix)
@@ -541,10 +572,10 @@ class ResampledBurstResampler(regist.SarResample):
             regist.translation_matrix(*self.src_roi_within_dst_roi.get_origin())).dot(
                 self.matrix)
 
-        phi = self.previous_burst_resampler.get_phi_ramp(
+        phi = self.previous_burst_resampler.get_phi_ramp_gridded(
             np.arange(self.dst_shape[0]), np.arange(self.dst_shape[1]),
             self.previous_burst_resampler.src_roi_in_burst.get_origin(),
-            grid_eval=True, matrix_to_doppler_frame_roi=matrix_to_doppler_frame_roi)
+            matrix_to_doppler_frame_roi=matrix_to_doppler_frame_roi)
 
         reramping_func = np.exp(1j * phi, dtype=np.complex64)
 
