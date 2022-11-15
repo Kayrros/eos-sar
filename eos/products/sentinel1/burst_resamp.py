@@ -266,10 +266,10 @@ class Sentinel1BurstResample(regist.SarResample):
         Returns
         -------
         eta : np.ndarray, see Notes for shape
-            Azimuth time referenced to burst mid time..
+            Azimuth time referenced to burst mid time.
         ref_time : np.ndarray, see Notes for shape
             Azimuth doppler reference time.
-        dop_centroid : np.ndarray, see Notes for shapeTYPE
+        dop_centroid : np.ndarray, see Notes for shape
             Doppler centroid.
         dop_rate : np.ndarray, see Notes for shape
             Doppler rate.
@@ -278,7 +278,7 @@ class Sentinel1BurstResample(regist.SarResample):
         -----
         All rois in this function are with respect to the burst origin.
         As for the shape of the output:
-            if grid_eval = False:
+            if not grid_eval:
                 if matrix_to_doppler_frame_roi is None:
                     eta_shape = (nrows, )
                     others_shape = (ncols, )
@@ -298,11 +298,11 @@ class Sentinel1BurstResample(regist.SarResample):
 
         if grid_eval and matrix_to_doppler_frame_roi is not None:
 
-            Cols_roi, Rows_roi = np.meshgrid(cols_roi, rows_roi)
-            rows_roi_in_dop_frame = Rows_roi.ravel()
-            cols_roi_in_dop_frame = Cols_roi.ravel()
-            del Rows_roi
-            del Cols_roi
+            cols_roi_mesh, rows_roi_mesh = np.meshgrid(cols_roi, rows_roi)
+            rows_roi_in_dop_frame = rows_roi_mesh.ravel()
+            cols_roi_in_dop_frame = cols_roi_mesh.ravel()
+            del rows_roi_mesh
+            del cols_roi_mesh
 
         if matrix_to_doppler_frame_roi is not None:
             if not grid_eval:
