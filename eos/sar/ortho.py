@@ -183,13 +183,18 @@ class Orthorectifier:
         self.transform = dst_transform
 
     def apply(self, raster, interpolation: Interpolation):
-        assert raster.dtype == np.float32
-        out = cv2.remap(
-            raster,
-            self._map_x,
-            self._map_y,
-            interpolation=interpolation.cv2_flag,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=np.nan
-        )
+        if raster.dtype == np.complex64:
+            real_out = self.apply(np.real(raster), interpolation)
+            imag_out = self.apply(np.imag(raster), interpolation)
+            out = real_out + 1j * imag_out
+        else:
+            assert raster.dtype == np.float32
+            out = cv2.remap(
+                raster,
+                self._map_x,
+                self._map_y,
+                interpolation=interpolation.cv2_flag,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=np.nan
+            )
         return out
