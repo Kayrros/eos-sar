@@ -271,7 +271,7 @@ def update_statevectors_using_local_folder(path, product_info, burst, *, force_t
 
 
 def update_statevectors_using_phoenix(phx_client, product_info, burst,
-                                      *, force_type=None, phx_source="asf:daac:sentinel-1-aux"):
+                                      *, force_type=None, phx_source="aws:proxima:kayrros-prod-sentinel-aux"):
     '''Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
 
     Args
@@ -279,7 +279,7 @@ def update_statevectors_using_phoenix(phx_client, product_info, burst,
         product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
         burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
         force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
-        phx_source (str, default to ASF): phoenix source from the esa-sentinel-1-csar-aux collection
+        phx_source (str, default to Kayrros Proxima): phoenix source from the esa-sentinel-1-csar-aux collection
 
     Returns
         str: the type of orbit found ('orbres' or 'orbpre')
