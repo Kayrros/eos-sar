@@ -2,6 +2,7 @@ import os
 import io
 import glob
 import datetime
+import functools
 
 from lxml import etree
 
@@ -315,6 +316,7 @@ def update_statevectors_using_phoenix(phx_client, product_info, burst,
 
         return id_to_items[valid_ids[-1]]
 
+    @functools.lru_cache
     def source(date, missionid, type):
         item = search_valid_orbit_files_from_phoenix(date, missionid, type)
         if not item:
