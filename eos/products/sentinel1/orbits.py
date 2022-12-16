@@ -1,12 +1,19 @@
 import os
 import io
 import glob
+import datetime
+import functools
 
 from lxml import etree
 
-from .metadata import string_to_timestamp
+from .metadata import isostring_to_timestamp
 
 S1_ORBITS_BUCKET = 'kayrros-prod-acquisition-s1-orbits'
+
+
+def _string_to_timestamp(s):
+    """Convert a string representing a date and time to a float number."""
+    return datetime.datetime.strptime(s, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc).timestamp()
 
 
 def _parse_start_end_date_from_orbit_file(s):
@@ -26,7 +33,7 @@ def _parse_start_end_date_from_orbit_file(s):
 
 
 def select_orbit_files_from_filelist(files, date, missionid):
-    date = string_to_timestamp(date)
+    date = _string_to_timestamp(date)
     missionid = missionid.lower()
 
     candidates = []
@@ -37,8 +44,8 @@ def select_orbit_files_from_filelist(files, date, missionid):
             continue
 
         s, e = _parse_start_end_date_from_orbit_file(filename)
-        s = string_to_timestamp(s)
-        e = string_to_timestamp(e)
+        s = _string_to_timestamp(s)
+        e = _string_to_timestamp(e)
 
         # time buffer of 10 state vectors with 10 seconds per state vector before the date
         buffer_pre = 10 * 10
@@ -93,7 +100,7 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
 
     context = etree.iterparse(xml_content, events=('end',), tag='OSV')
     for _, element in context:
-        date = string_to_timestamp(element.findtext('UTC')[4:])
+        date = isostring_to_timestamp(element.findtext('UTC')[4:])
 
         if date < mid - 90:
             continue
@@ -265,7 +272,7 @@ def update_statevectors_using_local_folder(path, product_info, burst, *, force_t
 
 
 def update_statevectors_using_phoenix(phx_client, product_info, burst,
-                                      *, force_type=None, phx_source="asf:daac:sentinel-1-aux"):
+                                      *, force_type=None, phx_source="aws:proxima:kayrros-prod-sentinel-aux"):
     '''Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
 
     Args
@@ -273,7 +280,7 @@ def update_statevectors_using_phoenix(phx_client, product_info, burst,
         product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
         burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
         force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
-        phx_source (str, default to ASF): phoenix source from the esa-sentinel-1-csar-aux collection
+        phx_source (str, default to Kayrros Proxima): phoenix source from the esa-sentinel-1-csar-aux collection
 
     Returns
         str: the type of orbit found ('orbres' or 'orbpre')
@@ -309,6 +316,7 @@ def update_statevectors_using_phoenix(phx_client, product_info, burst,
 
         return id_to_items[valid_ids[-1]]
 
+    @functools.lru_cache
     def source(date, missionid, type):
         item = search_valid_orbit_files_from_phoenix(date, missionid, type)
         if not item:
