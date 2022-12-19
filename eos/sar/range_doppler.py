@@ -64,6 +64,50 @@ def iterative_projection(orbit, gx, gy, gz, azt_init=None,
     return azt_curr, rng, i
 
 
+def ascending_node_crossing_time(orbit, max_iterations=20, tol=1.2 * 1e-7):
+    """Find the azimuth time solving `orbit(azt).z = 0`.
+    The orbit instance should be defined around the solution.
+
+    Parameters
+    ----------
+    orbit: fitted Orbit instance
+    azt_init: float (optional)
+           Initial guess for the azimuth time
+    max_iterations: int
+            Maximum number of iterations for reaching the solution
+    tol: float
+            Tolerance in seconds of azimuth time precision on the orbit
+            below which the iterations stop
+    Returns
+    ------
+    azt: float
+        time of crossing the ascending node
+    """
+    # determine which state vectors to use
+    sv_times: list[float] = [s['time'] for s in orbit.sv]
+    start = min(sv_times)
+    end = max(sv_times)
+
+    # initial guess
+    azt_curr = (start + end) / 2
+
+    # Newton-Raphson iterations
+    for _ in range(max_iterations):
+        # see get_E_dE for the following
+        D = - orbit.evaluate(azt_curr)[2]
+        V = orbit.evaluate(azt_curr, order=1)[2]
+        Acc = orbit.evaluate(azt_curr, order=2)[2]
+        E = V * D
+        dE = D * Acc - V ** 2
+
+        dazt = -E / dE
+        azt_curr += dazt
+        if np.abs(dazt) < tol:
+            break
+
+    return azt_curr
+
+
 def get_E_dE(azt, orbit, M):
     """Get the function that needs to be 0 and its derivative.
 
