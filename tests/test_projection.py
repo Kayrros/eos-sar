@@ -158,11 +158,10 @@ def test_projection_corner_reflectors():
     zoom_factor = 32
 
     def fetch_orbits(pid, bursts):
-        import boto3
-        client = boto3.client("s3")
-        sentinel1.orbits.update_statevectors_using_our_bucket(client, pid,
-                                                              bursts,
-                                                              force_type="orbpoe")
+        import phoenix.catalog
+        phx_client = phoenix.catalog.Client()
+        sentinel1.orbits.update_statevectors_using_phoenix(phx_client, pid, bursts,
+                                                           force_type="orbpoe")
         return bursts
 
     asm = sentinel1.assembler.Sentinel1Assembler.from_products(
