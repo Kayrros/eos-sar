@@ -332,13 +332,20 @@ def _get_metas(products, pol, orbit_provider):
 
 class Sentinel1GRDAssembler:
 
-    def __init__(self, rois, meta, orbit_degree):
+    def __init__(self, rois, rois_orig, meta, orbit_degree):
         self._rois = rois
+        self._rois_orig = rois_orig
         self._meta = meta
         self.orbit = eos.sar.orbit.Orbit(meta["state_vectors"], orbit_degree)
 
     @staticmethod
-    def from_products(products: list[Sentinel1GRDProductInfo], pol: str, *, orbit_provider=None, orbit_degree=11):
+    def from_products(products: list[Sentinel1GRDProductInfo],
+                      pol: str,
+                      *,
+                      orbit_provider=None,
+                      orbit_degree=11,
+                      startend_datatake_cut=True,
+                      ):
         products = sorted(products, key=lambda p: p.product_id)
         metas = _get_metas(products, pol, orbit_provider)
 
@@ -350,20 +357,39 @@ class Sentinel1GRDAssembler:
 
         # for each product, find its ROI with respect to the origin of the mosaic
         rois = {}
+        rois_orig = {}
         row = 0
+        slice_count = metas[0]['slice_count']
         for product in products:
             pid = product.product_id
             prod_meta = meta_per_pid[pid]
 
             w = prod_meta["width"]
             h = prod_meta["height"]
+            slice_number = prod_meta['slice_number']
+
+            adj_row = 0
+            if startend_datatake_cut:
+                # Because of the intensity gradient observable on
+                # the first and last product of a datatake,
+                # we crop the top of the first product and the bottom of the last.
+                #
+                # For the last slice, we simply consider it to be shorter that it is.
+                # For the first slice, we adjust its start row, but we keep the origin
+                # of the assembly the same.
+                if slice_number == 1:
+                    adj_row = 100
+                if slice_number == slice_count:
+                    h -= 100
+
             col = 0
-            rois[pid] = Roi(col, row, w, h)
+            rois[pid] = Roi(col, row + adj_row, w, h - adj_row)
+            rois_orig[pid] = (col, row)
 
             row += h
 
         meta = sentinel1.metadata.assemble_multiple_grd_products_into_meta(metas)
-        return Sentinel1GRDAssembler(rois, meta, orbit_degree)
+        return Sentinel1GRDAssembler(rois, rois_orig, meta, orbit_degree)
 
     def get_proj_model(self, coord_corrector=eos.sar.projection_correction.Corrector()):
         return sentinel1.proj_model.grd_model_from_meta(self._meta, self.orbit, coord_corrector)
@@ -376,7 +402,7 @@ class Sentinel1GRDAssembler:
                 if not roi.intersects_roi(proi):
                     continue
 
-                col, row = proi.get_origin()
+                col, row = self._rois_orig[pid]
 
                 clipped = roi.clip(proi)
                 read_roi = clipped.translate_roi(-col, -row)
