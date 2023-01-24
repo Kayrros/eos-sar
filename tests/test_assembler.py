@@ -100,3 +100,73 @@ else:
         # assert to the same abs tolerance as for test_projection.py
         np.testing.assert_allclose(rows_pred_model, rows_pred_model2, atol=1e-3)
         np.testing.assert_allclose(cols_pred_model, cols_pred_model2, atol=1e-3)
+
+    def test_grd_assembler_start_of_datatake():
+        pol = 'vv'
+        product_id = 'S1A_IW_GRDH_1SDV_20230103T003252_20230103T003321_046612_059621_25B2'
+
+        product = PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
+        products = [product]
+        reader = product.get_image_reader(pol)
+
+        # top of IW1, contains the intensity gradient and goes out of the image
+        roi = Roi(3871, -14, 51, 49)
+        # a bit below, does not go out of the image
+        roi2 = Roi(3871, 85, 51, 49)
+
+        asm1 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
+        asm2 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
+                                                                       startend_datatake_cut=False)
+
+        # for the bottom ROI:
+        # it should be completely 0 when startend_datatake_cut is True (default)
+        raster = asm1.crop(roi, {product_id: reader})
+        assert (raster == 0).all()
+        # it should contain values when startend_datatake_cut is False
+        raster = asm2.crop(roi, {product_id: reader})
+        assert (raster != 0).any()
+        assert (raster == 0).any()
+
+        # for the ROI a bit below:
+        # it should contain values, but also 0s
+        raster = asm1.crop(roi2, {product_id: reader})
+        assert (raster != 0).any()
+        assert (raster == 0).any()
+        # it should only contain values
+        raster = asm2.crop(roi2, {product_id: reader})
+        assert (raster != 0).all()
+
+    def test_grd_assembler_end_of_datatake():
+        pol = 'vv'
+        product_id = 'S1A_IW_GRDH_1SDV_20230103T004141_20230103T004200_046612_059621_1F4A'
+
+        product = PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
+        products = [product]
+        reader = product.get_image_reader(pol)
+
+        # bottom of IW3, contains the intensity gradient and goes out of the image
+        roi = Roi(19015, 12870, 143, 124)
+        # a bit above, does not go out of the image
+        roi2 = Roi(19015, 12810, 143, 124)
+
+        asm1 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
+        asm2 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
+                                                                       startend_datatake_cut=False)
+
+        # for the bottom ROI:
+        # it should be completely 0 when startend_datatake_cut is True (default)
+        raster = asm1.crop(roi, {product_id: reader})
+        assert (raster == 0).all()
+        # it should contain values when startend_datatake_cut is False
+        raster = asm2.crop(roi, {product_id: reader})
+        assert (raster != 0).any()
+        assert (raster == 0).any()
+
+        # for the ROI a bit above:
+        # it should contain values, but also 0s
+        raster = asm1.crop(roi2, {product_id: reader})
+        assert (raster != 0).any()
+        assert (raster == 0).any()
+        # it should only contain values
+        raster = asm2.crop(roi2, {product_id: reader})
+        assert (raster != 0).all()
