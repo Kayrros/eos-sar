@@ -232,6 +232,7 @@ def extract_common_metadata(xml):
     o['slant_range_time'] = float(d['slantRangeTime'])
     o['anx_time'] = isostring_to_timestamp(d['ascendingNodeTime'])
     o['slice_number'] = int(d['sliceNumber'])
+    o['slice_count'] = int(d['sliceList']['@count'])
 
     d = i['swathTiming']
     o['lines_per_burst'] = int(d['linesPerBurst'])
@@ -514,6 +515,7 @@ def assemble_multiple_grd_products_into_meta(metas):
     meta["image_start"] = min(m["image_start"] for m in metas)
     meta["image_end"] = max(m["image_end"] for m in metas)
     del meta["slice_number"]
+    del meta["slice_count"]
 
     return meta
 
