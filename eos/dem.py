@@ -1,3 +1,4 @@
+import os
 import rasterio
 
 try:
@@ -107,7 +108,8 @@ class MultidemSource(DEMSource):
 
 def get_any_source():
     if has_multidem:
-        return MultidemSource()
+        demsource = os.environ.get('EOS_SAR_MULTIDEM_SOURCE', 'SRTM30')
+        return MultidemSource(demsource)
     if has_srtm4:
         return SRTM4Source()
     raise RuntimeError("couldn't find a DEM source; please install multidem or srtm4")
