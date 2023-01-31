@@ -66,18 +66,17 @@ For the future, all tests should be able to run locally, but test data should be
 
 ### Code formatting
 
-The CI validates the code against pep8 rules, except following: `E501,E702,E703,E704,E711,E712,F401,E741,W503,W504`.
+The CI validates the code against pep8 rules, as configured in `pyproject.toml` and `setup.cfg`.
 
 You can check your code locally before commiting using:
 ```bash
 pip install flake8
-flake8 . --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
+flake8 .
 ```
 
 You can use autopep8 to autoformat your code:
 ```bash
-autopep8 --in-place -r --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
+autopep8 eos/ tests/
 ```
 
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.
-
