@@ -126,7 +126,7 @@ class polymodel:
         None.
 
         """
-        assert(len(x) > self.num_coeffs), 'unsufficient points for fit'
+        assert (len(x) > self.num_coeffs), 'unsufficient points for fit'
         self.set_normalization(x, y, z)
         x = self._normalize(x, self.xoff, self.xscale)
         y = self._normalize(y, self.yoff, self.yscale)

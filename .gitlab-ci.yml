@@ -7,7 +7,6 @@ stages:
 
 variables:
   PIP_EXTRA_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
-  GDAL_HTTP_UNSAFESSL: "YES"
 
 test:
   stage: test
@@ -23,9 +22,9 @@ test:
 checkstyle:
   stage: test
   before_script:
-    - pip install flake8==4.0.1
+    - pip install flake8~=6.0.0
   script:
-    - flake8 . --ignore E501,E702,E703,E704,E711,E712,F401,E741,W503,W504
+    - flake8 --show-source .
 
 fakedeploy:
   stage: test

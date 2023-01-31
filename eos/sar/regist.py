@@ -54,7 +54,7 @@ def affine_transformation(src, dst):
 
     # compute blocks B and C, then H
     tmp = np.vstack((v1, v2)).T
-    assert(np.shape(tmp) == (4, 2))
+    assert (np.shape(tmp) == (4, 2))
     B = tmp[0:2, :]
     C = tmp[2:4, :]
     H = np.dot(C, np.linalg.inv(B))
