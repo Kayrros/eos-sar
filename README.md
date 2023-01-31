@@ -5,9 +5,8 @@ This package provides access to some generic SAR (Synthetic Aperture Radar) proc
 Currently, algorithms specific to **Sentinel1 SLC** in **IW** mode have been implemented.
 
 ### Requirements & Installation
-To install the package, first install `cython` and `numpy`. You can run:
+To install the package in editable mode, you can run:
 
-	pip install cython numpy
 	pip install -e .
 
 Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. Therefore, make sure that you either install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4), which is an open source alternative providing acess to SRTM90 data.
@@ -31,10 +30,10 @@ Before running the tutorial, the necessary data must first be downloaded. There 
 	pip install jupyter matplotlib # install dependencies
 	cd eos-sar
 	python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20211230T024411_V20211229T224022_20211230T015752.EOF usage/tutorial/data/orb
-    python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20220111T024731_V20220110T224022_20220111T015752.EOF usage/tutorial/data/orb
-    python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20211229T231926_20211229T231953_041230_04E66A_3DBE.zip usage/tutorial/data/safes --unzip
-    python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20220110T231926_20220110T231953_041405_04EC57_103E.zip usage/tutorial/data/safes --unzip
-    jupyter notebook # launch notebook
+	python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20220111T024731_V20220110T224022_20220111T015752.EOF usage/tutorial/data/orb
+	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20211229T231926_20211229T231953_041230_04E66A_3DBE.zip usage/tutorial/data/safes --unzip
+	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20220110T231926_20220110T231953_041405_04EC57_103E.zip usage/tutorial/data/safes --unzip
+	jupyter notebook # launch notebook
 
    *eos-sar/usage/tutorial/data* folder will be created containing the safes and the associated orbit files. The two products will be downloaded and unzipped in the directory. The two corresponding orbits will also be downloaded.
 
