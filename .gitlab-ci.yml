@@ -22,7 +22,7 @@ test:
 checkstyle:
   stage: test
   before_script:
-    - pip install flake8==4.0.1
+    - pip install flake8~=6.0.0
   script:
     - flake8 --show-source .
 
