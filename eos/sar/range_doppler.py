@@ -93,15 +93,11 @@ def ascending_node_crossing_time(orbit, max_iterations=20, tol=1.2 * 1e-7):
 
     # Newton-Raphson iterations
     for _ in range(max_iterations):
-        # see get_E_dE for the following
-        D = - orbit.evaluate(azt_curr)[2]
-        V = orbit.evaluate(azt_curr, order=1)[2]
-        Acc = orbit.evaluate(azt_curr, order=2)[2]
-        E = V * D
-        dE = D * Acc - V ** 2
+        E = orbit.evaluate(azt_curr)[2]
+        dE = orbit.evaluate(azt_curr, order=1)[2]
 
-        dazt = -E / dE
-        azt_curr += dazt
+        dazt = E / dE
+        azt_curr -= dazt
         if np.abs(dazt) < tol:
             break
 
