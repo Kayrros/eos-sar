@@ -9,12 +9,7 @@ from eos.sar.roi import Roi
 
 # TODO check weighting scheme
 """
-we need to check that it sums to one.
-Normalizing is a bit annoying as it increases memory and cpu.
-There are plenty of window functions to choose from, if the triangular one is
-already arbitrary. In particular I've used the hanning window and a generalized
-variant the Tukey window where you can control how much overlap you will have.
-Also, normalization might be required around the borders of the image?
+normalization might be required around the borders of the image?
 """
 
 
@@ -34,13 +29,12 @@ def triangular_filter(fft_size):
         Triangular filter used for patch recombination.
 
     """
-    filt = np.zeros((fft_size, fft_size))
-    half_fft = int(fft_size / 2)
-    for i in range(fft_size):
-        for j in range(fft_size):
-            filt[i, j] = (1 - (abs(i - half_fft + 0.5)) / half_fft) * (1 - (abs(j - half_fft + 0.5)) / half_fft)
-
-    return filt
+    half_fft = fft_size / 2
+    curr_idx = np.arange(fft_size)
+    filt_tri = 1 - np.abs(curr_idx - half_fft + .5) / half_fft
+    # divide by 2 to normalize, assuming overlap of fft_size/4
+    tri_row = filt_tri / 2
+    return np.outer(tri_row, tri_row)
 
 
 def extract_patch_rois(img_shape, step):
@@ -124,6 +118,11 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
                               size=window_size)
 
     filtered = np.fft.ifftshift(filtered) ** alpha
+
+    assert filtered[0, 0], "Something is wrong, the filter is supposed to be\
+    low-pass, the 0 frequency should not be suppressed"
+    # normalize the filter so that its coefficients spatially sum up to 1
+    filtered /= filtered[0, 0]
 
     filtered = np.multiply(fft_win, filtered)
     del fft_win  # not needed anymore
