@@ -7,11 +7,6 @@ from scipy.ndimage import uniform_filter
 
 from eos.sar.roi import Roi
 
-# TODO check weighting scheme
-"""
-normalization might be required around the borders of the image?
-"""
-
 
 def triangular_filter(fft_size):
     """
@@ -54,16 +49,12 @@ def extract_patch_rois(img_shape, step):
         Roi of the patch to extract.
 
     """
-    # TODO verif pour les bords
     height, width = img_shape
 
     win_size = 4 * step
 
-    x_index = [x for x in range(0, width - win_size, step)]
-    x_index.append(width - win_size)
-
-    y_index = [x for x in range(0, height - win_size, step)]
-    y_index.append(height - win_size)
+    x_index = np.arange(0, width - win_size + 1, step)
+    y_index = np.arange(0, height - win_size + 1, step)
 
     indices = list(itertools.product(x_index, y_index))
 
@@ -113,9 +104,8 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
 
     fft_win = np.fft.fft2(patch_roi.crop_array(full_ifg))
 
-    # TODO: Change mode? mode="constant"
     filtered = uniform_filter(np.fft.fftshift(np.abs(fft_win)),
-                              size=window_size)
+                              size=window_size, mode='wrap')
 
     filtered = np.fft.ifftshift(filtered) ** alpha
 
@@ -132,6 +122,65 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
     filtered = np.multiply(filtered, filt_triangle)
 
     return patch_roi, filtered
+
+
+def dim_padding(length: int, step: int) -> tuple[int, int]:
+    """
+    Determine the padding needed to apply to a dimension to reduce border effects.
+
+    Parameters
+    ----------
+    length : int
+        Length of samples in the dimension.
+    step : int
+        Stride of patch selection, fft_size / 4.
+
+    Returns
+    -------
+    tuple[int, int]
+        Tuple of lower and upper padding.
+
+    """
+    # on the start of the interval, the padding is obtained easily
+    pad = 3 * step
+
+    # on the end of the interval, the padding needs to account for
+    # the ceil to the nearest multiple of step + 3 * step
+    upper_pad = np.ceil(length / step) * step - length  # integer amount of step
+    upper_pad += pad
+
+    return pad, int(upper_pad)
+
+
+def pad_img(img, step: int):
+    """
+    Pad an image to minimize border effects.
+
+    Parameters
+    ----------
+    img : np.ndarray
+        Image to pad.
+    step : int
+        Stride of patch selection, fft_size / 4.
+
+    Returns
+    -------
+    padded_img : np.ndarray
+        Padded image.
+    orig_roi : eos.sar.roi.Roi
+        Roi of original image in the padded image.
+
+    """
+    h, w = img.shape
+
+    up_pad, down_pad = dim_padding(h, step)
+    left_pad, right_pad = dim_padding(w, step)
+
+    padded_img = np.pad(img, ((up_pad, down_pad), (left_pad, right_pad)))
+
+    orig_roi = Roi(left_pad, up_pad, w, h)
+
+    return padded_img, orig_roi
 
 
 def apply(img, fft_size: int = 32, window_size: int = 5, alpha: float = .5, nworkers: int = 1):
@@ -162,10 +211,15 @@ def apply(img, fft_size: int = 32, window_size: int = 5, alpha: float = .5, nwor
     assert img.dtype in (np.csingle, np.cdouble)
     assert alpha >= 0 and alpha <= 1, "alpha out of bounds"
     assert window_size < fft_size, "smoothing window size should be less then patch size"
+    assert fft_size % 4 == 0, "fft size should me multiple of 4"
 
+    step = int(fft_size / 4)
     filt_triangle = triangular_filter(fft_size)
+
+    img, orig_roi = pad_img(img, step)
+
     out_image = np.zeros(img.shape, dtype=img.dtype)
-    patch_roi_generator = extract_patch_rois(img.shape, int(fft_size / 4))
+    patch_roi_generator = extract_patch_rois(img.shape, step)
 
     proc_window = partial(transform_one_window, full_ifg=img, alpha=alpha,
                           window_size=window_size, filt_triangle=filt_triangle)
@@ -183,4 +237,4 @@ def apply(img, fft_size: int = 32, window_size: int = 5, alpha: float = .5, nwor
     if nworkers > 1:
         pool.close()
 
-    return out_image
+    return orig_roi.crop_array(out_image)
