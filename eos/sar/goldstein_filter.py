@@ -8,15 +8,14 @@ from scipy.ndimage import uniform_filter
 from eos.sar.roi import Roi
 
 
-def triangular_filter(fft_size):
+def triangular_filter(step: int):
     """
     Triangular weighting used for patch recombination.
 
     Parameters
     ----------
-    fft_size : int
-        Size of the patch to be denoised. For efficient fft processing, this is
-        usually a power of 2.
+    step : int
+        Stride of patch selection. Patches of size 4 * step will be taken each step.
 
     Returns
     -------
@@ -24,10 +23,10 @@ def triangular_filter(fft_size):
         Triangular filter used for patch recombination.
 
     """
-    half_fft = fft_size / 2
-    curr_idx = np.arange(fft_size)
-    filt_tri = 1 - np.abs(curr_idx - half_fft + .5) / half_fft
-    # divide by 2 to normalize, assuming overlap of fft_size/4
+    half_size = 2 * step
+    curr_idx = np.arange(4 * step)
+    filt_tri = 1 - np.abs(curr_idx - half_size + .5) / half_size
+    # divide by 2 to normalize, because of stride of step
     tri_row = filt_tri / 2
     return np.outer(tri_row, tri_row)
 
@@ -41,7 +40,7 @@ def extract_patch_rois(img_shape, step):
     img_shape : tuple (h, w)
         Shape of the image from which windows are to be extracted.
     step : int
-        Step to take in pixels between patches. The patch shape will be (4 * step, 4 * step).
+        Stride of patch selection. Patches of size 4 * step will be taken each step.
 
     Yields
     -------
@@ -133,7 +132,7 @@ def dim_padding(length: int, step: int) -> tuple[int, int]:
     length : int
         Length of samples in the dimension.
     step : int
-        Stride of patch selection, fft_size / 4.
+        Stride of patch selection. Patches of size 4 * step will be taken each step.
 
     Returns
     -------
@@ -161,7 +160,7 @@ def pad_img(img, step: int):
     img : np.ndarray
         Image to pad.
     step : int
-        Stride of patch selection, fft_size / 4.
+        Stride of patch selection. Patches of size 4 * step will be taken each step.
 
     Returns
     -------
@@ -183,7 +182,7 @@ def pad_img(img, step: int):
     return padded_img, orig_roi
 
 
-def apply(img, fft_size: int = 32, window_size: int = 5, alpha: float = .5, nworkers: int = 1):
+def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers: int = 1):
     """
     Apply the Goldstein filtering for an Interferogram.
 
@@ -191,9 +190,9 @@ def apply(img, fft_size: int = 32, window_size: int = 5, alpha: float = .5, nwor
     ----------
     img : np.2darray
         Interferogram to be filtered.
-    fft_size : int
-        Size of the patches that are extracted and denoised. For efficient fft processing, this is
-        usually a power of 2. The default is 32.
+    step : int
+        Stride of patch selection. Patches of size 4 * step will be taken each step.
+        For efficient fft processing, this is usually a power of 2. The default is 8.
     window_size : int
         Size of the uniform smoothing filter applied to the power spectrum. The default is 5.
     alpha : float
@@ -210,11 +209,9 @@ def apply(img, fft_size: int = 32, window_size: int = 5, alpha: float = .5, nwor
     """
     assert img.dtype in (np.csingle, np.cdouble)
     assert alpha >= 0 and alpha <= 1, "alpha out of bounds"
-    assert window_size < fft_size, "smoothing window size should be less then patch size"
-    assert fft_size % 4 == 0, "fft size should me multiple of 4"
+    assert window_size < 4 * step, "smoothing window size should be less than patch size"
 
-    step = int(fft_size / 4)
-    filt_triangle = triangular_filter(fft_size)
+    filt_triangle = triangular_filter(step)
 
     img, orig_roi = pad_img(img, step)
 
