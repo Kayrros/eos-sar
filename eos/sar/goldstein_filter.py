@@ -101,13 +101,28 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
     """
     assert patch_roi.get_shape() == filt_triangle.shape, "Patches and triangular filter must have the same shape"
 
-    fft_win = np.fft.fft2(patch_roi.crop_array(full_ifg))
+    fft_win = patch_roi.crop_array(full_ifg)
+    nan_mask = np.isnan(fft_win)
+
+    any_nan = np.any(nan_mask)
+
+    if np.all(nan_mask):
+        # if all the patch is NaN, return NaN as a filtered result
+        return patch_roi, fft_win
+    elif any_nan:
+        # otherwise, convert NaNs to zeros
+        fft_win = fft_win.copy()
+        fft_win[nan_mask] = 0
+
+    fft_win = np.fft.fft2(fft_win)
 
     filtered = uniform_filter(np.fft.fftshift(np.abs(fft_win)),
                               size=window_size, mode='wrap')
 
     filtered = np.fft.ifftshift(filtered) ** alpha
 
+    # there is a risk to raise this error if the patch is fully 0
+    # In practice, we should not have 0 data in the interferogram
     assert filtered[0, 0], "Something is wrong, the filter is supposed to be\
     low-pass, the 0 frequency should not be suppressed"
     # normalize the filter so that its coefficients spatially sum up to 1
@@ -117,6 +132,10 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
     del fft_win  # not needed anymore
 
     filtered = np.fft.ifft2(filtered)
+
+    if any_nan:
+        # put back NaN values
+        filtered[nan_mask] = np.nan
 
     filtered = np.multiply(filtered, filt_triangle)
 
@@ -175,7 +194,8 @@ def pad_img(img, step: int):
     up_pad, down_pad = dim_padding(h, step)
     left_pad, right_pad = dim_padding(w, step)
 
-    padded_img = np.pad(img, ((up_pad, down_pad), (left_pad, right_pad)))
+    padded_img = np.pad(img, ((up_pad, down_pad), (left_pad, right_pad)),
+                        constant_values=np.nan)
 
     orig_roi = Roi(left_pad, up_pad, w, h)
 
@@ -184,7 +204,10 @@ def pad_img(img, step: int):
 
 def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers: int = 1):
     """
-    Apply the Goldstein filtering for an Interferogram.
+    Apply the Goldstein filtering for an Interferogram. If the img contains NaNs, the output
+    image will contain NaNs at the same location. NaNs are converted to zeros in the computation
+    and nearby values might be affected (attenuation or ripples). In the worst case, affected values are pixels spanning from
+    the NaN pixel until 4 * step in both dimensions.
 
     Parameters
     ----------
@@ -216,6 +239,7 @@ def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers:
     img, orig_roi = pad_img(img, step)
 
     out_image = np.zeros(img.shape, dtype=img.dtype)
+
     patch_roi_generator = extract_patch_rois(img.shape, step)
 
     proc_window = partial(transform_one_window, full_ifg=img, alpha=alpha,

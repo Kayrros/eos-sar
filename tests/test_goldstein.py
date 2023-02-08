@@ -78,3 +78,22 @@ def test_border_and_normalization():
     triangular_filtered = apply_tri_by_patches_and_recombine(ones_array, step)
     np.testing.assert_equal(np.angle(triangular_filtered), 0)
     np.testing.assert_equal(np.abs(triangular_filtered), 1)
+
+
+def test_nodata():
+    size = (256, 256)
+
+    ones_array = np.ones(size, dtype=np.complex64)
+
+    nan_mask = np.zeros_like(ones_array, dtype=bool)
+    # Full nan patch on the border
+    nan_mask[:32, :32] = True
+    # a nan line
+    nan_mask[50:70, 60] = True
+
+    ones_array[nan_mask] = np.nan
+
+    filtered = goldstein_filter.apply(ones_array)
+
+    assert np.all(np.isnan(filtered) == nan_mask), "NaNs did not propagate"
+    assert np.all(filtered[120:130, 120:130] == 1), "Away from NaNs not affected"
