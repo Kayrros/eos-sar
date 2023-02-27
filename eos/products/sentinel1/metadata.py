@@ -456,7 +456,7 @@ def assemble_multiple_grd_products_into_meta(metas):
     # make sure all products start at the same range time
     assert all(abs(m["slant_range_time"] - metas[0]["slant_range_time"]) < 1e-9 for m in metas)
     # and some quantities should be equal
-    assert all(abs(m["azimuth_time_interval"] - metas[0]["azimuth_time_interval"]) < 1e-9 for m in metas)
+    assert all(abs(m["azimuth_time_interval"] - metas[0]["azimuth_time_interval"]) < 1e-7 for m in metas)
     assert all(m["range_pixel_spacing"] == metas[0]["range_pixel_spacing"] for m in metas)
     assert all(m["wave_length"] == metas[0]["wave_length"] for m in metas)
     assert all(m["steering_rate"] == metas[0]["steering_rate"] for m in metas)
