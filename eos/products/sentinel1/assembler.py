@@ -189,6 +189,12 @@ class Sentinel1Assembler:
             **kwargs) for bsid in bsids}
         return models
 
+    def get_swath_model(self, swath):
+        bsids_in_swath = sorted([b for b in self.bsids if _swath_from_bsid(b) == swath])
+        burst_metas = [self.meta_per_bsid_per_swath[swath][b] for b in bsids_in_swath]
+        swath_model = sentinel1.proj_model.swath_model_from_bursts_meta(burst_metas, self.orbit)
+        return swath_model
+
     def get_burst_resampler(self, bsid: str, dst_burst_shape: tuple, matrix):
         return sentinel1.burst_resamp.burst_resample_from_meta(
             self.get_single_burst_meta(bsid), dst_burst_shape, matrix,

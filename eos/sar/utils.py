@@ -251,4 +251,4 @@ def write_array(arr, write_roi, out_shape):
         Shifted output array.
 
     """
-    return stitch_arrays(((arr, write_roi)), out_shape)
+    return stitch_arrays([(arr, write_roi)], out_shape)
