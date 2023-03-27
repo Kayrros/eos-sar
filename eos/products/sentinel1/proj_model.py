@@ -594,6 +594,7 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         Compute the number of lines that overlap (cover the same ground feature)
         between the end of a burst and the start of another, based on the azimuth time.
         Do this for all bursts and store results in self.overlaps.
+        Also store all osids in self.osids (set).
 
         Returns
         -------
@@ -601,45 +602,71 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
 
         """
         n_bursts = len(self.bursts_times)
-        # n_bursts - 1 overlaps
-        self.overlaps = np.zeros(n_bursts - 1, dtype=int)
+
+        self.overlaps = []
+        self.osids = set()
         for i in range(n_bursts - 1):
             # ith overlap between i and i+1 burst
             current_burst_end = self.bursts_times[i][2]
             next_burst_start = self.bursts_times[i + 1][1]
-            self.overlaps[i] = int(np.round((current_burst_end -
-                                             next_burst_start) * self.azimuth_frequency))
+            self.overlaps.append(int(np.round((current_burst_end -
+                                               next_burst_start) * self.azimuth_frequency)))
 
-    def overlap_roi(self, overlap_id):
+            bsint = sentinel1.overlap.Bsint(self.bsids[i:i + 2])
+            self.osids.update(bsint.osids())
+
+    def get_overlaps_roi(self):
         """
-        Computes the overlap region of a given id between two bursts. The overlap
-        is given as a roi w.r.t. the burst "origin".
-
-        Parameters
-        ----------
-        overlap_id : int
-            id of the overlap [0, n_bursts -1].
+        Computes the overlap rois within a swath.
 
         Returns
         -------
-        overlap_prev_roi : eos.sar.roi.Roi
-            roi inside the previous burst.
-        overlap_next_roi : eos.sar.roi.Roi
-            roi inside the next burst.
-
+        osids: set[sentinel1.overlap.Osid]
+            osids for the corresponding swath
+        within_burst_rois: dict osid -> roi.Roi
+            Rois of overlap region within burst.
+        write_rois : dict osid -> roi.Roi
+            Write roi in the final overlap array
+        out_shapes : dict osid -> tuple
+            (overalp_height, swath_width) tuple.
+        within_swath_rois : dict osid -> roi.Roi
+            Rois within the swath of the output arrays
         """
         if not hasattr(self, 'overlaps'):
             self.compute_overlaps()
-        assert overlap_id >= 0 and overlap_id < len(self.overlaps),\
-            "overlap id out of bound"
-        ovl = self.overlaps[overlap_id]
-        # previous burst
-        h, w = self.bursts_rois[overlap_id].get_shape()
-        overlap_prev_roi = roi.Roi(0, h - ovl, w, ovl)
-        # next burst
-        h, w = self.bursts_rois[overlap_id + 1].get_shape()
-        overlap_next_roi = roi.Roi(0, 0, w, ovl)
-        return overlap_prev_roi, overlap_next_roi
+
+        n_bursts = len(self.bursts_times)
+
+        within_burst_rois = {}
+        out_shapes = {}
+        write_rois = {}
+        within_swath_rois = {}
+
+        for i in range(n_bursts - 1):
+            bsint = sentinel1.overlap.Bsint(self.bsids[i:i + 2])
+            end_of_burst, start_of_next_burst = bsint.osids()
+
+            ovl_h = self.overlaps[i]
+            # previous burst
+            h, w = self.bursts_rois[i].get_shape()
+            within_burst_rois[end_of_burst] = roi.Roi(0, h - ovl_h, w, ovl_h)
+            # next burst
+            _, w = self.bursts_rois[i + 1].get_shape()
+            within_burst_rois[start_of_next_burst] = roi.Roi(0, 0, w, ovl_h)
+
+            for osid, burst_id in zip([end_of_burst, start_of_next_burst], range(i, i + 2)):
+
+                _, ovl_row, ovl_w, ovl_h = within_burst_rois[osid].to_roi()
+
+                out_shapes[osid] = (ovl_h, self.w)
+
+                col_shift, row_shift = self.burst_orig_in_swath(burst_id)
+
+                write_rois[osid] = roi.Roi(col_shift, 0, ovl_w, ovl_h)
+
+                within_swath_rois[osid] = roi.Roi(0, ovl_row + row_shift, self.w, ovl_h)
+
+        return self.osids, within_burst_rois, write_rois, out_shapes, within_swath_rois
 
     def burst_roi_without_ovl(self, burst_id):
         """

@@ -10,10 +10,13 @@ class Roi:
         self.set_from_roi(col, row, w, h)
 
     def __repr__(self):
-        return f"ROI (col={self.col}, row={self.row}, w={self.w}, h={self.h})"
+        return f"Roi(col={self.col}, row={self.row}, w={self.w}, h={self.h})"
 
     def copy(self):
         return Roi.from_roi_tuple(self.to_roi())
+
+    def __eq__(self, o):
+        return self.to_roi() == o.to_roi()
 
     def set_from_roi(self, col, row, w, h):
         self.col = col
@@ -182,6 +185,30 @@ class Roi:
         col, row, w, h = self.to_roi()
         out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin)
         return self.obj_from_roi_tuple(out_roi, inplace=inplace)
+
+    def add_custom_margin(self, custom_margin: tuple[tuple], inplace=False):
+        """
+        Add custom margin for all directions of a roi.
+
+        Parameters
+        ----------
+        custom_margin : tuple[tuple]
+            ((up, down), (left, right)).
+        inplace : bool, optional
+            If True, perform the modification inplace. The default is False.
+
+        Returns
+        -------
+        out_roi: Roi
+            Roi with added margin.
+        roi_in_padded_output: Roi
+            Roi location in padded output
+
+        """
+        col, row, w, h = self.to_roi()
+        (up, down), (left, right) = custom_margin
+        out_roi = (col - left, row - up, w + left + right, h + up + down)
+        return self.obj_from_roi_tuple(out_roi, inplace=inplace), Roi(left, up, w, h)
 
     def assert_valid(self, parent_shape):
         h_parent, w_parent = parent_shape
