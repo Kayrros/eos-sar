@@ -281,6 +281,10 @@ class Sentinel1Calibrator:
         self._noise_values = np.zeros((len(lines), self._noise_pixels.size))
         for i in range(len(values)):
             self._noise_values[i, :] = np.interp(self._noise_pixels, pixels[i], values[i])
+            # some noise maps have negative values, which creates signal during the calibration
+            # so we clip to 0 the noise map
+            # ex: S1B_IW_GRDH_1SDV_20210605T230132_20210605T230150_027227_0340A2_9DF3 vv (lon lat -68.43241, -8.13822)
+            self._noise_values[i, :] = np.maximum(self._noise_values[i, :], 0)
 
         # assertions
         assert self._noise_lines[0] <= 0
