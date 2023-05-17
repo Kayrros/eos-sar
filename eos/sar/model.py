@@ -137,6 +137,69 @@ class SensorModel(abc.ABC):
             print("Warning: Some points may be invalid")
         return approx_geom, alts, masks
 
+    def get_buffered_geom(self, roi=None, margin=0, row_sampling=50, **kwargs):
+        """
+        Get the approximate geometry in epsg:4326 of a roi in an image whose
+        localization function is defined by a model. Localization is conducted
+        without knowledge of the altitude. This function will yield a geometry
+        that will contain the roi with a higher probability than get_approx_geom. However,
+        it is heavier to run.
+
+        Parameters
+        ----------
+        roi : eos.sar.roi.Roi, optional
+            Defines the region to localize. The default is None.
+        margin : int, optional
+            Margin in px to buffer the roi. The default is 0.
+        row_sampling : int, optional
+            The boundary of the roi will be sampled each row_sampling pixels for the altitude
+            evaluation. Decreasing this value increases precision but slows the function.
+       **kwargs: Keyword arguments for localize_without_alt function.
+
+        Returns
+        -------
+        buffered_geom: list of tuples
+            The 4 (lon, lat) corners of the geometry
+        """
+        if roi is None:
+            roi = Roi(0, 0, self.w, self.h)
+        if margin:
+            roi = roi.add_margin(margin)
+
+        col, row, w, h = roi.to_roi()
+        _rows = np.arange(row, row + h, row_sampling)
+        if _rows[-1] != row + h - 1:
+            _rows = np.append(_rows, row + h - 1)
+
+        # deal with the left boundary
+        lons_left, lats_left, alts, masks = self.localize_without_alt(
+            _rows, col * np.ones_like(_rows), **kwargs)
+
+        if np.any(masks["invalid"]):
+            print("Warning: Some points may be invalid")
+
+        min_alt = np.amin(alts)
+
+        # deal with the right boundary
+        lons_right, lats_right, alts, masks = self.localize_without_alt(
+            _rows, (col + w - 1) * np.ones_like(_rows), **kwargs)
+
+        if np.any(masks["invalid"]):
+            print("Warning: Some points may be invalid")
+
+        max_alt = np.amax(alts)
+
+        rows, cols = roi.to_bounding_points()
+
+        lons, lats, _ = self.localization(rows, cols, [min_alt, max_alt, max_alt, min_alt],
+                                          x_init=[lons_left[0], lons_right[0], lons_right[-1], lons_left[-1]],
+                                          y_init=[lats_left[0], lats_right[0], lats_right[-1], lats_left[-1]],
+                                          z_init=[min_alt, max_alt, max_alt, min_alt])
+
+        buffered_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
+
+        return buffered_geom
+
 
 def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
     """
