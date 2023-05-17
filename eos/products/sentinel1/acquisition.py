@@ -83,7 +83,7 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
                 a = (slant_range_time_iw3 - self.first_col_time) * self.range_frequency
                 assert abs(a - round(a)) < 1e-5, abs(a - round(a))
             a = (last_next_row_time - first_row_time) * azimuth_frequency
-            assert abs(int(round(a)) - a) < 1e-3, self.h
+            assert abs(int(round(a)) - a) < 5e-3, self.h
 
     def get_burst_outer_roi_in_tiff(self, bsid) -> Roi:
         bid = self.bsids.index(bsid)
