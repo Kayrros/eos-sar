@@ -146,7 +146,7 @@ def get_registration_dem_pts(primary_model, roi=None, margin=500,
     """
     assert sampling_ratio > 0 and sampling_ratio <= 1, "sampling ratio out of range"
 
-    refined_geom, _, _ = primary_model.get_approx_geom(roi, margin)
+    refined_geom = primary_model.get_buffered_geom(roi, margin)
     # get dem points
     x, y, raster, _, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
 

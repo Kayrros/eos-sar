@@ -198,7 +198,7 @@ def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
     if roi is None:
         roi = eos.sar.roi.Roi(0, 0, model.w, model.h)
     if approx_geometry is None:
-        approx_geometry, alts, masks = model.get_approx_geom(
+        approx_geometry = model.get_buffered_geom(
             roi, margin=margin)
 
     # get the raster grid x, y and crop it
