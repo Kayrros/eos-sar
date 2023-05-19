@@ -1,12 +1,16 @@
 """Base class for all Sensor Models."""
 
 import abc
+import logging
+
 import numpy as np
+
 from eos.sar.orbit import Orbit
 from eos.sar import utils
 from eos.sar.roi import Roi as Roi
 import eos.dem
 
+logger = logging.getLogger(__name__)
 # TODO: change the functions so that they take a DemSource as parameter
 elevation = eos.dem.get_any_source().elevation
 
@@ -134,7 +138,7 @@ class SensorModel(abc.ABC):
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
         if np.any(masks["invalid"]):
-            print("Warning: Some points may be invalid")
+            logger.warning("get_approx_geom: some points may be invalid.")
         return approx_geom, alts, masks
 
     def get_buffered_geom(self, roi=None, margin=0, row_sampling=50, **kwargs):
@@ -176,7 +180,7 @@ class SensorModel(abc.ABC):
             _rows, col * np.ones_like(_rows), **kwargs)
 
         if np.any(masks["invalid"]):
-            print("Warning: Some points may be invalid")
+            logger.warning("get_buffered_geom: some points may be invalid.")
 
         min_alt = np.amin(alts)
 
@@ -185,7 +189,7 @@ class SensorModel(abc.ABC):
             _rows, (col + w - 1) * np.ones_like(_rows), **kwargs)
 
         if np.any(masks["invalid"]):
-            print("Warning: Some points may be invalid")
+            logger.warning("get_buffered_geom: some points may be invalid.")
 
         max_alt = np.amax(alts)
 
@@ -425,7 +429,7 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
         # if all converged, stop iterations
         if not np.any(iterate_mask):
             if verbosity:
-                print("Stopped after {} iterations on all points".format(j + 1))
+                logger.info("Stopped after {} iterations on all points".format(j + 1))
             break
 
     # check if a scalar needs to be returned
