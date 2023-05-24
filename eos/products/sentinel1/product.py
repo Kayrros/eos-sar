@@ -1,12 +1,57 @@
+from __future__ import annotations
+
 import os
 import logging
 import re
+import dataclasses
+from dataclasses import dataclass
+from typing import Any
 
 from eos.products.sentinel1 import metadata
 
 from eos.sar import io
 
 logger = logging.Logger(__name__)
+
+
+@dataclass(frozen=True)
+class SafeFormat:
+    product_id: str
+    links: list[str]
+
+    @classmethod
+    def from_manifest(cls, product_id: str, manifest_content: str) -> SafeFormat:
+        links = [l.replace("./", "") for l in metadata.get_file_links_from_manifest(manifest_content)]
+        return cls(product_id=product_id, links=links)
+
+    def _get_file_pattern(self, swath, polarization, prefix=""):
+        """
+        Parse the name of the SAFE according to esa doc [1], then generate the
+        file regex pattern.
+
+        Notes
+        -----
+        [1] https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-1-sar/naming-conventions
+        """
+        mission = self.product_id[:3]
+        mode_beam = self.product_id[4:6]
+        product_type = self.product_id[7:10]
+        swath_match = re.search(r'\d', swath)
+        if swath_match is None:
+            swath_integer = ""
+        else:
+            swath_integer = swath_match.group()
+
+        return f"{prefix}{mission.lower()}-{mode_beam.lower()}{swath_integer}-{product_type.lower()}.*{polarization.lower()}"
+
+    def search(self, swath: str, pol: str, prefix: str = "") -> str:
+        pattern = self._get_file_pattern(swath, pol, prefix)
+        for link in self.links:
+            match = re.search(pattern, link)
+            if match is not None:
+                return link
+
+        raise FileNotFoundError
 
 
 class Sentinel1SLCProductInfo:
@@ -76,69 +121,34 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
         if safe_path.endswith(".SAFE/"):
             safe_path = safe_path[:-1]
         assert safe_path.endswith(".SAFE"), "Unrecognized format"
+        self.safe_path = safe_path
 
         prod_id = os.path.splitext(os.path.basename(safe_path))[0]
-        super().__init__(prod_id)
-        self.safe_path = safe_path
-        self.parse_manifest()
-
-    def get_file_pattern(self, swath, polarization, prefix=""):
-        """
-        Parse the name of the SAFE according to esa doc [1], then generate the
-        file regex pattern.
-
-        Returns
-        -------
-        None.
-
-        Notes
-        -----
-        [1] https://sentinels.copernicus.eu/web/sentinel/user-guides/sentinel-1-sar/naming-conventions
-        """
-        mission = self.product_id[:3]
-        mode_beam = self.product_id[4:6]
-        product_type = self.product_id[7:10]
-        swath_match = re.search(r'\d', swath)
-        if swath_match is None:
-            swath_integer = ""
-        else:
-            swath_integer = swath_match.group()
-
-        return f"{prefix}{mission.lower()}-{mode_beam.lower()}{swath_integer}-{product_type.lower()}.*{polarization.lower()}"
-
-    def parse_manifest(self):
         manifest_content = io.read_xml_file(os.path.join(self.safe_path, "manifest.safe"))
-        self.links = [l.replace("./", "") for l in metadata.get_file_links_from_manifest(manifest_content)]
+        self.safe_format = SafeFormat.from_manifest(prod_id, manifest_content)
 
-    def search_in_links(self, swath, pol, prefix=""):
-        pattern = self.get_file_pattern(swath, pol, prefix)
-        for link in self.links:
-            match = re.search(pattern, link)
-            if match is not None:
-                return os.path.join(self.safe_path, link)
+        super().__init__(prod_id)
 
-        raise FileNotFoundError
-
-    def get_image_reader(self, swath, pol):
-        tiff_path = self.search_in_links(swath, pol, "measurement/")
-        # instantiate a reader (objects having function .read())
+    def get_image_reader(self, swath: str, pol: str):
+        tiff_path = self.safe_format.search(swath, pol, "measurement/")
+        tiff_path = os.path.join(self.safe_path, tiff_path)
         return io.open_image(tiff_path)
 
-    def get_xml_annotation(self, swath, pol):  # or get_bursts_metadatas?
-        # get the path to the xml annotation
-        xml_path = self.search_in_links(swath, pol, "annotation/")
-        # read the file into a string xml_content
+    def get_xml_annotation(self, swath: str, pol: str):
+        xml_path = self.safe_format.search(swath, pol, "annotation/")
+        xml_path = os.path.join(self.safe_path, xml_path)
         return io.read_xml_file(xml_path)
 
-    def get_xml_calibration(self, swath, pol):
-        calibration_xml_path = self.search_in_links(swath, pol,
-                                                    "annotation/calibration/calibration-")
+    def get_xml_calibration(self, swath: str, pol: str):
+        calibration_xml_path = self.safe_format.search(swath, pol,
+                                                       "annotation/calibration/calibration-")
+        calibration_xml_path = os.path.join(self.safe_path, calibration_xml_path)
         return io.read_xml_file(calibration_xml_path)
 
-    def get_xml_noise(self, swath, pol):
-        noise_xml_path = self.search_in_links(swath, pol,
-                                              "annotation/calibration/noise-")
-        # read the file into a string xml_content
+    def get_xml_noise(self, swath: str, pol: str):
+        noise_xml_path = self.safe_format.search(swath, pol,
+                                                 "annotation/calibration/noise-")
+        noise_xml_path = os.path.join(self.safe_path, noise_xml_path)
         return io.read_xml_file(noise_xml_path)
 
 
@@ -150,8 +160,8 @@ else:
     try:
         from phoenix.catalog.plugins.slc_burster import Burster
         from bursterio import BursterSwathReader
-    except ImportError:
-        logger.warning('phoenix burster backend or bursterio for eos.products.sentinel1.product not available.')
+    except ImportError as e:
+        logger.warning(f'phoenix burster backend or bursterio for eos.products.sentinel1.product not available: {e}')
     else:
         class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
@@ -222,3 +232,42 @@ else:
                 collection = collection.at(source)
             item = collection.get_item(product_id)
             return PhoenixSentinel1GRDProductInfo(item, image_opener)
+
+
+@dataclass
+class S3UnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
+    product_id: str
+    s3_client: Any
+    s3path: str
+    requester_pays: bool = False
+    safe_format: SafeFormat = dataclasses.field(init=False)
+
+    def __post_init__(self):
+        manifest_content = io.read_xml_file(
+            os.path.join(self.s3path, "manifest.safe"),
+            s3_client=self.s3_client,
+            requester_pays=self.requester_pays,
+        )
+        self.safe_format = SafeFormat.from_manifest(self.product_id, manifest_content)
+
+    def get_image_reader(self, swath: str, pol: str):
+        tiff_path = self.safe_format.search(swath, pol, "measurement/")
+        tiff_path = os.path.join(self.s3path, tiff_path)
+        return io.open_image(tiff_path, requester_pays=self.requester_pays)
+
+    def get_xml_annotation(self, swath: str, pol: str):
+        xml_path = self.safe_format.search(swath, pol, "annotation/")
+        xml_path = os.path.join(self.s3path, xml_path)
+        return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=self.requester_pays)
+
+    def get_xml_calibration(self, swath: str, pol: str):
+        calibration_xml_path = self.safe_format.search(swath, pol,
+                                                       "annotation/calibration/calibration-")
+        calibration_xml_path = os.path.join(self.s3path, calibration_xml_path)
+        return io.read_xml_file(calibration_xml_path, s3_client=self.s3_client, requester_pays=self.requester_pays)
+
+    def get_xml_noise(self, swath: str, pol: str):
+        noise_xml_path = self.safe_format.search(swath, pol,
+                                                 "annotation/calibration/noise-")
+        noise_xml_path = os.path.join(self.s3path, noise_xml_path)
+        return io.read_xml_file(noise_xml_path, s3_client=self.s3_client, requester_pays=self.requester_pays)
