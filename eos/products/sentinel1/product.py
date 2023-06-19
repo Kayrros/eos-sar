@@ -235,39 +235,48 @@ else:
 
 
 @dataclass
-class S3UnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
+class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
+    """ Read a S1 SLC product from the Copernicus Data Space Ecosystem (CDSE). Requires kayrros-osio. """
+
     product_id: str
-    s3_client: Any
-    s3path: str
-    requester_pays: bool = False
+    s3_path: str
+    """ example: "s3://DIAS/Sentinel-1/SAR/SLC/2023/02/05/S1A_IW_SLC__1SDV_20230205T174135_20230205T174151_047104_05A6A7_AADA.SAFE/" """
+    s3_session: Any
+    """ boto3 session with credentials to access the CDSE. Requests will be made with requester_pays=True """
     safe_format: SafeFormat = dataclasses.field(init=False)
+    s3_client: Any = dataclasses.field(init=False)
 
     def __post_init__(self):
+        self.s3_client = self.s3_session.client("s3", endpoint_url="https://s3.dataspace.copernicus.eu")
         manifest_content = io.read_xml_file(
-            os.path.join(self.s3path, "manifest.safe"),
+            os.path.join(self.s3_path, "manifest.safe"),
             s3_client=self.s3_client,
-            requester_pays=self.requester_pays,
+            requester_pays=True,
         )
         self.safe_format = SafeFormat.from_manifest(self.product_id, manifest_content)
 
     def get_image_reader(self, swath: str, pol: str):
         tiff_path = self.safe_format.search(swath, pol, "measurement/")
-        tiff_path = os.path.join(self.s3path, tiff_path)
-        return io.open_image(tiff_path, requester_pays=self.requester_pays)
+        tiff_path = os.path.join(self.s3_path, tiff_path)
+        reader_options = {
+            "endpoint_url": "s3.dataspace.copernicus.eu",
+            "session": self.s3_session,
+        }
+        return io.open_image_osio(tiff_path, **reader_options)
 
     def get_xml_annotation(self, swath: str, pol: str):
         xml_path = self.safe_format.search(swath, pol, "annotation/")
-        xml_path = os.path.join(self.s3path, xml_path)
-        return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=self.requester_pays)
+        xml_path = os.path.join(self.s3_path, xml_path)
+        return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=True)
 
     def get_xml_calibration(self, swath: str, pol: str):
         calibration_xml_path = self.safe_format.search(swath, pol,
                                                        "annotation/calibration/calibration-")
-        calibration_xml_path = os.path.join(self.s3path, calibration_xml_path)
-        return io.read_xml_file(calibration_xml_path, s3_client=self.s3_client, requester_pays=self.requester_pays)
+        calibration_xml_path = os.path.join(self.s3_path, calibration_xml_path)
+        return io.read_xml_file(calibration_xml_path, s3_client=self.s3_client, requester_pays=True)
 
     def get_xml_noise(self, swath: str, pol: str):
         noise_xml_path = self.safe_format.search(swath, pol,
                                                  "annotation/calibration/noise-")
-        noise_xml_path = os.path.join(self.s3path, noise_xml_path)
-        return io.read_xml_file(noise_xml_path, s3_client=self.s3_client, requester_pays=self.requester_pays)
+        noise_xml_path = os.path.join(self.s3_path, noise_xml_path)
+        return io.read_xml_file(noise_xml_path, s3_client=self.s3_client, requester_pays=True)
