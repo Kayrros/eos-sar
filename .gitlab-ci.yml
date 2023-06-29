@@ -10,6 +10,8 @@ variables:
 
 test:
   stage: test
+  tags:
+    - high
   before_script:
     - pip install cython numpy
     - pip install -e ".[test]"
@@ -54,4 +56,3 @@ deploy:
       dist/*
   only:
     - tags
-
