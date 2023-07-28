@@ -24,6 +24,14 @@ N_bursts_per_cycle = 375887
 T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
+def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: int) -> int:
+    if mission_id == 'S1A':
+        return (absolute_orbit_number - 73) % 175 + 1
+    elif mission_id == 'S1B':
+        return (absolute_orbit_number - 27) % 175 + 1
+    raise ValueError(f'Invalid mission_id {mission_id}')
+
+
 def isostring_to_timestamp(s):
     """Convert a string representing a date and time to a float number."""
     return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=datetime.timezone.utc).timestamp()
@@ -216,12 +224,7 @@ def extract_common_metadata(xml):
     mission_id = i['adsHeader']['missionId']
     absolute_orbit_number = int(i['adsHeader']['absoluteOrbitNumber'])
 
-    if mission_id == 'S1A':
-        relative_orbit_number = (absolute_orbit_number - 73) % 175 + 1
-    elif mission_id == 'S1B':
-        relative_orbit_number = (absolute_orbit_number - 27) % 175 + 1
-    else:
-        raise ValueError(f'Invalid mission_id {mission_id}')
+    relative_orbit_number = relative_orbit_number_from_absolute(mission_id, absolute_orbit_number)
 
     o['mission_id'] = mission_id
     o['absolute_orbit_number'] = absolute_orbit_number
@@ -478,14 +481,14 @@ def assemble_multiple_grd_products_into_meta(metas):
     del meta["dc_estimate_time"]
 
     # combine srgr info
-    all_times = sum((m["srgr"]["times"] for m in metas), [])
-    all_srgr_coeffs = sum((m["srgr"]["srgr_coeffs"] for m in metas), [])
-    all_grsr_coeffs = sum((m["srgr"]["grsr_coeffs"] for m in metas), [])
-    all_gr0 = sum((m["srgr"]["gr0"] for m in metas), [])
-    all_sr0 = sum((m["srgr"]["sr0"] for m in metas), [])
+    all_times_: list[float] = sum((m["srgr"]["times"] for m in metas), [])
+    all_srgr_coeffs_: list[list[float]] = sum((m["srgr"]["srgr_coeffs"] for m in metas), [])
+    all_grsr_coeffs_: list[list[float]] = sum((m["srgr"]["grsr_coeffs"] for m in metas), [])
+    all_gr0_: list[float] = sum((m["srgr"]["gr0"] for m in metas), [])
+    all_sr0_: list[float] = sum((m["srgr"]["sr0"] for m in metas), [])
 
-    all_srgr = zip(all_times, all_srgr_coeffs, all_grsr_coeffs, all_gr0, all_sr0)
-    all_srgr = sorted(all_srgr, key=lambda e: e[0])
+    all_srgr_ = zip(all_times_, all_srgr_coeffs_, all_grsr_coeffs_, all_gr0_, all_sr0_)
+    all_srgr = sorted(all_srgr_, key=lambda e: e[0])
     all_times, all_srgr_coeffs, all_grsr_coeffs, all_gr0, all_sr0 = zip(*all_srgr)
 
     _, indices = np.unique(all_times, return_index=True)
