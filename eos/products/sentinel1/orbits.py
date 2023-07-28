@@ -3,6 +3,7 @@ import io
 import glob
 import datetime
 import functools
+from typing import Any
 
 from lxml import etree
 
@@ -70,7 +71,7 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
     end = max([burst['state_vectors'][-1]['time'] for burst in bursts])
     mid = (start + end) / 2
 
-    newsvs = [[] for _ in bursts]
+    newsvs: list[list[dict[str, Any]]] = [[] for _ in bursts]
 
     if type(xml_content) == str:
         xml_content = io.BytesIO(xml_content.encode('utf-8'))
