@@ -1,4 +1,6 @@
 """Resamples a complex Sentinel1 burst."""
+from __future__ import annotations
+
 import numpy as np
 
 from eos.sar import regist, roi, io
@@ -6,7 +8,7 @@ from . import doppler_info
 
 
 def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
-                             doppler, **kwargs):
+                             doppler, **kwargs) -> Sentinel1BurstResample:
     """Create a Sentinel1BurstResample instance from a Sentinel1Model\
     instance and additional parameters.
 
