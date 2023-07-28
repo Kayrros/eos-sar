@@ -1,10 +1,12 @@
 """Compute Sentinel1 burst doppler quantities from metadata."""
+from __future__ import annotations
+
 import numpy as np
 
 from eos.sar.orbit import Orbit
 
 
-def doppler_from_meta(burst_meta, orbit):
+def doppler_from_meta(burst_meta, orbit: Orbit) -> Sentinel1Doppler:
     """
     Construct a Sentinel1Doppler object from burst metadata.
 
