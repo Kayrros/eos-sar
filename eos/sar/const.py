@@ -1,7 +1,7 @@
 """Constants module."""
 
 # light speed in m/s
-LIGHT_SPEED_M_PER_SEC = 299792458
+LIGHT_SPEED_M_PER_SEC = 299792458.0
 
 # semi-minor and semi-major axis of earth in m
 EARTH_WGS84_AXIS_A_M = 6378137.000
