@@ -1,4 +1,5 @@
 import abc
+from typing import Sequence
 import numpy as np
 import pyproj
 
@@ -11,8 +12,7 @@ class Points:
 
     def _force_array(self, val):
         """convert val to 1d array if not already the case."""
-        if val is not None:
-            return np.atleast_1d(val)
+        return np.atleast_1d(val)
 
     def _all_len_eq(self, vals):
         """Check that all arrays in vals have the same length  \
@@ -120,10 +120,6 @@ class GeoPoints(Points):
     def _add_geo_as_tuple(self, dgx=None, dgy=None, dgz=None):
         """add geo and return it as tuple."""
 
-        if dgx is None and dgy is None and dgz is None:
-            print("Warning: all differential vectors are None, nothing to be changed")
-            return self
-
         new_gx = self._add_val(self.gx, dgx)
         new_gy = self._add_val(self.gy, dgy)
         new_gz = self._add_val(self.gz, dgz)
@@ -198,10 +194,6 @@ class ImagePoints(Points):
 
     def _add_azt_rng_as_tuple(self, dazt=None, drng=None):
         """add azt rng and return it as tuple."""
-        if dazt is None and drng is None:
-            print("Warning: all differential vectors are None, nothing to be changed")
-            return self
-
         new_azt = self._add_val(self.azt, dazt)
         new_rng = self._add_val(self.rng, drng)
 
@@ -301,8 +293,8 @@ class GeoImagePoints(GeoPoints, ImagePoints):
             New shifted GeoImagePoints.
 
         """
-        return GeoImagePoints(*self._add_geo_as_tuple(dgx, dgy, dgz),
-                              self.azt, self.rng)
+        gx, gy, gz = self._add_geo_as_tuple(dgx, dgy, dgz)
+        return GeoImagePoints(gx, gy, gz, self.azt, self.rng)
 
     def add_azt_rng(self, dazt=None, drng=None):
         """
@@ -384,17 +376,17 @@ class ImageCorrection(abc.ABC):
         self.drng = None
 
     @abc.abstractmethod
-    def estimate(self, pt: Points):
+    def estimate(self, pt: GeoImagePoints):
         """Here self.dazt, self.drng will be estimated."""
         pass
 
-    def apply(self, im_pt: ImagePoints, inverse=False):
+    def apply(self, im_pt: GeoImagePoints, inverse=False):
         """
         Apply the Coordinate Correction.
 
         Parameters
         ----------
-        im_pt : ImagePoints
+        im_pt : GeoImagePoints
             ImagePoints to be corrected.
         inverse : Boolean, optional
             If inverse, apply the inverse correction(inverse shift vector). The default is False.
@@ -402,7 +394,7 @@ class ImageCorrection(abc.ABC):
         Returns
         -------
         ImagePoints
-            New shifted ImagePoints instance.
+            New shifted GeoImagePoints instance.
 
         """
         # here Coord correction will be applied
@@ -417,7 +409,7 @@ class ImageCorrection(abc.ABC):
 class Corrector:
     """Corrector class containing multiple corrections."""
 
-    def __init__(self, corrections=[]):
+    def __init__(self, corrections: Sequence[ImageCorrection] = []):
         """
         Constructor.
 

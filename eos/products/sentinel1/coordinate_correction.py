@@ -1,7 +1,8 @@
+from typing import Any, Optional
 import numpy as np
 
 from eos.sar import const
-from eos.sar.projection_correction import ImageCorrection, ImagePoints, GeoImagePoints, Corrector
+from eos.sar.projection_correction import ImageCorrection, GeoImagePoints, Corrector
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.sar.orbit import Orbit
 from eos.sar.atmospheric_correction import ApdCorrection
@@ -40,7 +41,7 @@ class IntraPulse(ImageCorrection):
         self.chirp_rate = chirp_rate
         self.doppler = doppler
 
-    def estimate(self, im_pt: ImagePoints):
+    def estimate(self, im_pt: GeoImagePoints):
         """
         Estimate the corrections dazt, drng. Here only drng will be set.
 
@@ -94,7 +95,7 @@ class Bistatic(ImageCorrection):
         self.samples_per_burst = samples_per_burst
         self.range_frequency = range_frequency
 
-    def estimate(self, im_pt: ImagePoints):
+    def estimate(self, im_pt: GeoImagePoints):
         """
         Estimate the corrections dazt, drng. Here only dazt will be set.
 
@@ -158,7 +159,7 @@ class FullBistatic(ImageCorrection):
         self.pri = pri
         self.rank = rank
 
-    def estimate(self, im_pt: ImagePoints):
+    def estimate(self, im_pt: GeoImagePoints):
         """
         Estimate the corrections dazt, drng. Here only dazt will be set.
 
@@ -277,10 +278,15 @@ class AltFmMismatch(ImageCorrection):
         self.dazt = (f + f_geom) * (1 / k_geo - 1 / range_dependent_doppler_rate)
 
 
-def s1_corrections_from_meta(burst_meta: dict, orbit: Orbit, doppler: Sentinel1Doppler,
-                             apd=False, bistatic=False, full_bistatic_reference=None,
-                             intra_pulse=False, alt_fm_mismatch=False
-                             ):
+def s1_corrections_from_meta(burst_meta: dict[str, Any],
+                             orbit: Orbit,
+                             doppler: Sentinel1Doppler,
+                             apd: bool = False,
+                             bistatic: bool = False,
+                             full_bistatic_reference: Optional[dict[str, Any]] = None,
+                             intra_pulse: bool = False,
+                             alt_fm_mismatch: bool = False
+                             ) -> list[ImageCorrection]:
     """
     S1 corrections from burst metadata.
 
@@ -308,15 +314,16 @@ def s1_corrections_from_meta(burst_meta: dict, orbit: Orbit, doppler: Sentinel1D
     Returns
     -------
     coord_corrections: list
-        Each element is a CoordCorrection.
+        Each element is a ImageCorrection.
 
     """
-    coord_corrections = []
+    coord_corrections: list[ImageCorrection] = []
 
     if apd:
         coord_corrections.append(ApdCorrection(orbit))
 
     if bistatic:
+        bistatic_corr: ImageCorrection
         if full_bistatic_reference is not None:
             bistatic_corr = FullBistatic(
                 full_bistatic_reference['slant_range_time'],
@@ -342,7 +349,7 @@ def s1_corrections_from_meta(burst_meta: dict, orbit: Orbit, doppler: Sentinel1D
     return coord_corrections
 
 
-def s1_corrector_from_meta(burst_meta, orbit, doppler, **kwargs):
+def s1_corrector_from_meta(burst_meta, orbit, doppler, **kwargs) -> Corrector:
     """
     Corrector from burst meta.
 
