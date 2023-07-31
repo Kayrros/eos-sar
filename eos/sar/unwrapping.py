@@ -6,6 +6,9 @@ from typing import Any
 import logging
 
 from eos.sar.utils import wrap
+from scipy.sparse import diags, hstack, block_diag
+from scipy.optimize import linprog
+from enum import Enum
 
 RealArray = NDArray["np.floating[Any]"]
 
@@ -157,7 +160,7 @@ def solve_smcf(residue: NDArray[np.int8]):
     Theorem (Integrality): Any minimum cost network flow problem instance whose demands are
     all integers has an optimal solution with integer flow on each edge.
 
-    Any, care must be taken for the costs in the future, not to use floats, quantize in integers...
+    Anyway, care must be taken for the costs in the future, not to use floats, quantize in integers...
 
     Parameters
     ----------
@@ -209,10 +212,124 @@ def solve_smcf(residue: NDArray[np.int8]):
 
     return flows
 
+# scipy variant
+
+
+def get_horiz_grad_mat(image_shape: tuple[int, int]):
+    """
+    Get the matrix H that represents the horizontal gradient operator of a vectorization of image I,
+    i.e. H @ I.ravel() will contain np.diff(I, axis=1).ravel().
+
+    Parameters
+    ----------
+    image_shape : tuple[int, int]
+        (h, w).
+
+    Returns
+    -------
+    horiz_grad_mat : scipy.sparse.spmatrix, shape (h x (w -1), h x w)
+        Horizontal gradient matrix.
+    """
+    h, w = image_shape
+    ones = np.ones((w - 1,), dtype=np.int8)
+    # gradient matrix for 1 line of the image
+    line_grad_mat = diags([-ones, ones], offsets=[0, 1], shape=(w - 1, w),
+                          format="coo", dtype=np.int8)
+    # repeat it for each line
+    horiz_grad_mat = block_diag([line_grad_mat] * h)
+    return horiz_grad_mat
+
+
+def get_vert_grad_mat(image_shape: tuple[int, int]):
+    """
+    Get the matrix V that represents the vertical gradient operator of a vectorization of image I,
+    i.e. V @ I.ravel() will contain np.diff(I, axis=0).ravel().
+
+    Parameters
+    ----------
+    image_shape : tuple[int, int]
+        (h, w).
+
+    Returns
+    -------
+    vert_grad_mat : scipy.sparse.spmatrix, shape ( (h - 1) x w, h x w )
+        Vertical gradient matrix.
+    """
+    h, w = image_shape
+    out_size = (h - 1) * w
+    ones = np.ones(out_size, dtype=np.int8)
+
+    vert_grad_mat = diags([-ones, ones], offsets=[0, w], shape=(out_size, h * w),
+                          format="coo", dtype=np.int8)
+
+    return vert_grad_mat
+
+
+def solve_scipy(residue: NDArray[np.int8]):
+    """
+    Solves the minimum cost flow problem as a linear program, i.e. we don't exploit the
+    minimum cost flow structure of the problem. Therefore, the solution is not as efficient
+    as a minimum cost flow solver.
+    The function takes as input the residues of an unprecise gradient field,
+    and gives flows that would correct it to have a true gradient field.
+    We solve the problem on the set of real numbers, but the solution should
+    be integer anyway. So in the end, we check this if this is the case.
+
+    Parameters
+    ----------
+    residue : NDArray[np.int8]
+        Residue array of shape (N-1, M-1) for an (N, M) image.
+
+    Returns
+    -------
+    flows : NDArray[np.int64]
+        Optimal flows.
+
+    """
+    N_minus_1, M_minus_1 = residue.shape
+    N = N_minus_1 + 1
+    M = M_minus_1 + 1
+
+    # horizontal gradient of x1
+    # x1 shape is N-1, M
+    h_mat = get_horiz_grad_mat((N_minus_1, M))
+    # vertical gradient of x2
+    # x2 shape is N, M-1
+    v_mat = get_vert_grad_mat((N, M_minus_1))
+
+    # stack matrices horizontally
+    # so the solution is [x1_plus, x1_minus, x2_minus, x2_plus]^T
+    A_eq = hstack([h_mat, -h_mat, v_mat, -v_mat])
+
+    solution_size = 2 * N_minus_1 * M + 2 * N * M_minus_1
+
+    # positivity constraint
+    bounds = [(0, None)] * solution_size
+
+    # weights for each variable
+    c = np.ones(solution_size)
+
+    time_scipy_lin_prog = time.time()
+
+    # solving
+    res = linprog(c, A_eq=A_eq, b_eq=residue.ravel(), bounds=bounds)
+
+    time_scipy_lin_prog = time.time() - time_scipy_lin_prog
+
+    logging.info(f"scipy linprog time: {time_scipy_lin_prog}")
+    logging.info(res.message)
+
+    flows = res.x
+
+    flows = round_assert_almost_int(flows).astype(np.int64)
+
+    return flows
+
 
 def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
     """
-
+    Get the integer 2pi ambiguities from the flow arrays, assuming the
+    flows are ordered [x1_plus, x1_minus, x2_minus, x2_plus]
 
     Parameters
     ----------
@@ -240,23 +357,23 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
 
     end = (N - 1) * M
     # left -> right
-    x_1_plus = flows[:end].reshape(N - 1, M)
+    x1_plus = flows[:end].reshape(N - 1, M)
 
     start = end
     end = 2 * start
     # right -> left
-    x_1_minus = flows[start:end].reshape(N - 1, M)
+    x1_minus = flows[start:end].reshape(N - 1, M)
 
     # vertical flows correspond to horizontal gradients
 
     start = end
     end = start + N * (M - 1)
     # up -> down
-    x_2_minus = flows[start:end].reshape(N, M - 1)
+    x2_minus = flows[start:end].reshape(N, M - 1)
 
     start = end
     # down -> up
-    x_2_plus = flows[start:].reshape(N, M - 1)
+    x2_plus = flows[start:].reshape(N, M - 1)
 
     # some assertions
 
@@ -264,32 +381,45 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
     if you change the mcf solver, such that the solution is not int64
     you need to check that it is integer
     for instance do the following
-    x_1_plus = round_assert_almost_int(x_1_plus)
-    x_1_minus = round_assert_almost_int(x_1_minus)
-    x_2_plus = round_assert_almost_int(x_2_plus)
-    x_2_minus = round_assert_almost_int(x_2_minus)
+    x1_plus = round_assert_almost_int(x1_plus)
+    x1_minus = round_assert_almost_int(x1_minus)
+    x2_plus = round_assert_almost_int(x2_plus)
+    x2_minus = round_assert_almost_int(x2_minus)
     """
 
     # assert at least one is 0
-    assert np.all(np.logical_or(x_1_plus == 0, x_1_minus == 0)
+    assert np.all(np.logical_or(x1_plus == 0, x1_minus == 0)
                   ), "horizontal flow error: at leat one flow from + and - should be zero"
-    assert np.all(np.logical_or(x_2_plus == 0, x_2_minus == 0)
+    assert np.all(np.logical_or(x2_plus == 0, x2_minus == 0)
                   ), "vertical flow error: at leat one flow from + and - should be zero"
 
-    K1 = x_1_plus - x_1_minus
-    K2 = x_2_plus - x_2_minus
+    K1 = x1_plus - x1_minus
+    K2 = x2_plus - x2_minus
 
     return K1, K2
 
 
-def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray):
+class MCFSolver(Enum):
+    """Enum for the solver."""
+    SMCF = 0
+    SCIPY = 1
+
+
+class UnrecognizedSolver(Exception):
+    pass
+
+
+def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray, mcf_solver: MCFSolver):
     """
-    From the wrapped phase, estimate the unwrapped gradient field using the MCF method.
+    From the wrapped phase, estimate the unwrapped gradient field using the MCF solver.
 
     Parameters
     ----------
     wrapped_phase : RealArray
         Wrapped phase image, shape (N, M).
+    mcf_solver: MCFSolver
+        MCFSolver.SMCF: minimum cost flow representation of the problem, fast solver, recommended,
+        MCFSolver.SCIPY: linear program representation of the problem, slower solution, might be different as well.
 
     Returns
     -------
@@ -306,7 +436,7 @@ def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray):
         - If the Residue is not an integer and not belonging to [-1, 0, 1]
         - If not at least one flow in a bidirectional arc is 0
         - If the retrieved gradient has a non zero residue at any pixel
-
+        - UnrecognizedSolver if the solver is not among the enums MCFSolver.SMCF or MCFSolver.SCIPY
     """
     N = np.shape(wrapped_phase)[0]
     M = np.shape(wrapped_phase)[1]
@@ -323,8 +453,14 @@ def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray):
     logging.info(
         f"Number of non zero residue : {num_non_zero} / {tot} = {perctg} %")
 
-    # constructing MCF graph and solving for the flows
-    flows = solve_smcf(residue)
+    if mcf_solver == MCFSolver.SMCF:
+        # constructing MCF graph and solving for the flows
+        flows = solve_smcf(residue)
+    elif mcf_solver == MCFSolver.SCIPY:
+        # constructing linear program and solving for the flows
+        flows = solve_scipy(residue)
+    else:
+        raise UnrecognizedSolver("The MCFSolver is not recognized among allowed enums")
 
     # release memory
     del residue
@@ -424,7 +560,7 @@ def integrate_gradient_field(grad1: RealArray, grad2: RealArray, upper_left_val:
     return integrated
 
 
-def mcf(wrapped_phase: RealArray):
+def mcf(wrapped_phase: RealArray, mcf_solver: MCFSolver = MCFSolver.SMCF):
     """
     Unwrap a wrapped phase image with the Minimum Cost Flow (MCF) [1] method.
     For now, we set the costs to 1 everywhere.
@@ -433,6 +569,10 @@ def mcf(wrapped_phase: RealArray):
     ----------
     wrapped_phase : RealArray
         Wrapped phase image of shape (N, M), observed in the [-pi, pi] interval.
+    mcf_solver: MCFSolver
+        MCFSolver.SMCF: minimum cost flow representation of the problem, fast solver, recommended,
+        MCFSolver.SCIPY: linear program representation of the problem, slower solution, might be different as well.
+        The default is SMCF.
 
     Returns
     -------
@@ -453,11 +593,11 @@ def mcf(wrapped_phase: RealArray):
             - If the retrieved gradient has a non zero residue at any pixel
             - If the unwrapped image has a non integer ambiguity with respect to the
             wrapped image (atol 1e-2).
-
+            - UnrecognizedSolver if the solver is not among the enums MCFSolver.SMCF or MCFSolver.SCIPY.
     """
     # estimate unwrapped phase gradients with MCF method
     grad1_unwrapped, grad2_unwrapped = mcf_estim_unwrapped_gradients(
-        wrapped_phase)
+        wrapped_phase, mcf_solver)
 
     unwrapped_phase = integrate_gradient_field(grad1_unwrapped, grad2_unwrapped,
                                                wrapped_phase[0, 0])
