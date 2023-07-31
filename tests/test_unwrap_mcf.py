@@ -5,7 +5,8 @@ from eos.sar.utils import wrap
 
 
 @pytest.mark.parametrize("dtype,atol", [(np.float32, 1e-4), (np.float64, 1e-10)])
-def test_unwrap(dtype, atol):
+@pytest.mark.parametrize("mcf_solver", [unwrapping.MCFSolver.SMCF, unwrapping.MCFSolver.SCIPY])
+def test_unwrap(dtype, atol: float, mcf_solver: unwrapping.MCFSolver):
     h, w = 50, 100
 
     # simulate a horizontal phase ramp, with a slope a bit less then pi
@@ -22,7 +23,7 @@ def test_unwrap(dtype, atol):
 
     wrapped = wrap(phase)
 
-    unwrapped = unwrapping.mcf(wrapped)
+    unwrapped = unwrapping.mcf(wrapped, mcf_solver)
 
     assert unwrapped.dtype == dtype
 
@@ -44,7 +45,7 @@ def test_unwrap(dtype, atol):
 
     wrapped = wrap(noisy_phase)
 
-    unwrapped = unwrapping.mcf(wrapped)
+    unwrapped = unwrapping.mcf(wrapped, mcf_solver)
 
     assert unwrapped.dtype == dtype
 
