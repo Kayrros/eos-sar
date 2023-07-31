@@ -7,8 +7,10 @@ import dataclasses
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from eos.products.sentinel1 import metadata
+import rasterio
+import rasterio.session
 
+from eos.products.sentinel1 import metadata
 from eos.sar import io
 
 logger = logging.Logger(__name__)
@@ -245,7 +247,7 @@ else:
 
 @dataclass
 class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
-    """ Read a S1 SLC product from the Copernicus Data Space Ecosystem (CDSE). Requires kayrros-osio. """
+    """ Read a S1 SLC product from the Copernicus Data Space Ecosystem (CDSE). Requires fsspec and s3fs. """
 
     product_id: str
     s3_path: str
@@ -267,11 +269,9 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
     def get_image_reader(self, swath: str, pol: str):
         tiff_path = self.safe_format.search(swath, pol, "measurement/")
         tiff_path = os.path.join(self.s3_path, tiff_path)
-        reader_options = {
-            "endpoint_url": "s3.dataspace.copernicus.eu",
-            "session": self.s3_session,
-        }
-        return io.open_image_osio(tiff_path, **reader_options)
+        with rasterio.Env(rasterio.session.AWSSession(self.s3_session, endpoint_url="s3.dataspace.copernicus.eu"),
+                          AWS_VIRTUAL_HOSTING=False):
+            return rasterio.open(tiff_path)
 
     def get_xml_annotation(self, swath: str, pol: str) -> str:
         xml_path = self.safe_format.search(swath, pol, "annotation/")
