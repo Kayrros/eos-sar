@@ -5,7 +5,7 @@ import os
 from eos.products import sentinel1
 import eos.sar
 from eos.sar import range_doppler
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 
 
 def test_projection():
@@ -16,7 +16,7 @@ def test_projection():
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
 
     # create an orbit
-    orbit = Orbit(burst_meta["state_vectors"])
+    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
     # create a doppler
     doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector
@@ -89,7 +89,7 @@ def test_projection_grd():
     meta = sentinel1.metadata.extract_grd_metadata(xml_content)
 
     # create an orbit
-    orbit = Orbit(meta["state_vectors"])
+    orbit = Orbit([StateVector.from_dict(s) for s in meta["state_vectors"]])
     # create a corrector
     corrector = eos.sar.projection_correction.Corrector()
 

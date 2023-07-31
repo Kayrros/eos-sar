@@ -141,7 +141,7 @@ class Sentinel1BaseModel(model.SensorModel):
         # setting the tolerance
         self.localization_tolerance = tolerance
         self.projection_tolerance = tolerance \
-            / np.linalg.norm(orbit.sv[0]['velocity'])
+            / np.linalg.norm(orbit.sv[0].velocity)
 
         # set for the CoordinateMixin
         self.first_row_time = first_row_time
