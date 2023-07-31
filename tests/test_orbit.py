@@ -33,16 +33,16 @@ def test_serialization():
         "./tests/data/S1A_IW_SLC__1SDV_20230109T171148_20230109T171218_046710_059965_97A3-002.xml"
     ).read()
     svs = sentinel1.metadata.extract_burst_metadata(xml, burst_id=1)["state_vectors"]
-    orbit = Orbit([StateVector.from_dict(s) for s in svs])
+    orbit = Orbit(svs)
     d = orbit.to_dict()
-    assert d["state_vectors"] == svs
+    assert d["state_vectors"] == [s.to_dict() for s in svs]
 
 
 def test_deprecation():
     xml = open(
         "./tests/data/S1A_IW_SLC__1SDV_20230109T171148_20230109T171218_046710_059965_97A3-002.xml"
     ).read()
-    svs: list[dict[str, Any]] = sentinel1.metadata.extract_burst_metadata(xml, burst_id=1)["state_vectors"]
+    svs: list[StateVector] = sentinel1.metadata.extract_burst_metadata(xml, burst_id=1)["state_vectors"]
     with pytest.warns(DeprecationWarning):
-        Orbit(svs)  # type: ignore
-    Orbit([StateVector.from_dict(s) for s in svs])
+        Orbit([s.to_dict() for s in svs])  # type: ignore
+    Orbit(svs)

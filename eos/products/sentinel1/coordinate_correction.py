@@ -1,5 +1,6 @@
 from typing import Any, Optional
 import numpy as np
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 
 from eos.sar import const
 from eos.sar.projection_correction import ImageCorrection, GeoImagePoints, Corrector
@@ -278,7 +279,7 @@ class AltFmMismatch(ImageCorrection):
         self.dazt = (f + f_geom) * (1 / k_geo - 1 / range_dependent_doppler_rate)
 
 
-def s1_corrections_from_meta(burst_meta: dict[str, Any],
+def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
                              orbit: Orbit,
                              doppler: Sentinel1Doppler,
                              apd: bool = False,
@@ -326,30 +327,33 @@ def s1_corrections_from_meta(burst_meta: dict[str, Any],
         bistatic_corr: ImageCorrection
         if full_bistatic_reference is not None:
             bistatic_corr = FullBistatic(
-                full_bistatic_reference['slant_range_time'],
-                full_bistatic_reference['samples_per_burst'],
-                full_bistatic_reference['range_frequency'],
-                burst_meta['pri'], burst_meta['rank'])
+                full_bistatic_reference["slant_range_time"],
+                full_bistatic_reference["samples_per_burst"],
+                full_bistatic_reference["range_frequency"],
+                burst_meta.pri, burst_meta.rank)
 
         else:
             bistatic_corr = Bistatic(
-                burst_meta['slant_range_time'], burst_meta['samples_per_burst'],
-                burst_meta['range_frequency']
+                burst_meta.slant_range_time, burst_meta.samples_per_burst,
+                burst_meta.range_frequency
             )
         coord_corrections.append(bistatic_corr)
 
     if intra_pulse:
         coord_corrections.append(
-            IntraPulse(doppler, burst_meta["chirp_rate"]))
+            IntraPulse(doppler, burst_meta.chirp_rate))
 
     if alt_fm_mismatch:
         coord_corrections.append(
-            AltFmMismatch(doppler, orbit, burst_meta['wave_length']))
+            AltFmMismatch(doppler, orbit, burst_meta.wave_length))
 
     return coord_corrections
 
 
-def s1_corrector_from_meta(burst_meta, orbit, doppler, **kwargs) -> Corrector:
+def s1_corrector_from_meta(burst_meta: Sentinel1BurstMetadata,
+                           orbit: Orbit,
+                           doppler: Sentinel1Doppler,
+                           **kwargs) -> Corrector:
     """
     Corrector from burst meta.
 
