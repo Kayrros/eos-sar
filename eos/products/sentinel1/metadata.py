@@ -68,22 +68,23 @@ class Sentinel1BurstMetadata:
     approx_altitude: list[float]
     bsid: str
 
-    def __getitem__(self, name: str) -> Any:
-        import warnings
-        warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
-                      DeprecationWarning)
-        return self.__dict__[name]
+    # def __getitem__(self, name: str) -> Any:
+        # import warnings
+        # warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
+                      # DeprecationWarning)
+        # return self.__dict__[name]
 
     def to_dict(self) -> dict[str, Any]:
-        return self.__dict__ # TODO
+        d = self.__dict__.copy()
+        d["state_vectors"] = [s.to_dict() for s in self.state_vectors]
+        return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> Sentinel1BurstMetadata:
         d = d.copy()
         d["state_vectors"] = [StateVector.from_dict(s) for s in d["state_vectors"]]
-        return Sentinel1BurstMetadata(
-            **d
-        )
+        return Sentinel1BurstMetadata(**d)
+
 
 def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: int) -> int:
     if mission_id == 'S1A':
@@ -93,7 +94,7 @@ def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: 
     raise ValueError(f'Invalid mission_id {mission_id}')
 
 
-def isostring_to_timestamp(s):
+def isostring_to_timestamp(s: str) -> float:
     """Convert a string representing a date and time to a float number."""
     return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=datetime.timezone.utc).timestamp()
 
@@ -376,7 +377,7 @@ def extract_bursts_metadata(xml: Union[str, bytes],
 
     Returns
     -------
-    bursts: List of dicts
+    bursts: List of Sentinel1BurstMetadata
         The metadata of the bursts.
     """
     o, i = extract_common_metadata(xml)
@@ -509,7 +510,9 @@ def extract_grd_metadata(xml):
     return o
 
 
-def assemble_multiple_products_into_metas(metas_per_product):
+def assemble_multiple_products_into_metas(
+    metas_per_product: list[list[Sentinel1BurstMetadata]]
+) -> list[Sentinel1BurstMetadata]:
     bursts = list(sum(metas_per_product, []))
     return bursts
 
@@ -626,9 +629,8 @@ def unique_sv_from_bursts_meta(bursts_meta: list[Sentinel1BurstMetadata]) -> lis
     unique_state_vectors: list[StateVector]
         Each element is a unique state_vectors
     """
-    state_vectors = [StateVector.from_dict(sv)
-                     for bmeta in bursts_meta
-                     for sv in bmeta["state_vectors"]]
+    state_vectors = [sv for bmeta in bursts_meta
+                     for sv in bmeta.state_vectors]
     return _unique_sv(state_vectors)
 
 

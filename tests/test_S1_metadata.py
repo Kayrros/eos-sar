@@ -13,12 +13,12 @@ def test_S1_metadata():
     metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
 
     b = metadatas[0]
-    assert b['swath'] == 'IW1'
-    assert b['relative_burst_id'] == 309576
+    assert b.swath == 'IW1'
+    assert b.relative_burst_id == 309576
 
     b = metadatas[8]
-    assert b['swath'] == 'IW1'
-    assert b['relative_burst_id'] == 309584
+    assert b.swath == 'IW1'
+    assert b.relative_burst_id == 309584
 
 
 xmls_with_reference_bid = glob.glob('./tests/data/samples_ipf_39/*/*/*.xml')
@@ -34,7 +34,7 @@ def test_reference_burstids(xml):
     for i, b in enumerate(metadatas):
         true_b = parsed[i]
         true_relative = int(true_b['burstId']['#text'])
-        assert b['relative_burst_id'] == true_relative
+        assert b.relative_burst_id == true_relative
 
 
 bid_hard_cases = glob.glob('./tests/data/bid-hard-cases/*.xml')
@@ -45,7 +45,10 @@ def test_bid_hard_case(xml):
     xml_content = open(xml).read()
     metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
 
-    absolute_bids = [b['absolute_burst_id'] for b in metadatas]
-    relative_bids = [b['relative_burst_id'] for b in metadatas]
+    absolute_bids = [b.absolute_burst_id for b in metadatas]
+    relative_bids = [b.relative_burst_id for b in metadatas]
     assert (np.diff(absolute_bids) == 1).all()
     assert (np.diff(relative_bids) == 1).all()
+
+
+# TODO: add test for meta[key]

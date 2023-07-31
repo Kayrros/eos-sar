@@ -3,18 +3,22 @@ from __future__ import annotations
 
 import numpy as np
 
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar import regist, roi, io
+
 from . import doppler_info
 
 
-def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
-                             doppler, **kwargs) -> Sentinel1BurstResample:
+def burst_resample_from_meta(burst_meta: Sentinel1BurstMetadata,
+                             dst_burst_shape: tuple[int, int],
+                             matrix,
+                             doppler: doppler_info.Sentinel1Doppler, **kwargs) -> Sentinel1BurstResample:
     """Create a Sentinel1BurstResample instance from a Sentinel1Model\
     instance and additional parameters.
 
     Parameters
     ----------
-    burst_meta : dict
+    burst_meta : Sentinel1BurstMetadata
         Metadata of the burst to be resampled.
     dst_burst_shape : tuple
         (h, w) shape of the destination burst.
@@ -31,12 +35,12 @@ def burst_resample_from_meta(burst_meta, dst_burst_shape, matrix,
         Instance that can be used to resample the complex burst array.
     """
 
-    return Sentinel1BurstResample(burst_meta['burst_roi'], dst_burst_shape, matrix, doppler,
-                                  burst_meta['lines_per_burst'],
-                                  burst_meta['azimuth_frequency'],
-                                  burst_meta['range_frequency'],
-                                  burst_meta['slant_range_time'],
-                                  burst_meta['burst_times'], **kwargs)
+    return Sentinel1BurstResample(burst_meta.burst_roi, dst_burst_shape, matrix, doppler,
+                                  burst_meta.lines_per_burst,
+                                  burst_meta.azimuth_frequency,
+                                  burst_meta.range_frequency,
+                                  burst_meta.slant_range_time,
+                                  burst_meta.burst_times, **kwargs)
 
 
 class Sentinel1BurstResample(regist.SarResample):
@@ -584,8 +588,10 @@ class ResampledBurstResampler(regist.SarResample):
         return dst_array * reramping_func.reshape(self.dst_shape)
 
 
-def get_read_roi_src_and_resampler(resampler, dst_roi_in_burst,
-                                   burst_orig_src_in_tiff, margin=5):
+def get_read_roi_src_and_resampler(resampler: Sentinel1BurstResample,
+                                   dst_roi_in_burst: roi.Roi,
+                                   burst_orig_src_in_tiff: tuple[int, int],
+                                   margin: int = 5) -> tuple[roi.Roi, Sentinel1BurstResample]:
     """
     Use the resampler already set on the burst (containing burst resampling matrix)
     to get the roi in the source burst. Use burst_orig to get where we need to read.\

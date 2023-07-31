@@ -293,7 +293,7 @@ def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
 
     Parameters
     ----------
-    burst_meta : dict
+    burst_meta : Sentinel1BurstMetadata
         Burst metadata.
     orbit : Orbit
         Orbit instance.
@@ -359,7 +359,7 @@ def s1_corrector_from_meta(burst_meta: Sentinel1BurstMetadata,
 
     Parameters
     ----------
-    burst_meta : dict
+    burst_meta : Sentinel1BurstMetadata
         Burst metadata.
     orbit : Orbit
         Orbit instance.

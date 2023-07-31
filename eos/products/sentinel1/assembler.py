@@ -73,7 +73,7 @@ class Sentinel1Assembler:
                       orbit_provider=None,
                       orbit_degree: int = 11) -> Sentinel1Assembler:
         bsids = set()
-        bursts_per_swath = {}
+        bursts_per_swath: dict[str, list[Sentinel1BurstMetadata]] = {}
         product_id_per_bsid = {}
         for swath in swaths:
             bursts = _get_bursts(products, swath, pol, orbit_provider)
@@ -81,16 +81,16 @@ class Sentinel1Assembler:
 
             for product, metas in zip(products, bursts):
                 for m in metas:
-                    product_id_per_bsid[m['bsid']] = product.product_id
-                    bsids.add(m['bsid'])
+                    product_id_per_bsid[m.bsid] = product.product_id
+                    bsids.add(m.bsid)
 
-        meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
+        meta_per_bsid_per_swath = {swath: {m.bsid: m for m in bursts_per_swath[swath]} for swath in swaths}
         return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree)
 
     def __prepare_orbit(self, orbit_degree: int) -> None:
-        all_state_vectors = [StateVector.from_dict(sv)
+        all_state_vectors = [sv
                              for meta_per_bsid in self.meta_per_bsid_per_swath.values()
-                             for m in meta_per_bsid.values() for sv in m["state_vectors"]]
+                             for m in meta_per_bsid.values() for sv in m.state_vectors]
         unique_state_vectors = sentinel1.metadata._unique_sv(all_state_vectors)
         self.orbit = Orbit(sv=unique_state_vectors, degree=orbit_degree)
 
@@ -117,11 +117,11 @@ class Sentinel1Assembler:
         # compute the approx_geom of the swaths
         bursts = [b for meta_per_bsid in self.meta_per_bsid_per_swath.values()
                   for b in meta_per_bsid.values()]
-        geoms = [b['approx_geom'] for b in bursts]
+        geoms = [b.approx_geom for b in bursts]
         multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
         approx_geom = list(multipolygon.convex_hull.exterior.coords)
 
-        wavelength = bursts[0]['wave_length']
+        wavelength = bursts[0].wave_length
 
         # instanciate the mosaic model
         proj_model = Sentinel1MosaicModel(
@@ -164,7 +164,6 @@ class Sentinel1Assembler:
     def _set_full_bistatic_reference(self) -> None:
         assert 'iw2' in self.meta_per_bsid_per_swath, "No IW2 metadata, full bistatic can't be applied"
 
-        keys = ['slant_range_time', 'samples_per_burst', 'range_frequency']
         self._ref_per_product_id = {}
 
         # loop on 'iw2' bursts and meta
@@ -173,9 +172,11 @@ class Sentinel1Assembler:
 
             # check if product already processed
             if product_id not in self._ref_per_product_id:
-                self._ref_per_product_id[product_id] = {}
-                for key in keys:
-                    self._ref_per_product_id[product_id][key] = bmeta[key]
+                self._ref_per_product_id[product_id] = dict(
+                    slant_range_time=bmeta.slant_range_time,
+                    samples_per_burst=bmeta.samples_per_burst,
+                    range_frequency=bmeta.range_frequency,
+                )
 
     def get_full_bistatic_reference(self, bsid: str):
         if self._ref_per_product_id is None:

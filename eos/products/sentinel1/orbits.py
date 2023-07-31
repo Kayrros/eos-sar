@@ -72,8 +72,8 @@ def apply_new_statevectors_to_bursts(xml_content: Union[str, bytes, io.BytesIO],
     # compute the approximative middle time of the burst/product
     # we will extract all orbit data over a window of 3 minutes centered around this middle
     print(bursts[0].state_vectors)
-    start = min([burst['state_vectors'][0].time for burst in bursts])
-    end = max([burst['state_vectors'][-1].time for burst in bursts])
+    start = min([burst.state_vectors[0].time for burst in bursts])
+    end = max([burst.state_vectors[-1].time for burst in bursts])
     mid = (start + end) / 2
 
     newsvs: list[list[StateVector]] = [[] for _ in bursts]

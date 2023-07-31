@@ -931,7 +931,7 @@ def swath_model_from_bursts_meta(bursts_metadata: list[Sentinel1BurstMetadata],
 
     def alleq(prop):
         burst = bursts_metadata[0]
-        return all(b[prop] == burst[prop] for b in bursts_metadata)
+        return all(getattr(b, prop) == getattr(burst, prop) for b in bursts_metadata)
     assert alleq('range_frequency')
     assert alleq('azimuth_frequency')
     assert alleq('slant_range_time')

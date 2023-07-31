@@ -15,7 +15,7 @@ def test_projection_vs_s1m():
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
     # create an orbit
-    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
+    orbit = Orbit(burst_meta.state_vectors)
     # create a doppler
     doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector
@@ -55,7 +55,7 @@ def test_projection_vs_s1m():
     # atol is set to a big value when testing against s1m master branch
     # because the orbit interpolation and projection is done differently
     np.testing.assert_allclose(s1_cols_pred + s1model.x_min,
-                               cols_pred + burst_meta['burst_roi'][0], atol=1e-2)
+                               cols_pred + burst_meta.burst_roi[0], atol=1e-2)
 
     # check similarity of azimuth time
     azt_pred, _ = bmod.to_azt_rng(rows_pred, cols_pred)
