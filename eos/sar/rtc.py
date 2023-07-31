@@ -1,6 +1,7 @@
 import numpy as np
 
-from eos.sar import model, roi, simulator
+from eos.sar import model, roi
+from eos.sar import simulator  # type: ignore
 
 
 def normalize(raster, simulation, shadow_threshold=0.05, shadow_value=0.0):

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 import math
 
@@ -6,46 +8,85 @@ from eos.sar import utils
 
 class Roi:
 
+    col: int
+    row: int
+    w: int
+    h: int
+
     def __init__(self, col, row, w, h):
         self.set_from_roi(col, row, w, h)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Roi(col={self.col}, row={self.row}, w={self.w}, h={self.h})"
 
-    def copy(self):
+    def copy(self) -> Roi:
         return Roi.from_roi_tuple(self.to_roi())
 
-    def __eq__(self, o):
+    def __eq__(self, o: object) -> bool:
+        if not isinstance(o, Roi):
+            return NotImplemented
         return self.to_roi() == o.to_roi()
 
-    def set_from_roi(self, col, row, w, h):
+    def set_from_roi(self, col: int, row: int, w: int, h: int) -> None:
         self.col = col
         self.row = row
         self.w = w
         self.h = h
 
-    def set_from_roi_tuple(self, roi):
+    def set_from_roi_tuple(self, roi: tuple[int, int, int, int]) -> None:
+        """
+        Parameters
+        ----------
+        roi : tuple
+            (col, row, w, h).
+        """
         self.set_from_roi(*roi)
 
-    def set_from_bounds_tuple(self, bounds):
+    def set_from_bounds_tuple(self, bounds: tuple[int, int, int, int]) -> None:
         self.set_from_roi_tuple(Roi.bounds_to_roi(bounds))
 
     @staticmethod
-    def from_roi_tuple(roi):
+    def from_roi_tuple(roi: tuple[int, int, int, int]) -> Roi:
+        """
+        Parameters
+        ----------
+        roi : tuple
+            (col, row, w, h).
+        """
         return Roi(*roi)
 
     @staticmethod
-    def from_bounds_tuple(bounds):
+    def from_bounds_tuple(bounds: tuple[int, int, int, int]) -> Roi:
+        """
+        Parameters
+        ----------
+        bounds: tuple.
+            (col_min, row_min, col_max, row_max)
+             col_max and row_max are included in the image.
+        """
         return Roi(*Roi.bounds_to_roi(bounds))
 
-    def obj_from_roi_tuple(self, roi, inplace=False):
+    def obj_from_roi_tuple(self, roi: tuple[int, int, int, int], inplace: bool = False) -> Roi:
+        """
+        Parameters
+        ----------
+        roi : tuple
+            (col, row, w, h).
+        """
         if inplace:
             self.set_from_roi_tuple(roi)
             return self
         else:
             return Roi.from_roi_tuple(roi)
 
-    def obj_from_bounds_tuple(self, bounds, inplace=False):
+    def obj_from_bounds_tuple(self, bounds: tuple[int, int, int, int], inplace: bool = False) -> Roi:
+        """
+        Parameters
+        ----------
+        bounds: tuple.
+            (col_min, row_min, col_max, row_max)
+             col_max and row_max are included in the image.
+        """
         if inplace:
             self.set_from_bounds_tuple(bounds)
             return self
@@ -53,7 +94,7 @@ class Roi:
             return Roi.from_bounds_tuple(bounds)
 
     @staticmethod
-    def roi_to_bounds(roi):
+    def roi_to_bounds(roi: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         """
         Convert roi representation to bound representation
 
@@ -72,7 +113,7 @@ class Roi:
         return (col, row, col + w - 1, row + h - 1)
 
     @staticmethod
-    def bounds_to_roi(bounds):
+    def bounds_to_roi(bounds: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
         """
         Convert bounds to roi representation.
 
@@ -93,7 +134,7 @@ class Roi:
         return (col, row, w, h)
 
     @staticmethod
-    def points_to_bbox(rows, cols):
+    def points_to_bbox(rows, cols) -> tuple[int, int, int, int]:
         """
         Derive bounds from a set of points
 
@@ -118,19 +159,19 @@ class Roi:
         bbox_bounds = (col_min, row_min, col_max, row_max)
         return bbox_bounds
 
-    def to_roi(self):
+    def to_roi(self) -> tuple[int, int, int, int]:
         return (self.col, self.row, self.w, self.h)
 
-    def to_bounds(self):
+    def to_bounds(self) -> tuple[int, int, int, int]:
         return Roi.roi_to_bounds(self.to_roi())
 
-    def get_shape(self):
+    def get_shape(self) -> tuple[int, int]:
         return (self.h, self.w)
 
-    def get_origin(self):
+    def get_origin(self) -> tuple[int, int]:
         return self.col, self.row
 
-    def to_bounding_points(self, homogeneous=False):
+    def to_bounding_points(self, homogeneous: bool = False):
         """
         Convert to its bounding points representation.
 
@@ -155,8 +196,7 @@ class Roi:
             points = np.vstack((points, np.ones(4)))
         return points
 
-    def warp(self, matrix, inplace=False):
-
+    def warp(self, matrix, inplace: bool = False) -> Roi:
         # input bounding points
         bound_points = self.to_bounding_points(homogeneous=True)
         # warp points using the matrix
@@ -167,7 +207,7 @@ class Roi:
         return self.obj_from_bounds_tuple(out_bounds,
                                           inplace=inplace)
 
-    def add_margin(self, margin=0, inplace=False):
+    def add_margin(self, margin: int = 0, inplace: bool = False) -> Roi:
         """
         Add a margin in pixels on the boundary of a roi.
 
@@ -186,7 +226,9 @@ class Roi:
         out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin)
         return self.obj_from_roi_tuple(out_roi, inplace=inplace)
 
-    def add_custom_margin(self, custom_margin: tuple[tuple], inplace=False):
+    def add_custom_margin(self,
+                          custom_margin: tuple[tuple[int, int], tuple[int, int]],
+                          inplace=False) -> tuple[Roi, Roi]:
         """
         Add custom margin for all directions of a roi.
 
@@ -210,7 +252,7 @@ class Roi:
         out_roi = (col - left, row - up, w + left + right, h + up + down)
         return self.obj_from_roi_tuple(out_roi, inplace=inplace), Roi(left, up, w, h)
 
-    def assert_valid(self, parent_shape):
+    def assert_valid(self, parent_shape: tuple[int, int]) -> None:
         h_parent, w_parent = parent_shape
         col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
         msg = "Roi outside of parent"
@@ -219,7 +261,7 @@ class Roi:
         assert (col_child_min >= 0), msg
         assert (row_child_min >= 0), msg
 
-    def make_valid(self, parent_shape, inplace=False):
+    def make_valid(self, parent_shape: tuple[int, int], inplace: bool = False) -> Roi:
         """
         If the child roi is not within the boundaries of the parent image dimension,
         modify it to satisfy the condition.
@@ -239,7 +281,7 @@ class Roi:
         parent_roi = Roi(0, 0, w, h)
         return self.clip(parent_roi, inplace=inplace)
 
-    def clip(self, parent_roi, inplace=False):
+    def clip(self, parent_roi: Roi, inplace: bool = False) -> Roi:
         """
         If the child roi is not within the boundaries of the parent image dimension,
         modify it to satisfy the condition.
@@ -271,7 +313,7 @@ class Roi:
             # reset or get new Roi instance
             return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
 
-    def intersects_roi(self, other_roi):
+    def intersects_roi(self, other_roi: Roi) -> bool:
         '''
         Check whether other_roi and self intersect.
 
@@ -287,8 +329,12 @@ class Roi:
         clipped = self.clip(other_roi)
         return clipped.w > 0 and clipped.h > 0
 
-    def warp_valid_roi(self, input_parent_shape, output_parent_shape,
-                       matrix, margin=0, inplace=False):
+    def warp_valid_roi(self,
+                       input_parent_shape: tuple[int, int],
+                       output_parent_shape: tuple[int, int],
+                       matrix,
+                       margin: int = 0,
+                       inplace: bool = False) -> Roi:
         """
         Warp an input roi while making sure it is valid to an output roi, add margin
         and make sure it is valid.
@@ -310,10 +356,9 @@ class Roi:
 
         Returns
         -------
-        out_valid_roi : tuple
-            (col, row, w, h) Validated against the dimensions of the output image
+        out_valid_roi : Roi
+            Roi validated against the dimensions of the output image
             and padded bounding box of the warped roi.
-
         """
 
         # assert input roi within parent boundaries
@@ -332,7 +377,7 @@ class Roi:
                            inplace=True)
         return roi_obj
 
-    def translate_roi(self, col, row, inplace=False):
+    def translate_roi(self, col: int, row: int, inplace: bool = False) -> Roi:
         """
         Translate a region of interest.
 

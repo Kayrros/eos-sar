@@ -46,10 +46,10 @@ def fourier_zoom(image, z=2):
 
     # clip values to avoid overflow when casting to input dtype
     if np.issubdtype(image.dtype, np.integer):
-        i = np.iinfo(image.dtype)
+        i = np.iinfo(image.dtype)  # type: ignore
         out = np.round(out)
     else:
-        i = np.finfo(image.dtype)
+        i = np.finfo(image.dtype)  # type: ignore
     out = np.clip(out, i.min, i.max)
 
     # return the image casted to the input data type

@@ -5,7 +5,7 @@ import logging
 import re
 import dataclasses
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 from eos.products.sentinel1 import metadata
 
@@ -58,22 +58,22 @@ class Sentinel1SLCProductInfo:
 
     product_id: str
 
-    def __init__(self, product_id):
+    def __init__(self, product_id: str):
         self.product_id = product_id
 
-    def get_image_reader(self, swath, pol):
+    def get_image_reader(self, swath: str, pol: str):
         raise NotImplementedError
 
-    def get_xml_annotation(self, swath, pol):
+    def get_xml_annotation(self, swath: str, pol: str) -> str:
         raise NotImplementedError
 
-    def get_xml_calibration(self, swath, pol):
+    def get_xml_calibration(self, swath: str, pol: str) -> str:
         raise NotImplementedError
 
-    def get_xml_noise(self, swath, pol):
+    def get_xml_noise(self, swath: str, pol: str) -> str:
         raise NotImplementedError
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         name = self.__class__.__name__
         return f'{name}(product_id="{self.product_id}")'
 
@@ -82,29 +82,32 @@ class Sentinel1GRDProductInfo:
 
     product_id: str
 
-    def __init__(self, product_id):
+    def __init__(self, product_id: str):
         self.product_id = product_id
 
-    def get_image_reader(self, pol):
+    def get_image_reader(self, pol: str):
         raise NotImplementedError
 
-    def get_xml_annotation(self, pol):
+    def get_xml_annotation(self, pol: str) -> str:
         raise NotImplementedError
 
-    def get_xml_calibration(self, pol):
+    def get_xml_calibration(self, pol: str) -> str:
         raise NotImplementedError
 
-    def get_xml_noise(self, pol):
+    def get_xml_noise(self, pol: str) -> str:
         raise NotImplementedError
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         name = self.__class__.__name__
         return f'{name}(product_id="{self.product_id}")'
 
 
 class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
-    def __init__(self, safe_path):
+    safe_path: str
+    safe_format: SafeFormat
+
+    def __init__(self, safe_path: str):
         """
         Instantiate a SAFE product info.
 
@@ -134,18 +137,18 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
         tiff_path = os.path.join(self.safe_path, tiff_path)
         return io.open_image(tiff_path)
 
-    def get_xml_annotation(self, swath: str, pol: str):
+    def get_xml_annotation(self, swath: str, pol: str) -> str:
         xml_path = self.safe_format.search(swath, pol, "annotation/")
         xml_path = os.path.join(self.safe_path, xml_path)
         return io.read_xml_file(xml_path)
 
-    def get_xml_calibration(self, swath: str, pol: str):
+    def get_xml_calibration(self, swath: str, pol: str) -> str:
         calibration_xml_path = self.safe_format.search(swath, pol,
                                                        "annotation/calibration/calibration-")
         calibration_xml_path = os.path.join(self.safe_path, calibration_xml_path)
         return io.read_xml_file(calibration_xml_path)
 
-    def get_xml_noise(self, swath: str, pol: str):
+    def get_xml_noise(self, swath: str, pol: str) -> str:
         noise_xml_path = self.safe_format.search(swath, pol,
                                                  "annotation/calibration/noise-")
         noise_xml_path = os.path.join(self.safe_path, noise_xml_path)
@@ -165,30 +168,33 @@ else:
     else:
         class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
-            def __init__(self, item, index=True):
+            def __init__(self, item, index: bool = True):
                 super().__init__(item.id)
                 self.item = item
                 self.burstem = Burster.from_item(self.item)
                 if index:
                     self.burstem.index()
 
-            def get_image_reader(self, swath, pol):
+            def get_image_reader(self, swath: str, pol: str):
                 return BursterSwathReader(self.burstem, swath, pol)
 
-            def get_xml_annotation(self, swath, pol):
+            def get_xml_annotation(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f'{swath.upper()}_{pol.upper()}_ANNOTATION_XML'
-                return self.burstem.download_as_bytes(xml_annotation_key)
+                return self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
 
-            def get_xml_calibration(self, swath, pol):
+            def get_xml_calibration(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f'{swath.upper()}_{pol.upper()}_CALIBRATION_XML'
-                return self.burstem.download_as_bytes(xml_annotation_key)
+                return self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
 
-            def get_xml_noise(self, swath, pol):
+            def get_xml_noise(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f'{swath.upper()}_{pol.upper()}_NOISE_XML'
-                return self.burstem.download_as_bytes(xml_annotation_key)
+                return self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
 
             @staticmethod
-            def from_product_id(product_id, index=True, collection=None, source=None):
+            def from_product_id(product_id: str,
+                                index: bool = True,
+                                collection: Optional[Any] = None,
+                                source: Optional[str] = None) -> PhoenixSentinel1ProductInfo:
                 if collection is None:
                     collection = phoenix.catalog.Client() \
                         .get_collection('esa-sentinel-1-csar-l1-slc') \
@@ -205,25 +211,28 @@ else:
             self.item = item
             self.image_opener = image_opener
 
-        def get_image_reader(self, pol):
+        def get_image_reader(self, pol: str):
             key = pol.upper()
             uri = self.item.assets.uri(key)
             return self.image_opener(uri)
 
-        def get_xml_annotation(self, pol):
+        def get_xml_annotation(self, pol: str) -> str:
             xml_annotation_key = f'{pol.upper()}_ANNOTATION'
-            return self.item.assets.download_as_bytes(xml_annotation_key)
+            return self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
 
-        def get_xml_calibration(self, pol):
+        def get_xml_calibration(self, pol: str) -> str:
             xml_annotation_key = f'{pol.upper()}_CALIBRATION'
-            return self.item.assets.download_as_bytes(xml_annotation_key)
+            return self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
 
-        def get_xml_noise(self, pol):
+        def get_xml_noise(self, pol: str) -> str:
             xml_annotation_key = f'{pol.upper()}_NOISE'
-            return self.item.assets.download_as_bytes(xml_annotation_key)
+            return self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
 
         @staticmethod
-        def from_product_id(product_id, image_opener=io.open_image, collection=None, source=None):
+        def from_product_id(product_id: str,
+                            image_opener=io.open_image,
+                            collection: Optional[Any] = None,
+                            source: Optional[str] = None) -> PhoenixSentinel1GRDProductInfo:
             if collection is None:
                 collection = phoenix.catalog.Client() \
                     .get_collection('esa-sentinel-1-csar-l1-grd') \
@@ -264,18 +273,18 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
         }
         return io.open_image_osio(tiff_path, **reader_options)
 
-    def get_xml_annotation(self, swath: str, pol: str):
+    def get_xml_annotation(self, swath: str, pol: str) -> str:
         xml_path = self.safe_format.search(swath, pol, "annotation/")
         xml_path = os.path.join(self.s3_path, xml_path)
         return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=True)
 
-    def get_xml_calibration(self, swath: str, pol: str):
+    def get_xml_calibration(self, swath: str, pol: str) -> str:
         calibration_xml_path = self.safe_format.search(swath, pol,
                                                        "annotation/calibration/calibration-")
         calibration_xml_path = os.path.join(self.s3_path, calibration_xml_path)
         return io.read_xml_file(calibration_xml_path, s3_client=self.s3_client, requester_pays=True)
 
-    def get_xml_noise(self, swath: str, pol: str):
+    def get_xml_noise(self, swath: str, pol: str) -> str:
         noise_xml_path = self.safe_format.search(swath, pol,
                                                  "annotation/calibration/noise-")
         noise_xml_path = os.path.join(self.s3_path, noise_xml_path)

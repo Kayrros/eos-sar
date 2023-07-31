@@ -26,7 +26,7 @@ def _compute_filtered_magnitude(im, filter_size, spatial_filter):
 
 def _modify_borders(coherence, filter_size):
     if isinstance(filter_size, tuple):
-        hs = list(map(lambda f: f // 2, filter_size))
+        hs = tuple(map(lambda f: f // 2, filter_size))
     else:
         hs = (filter_size // 2, filter_size // 2)
     if hs[0]:

@@ -43,7 +43,7 @@ class SensorModel(abc.ABC):
                      x_init=None, y_init=None, z_init=None):
         pass
 
-    def localize_without_alt(self, row, col, max_iter=5, eps=1,
+    def localize_without_alt(self, row, col, max_iter=5, eps=1.0,
                              alt_min=-1000, alt_max=9000, num_alt=100,
                              verbosity=False, elev=elevation):
         """

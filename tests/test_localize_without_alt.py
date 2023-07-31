@@ -66,7 +66,7 @@ def test_localize_without_alt():
     approx_geom, alts, masks = bmod.get_approx_geom(roi_geom)
     assert len(approx_geom) == 4
     # reproject and compare with the ground truth
-    projected = [bmod.projection(*a, alt) for (a, alt) in zip(approx_geom, alts)]
+    projected = [bmod.projection(lon, lat, alt) for ((lon, lat), alt) in zip(approx_geom, alts)]
 
     np.testing.assert_allclose(rows_roi, [p[0] for p in projected], atol=1e-2)
     np.testing.assert_allclose(cols_roi, [p[1] for p in projected], atol=1e-2)

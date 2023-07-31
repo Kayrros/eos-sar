@@ -93,7 +93,7 @@ def plot_freq_profile(img, axis=1, fs=1, title='', result_dir=None):
     n = len(profile)
     frequency = np.fft.fftshift(np.fft.fftfreq(n, 1 / fs))
 
-    indices = np.where(profile > np.percentile(profile, 95) * 0.05)[0]
+    indices = list(np.where(profile > np.percentile(profile, 95) * 0.05)[0])
     if len(indices) == 0:
         indices = [0, -1]
 
