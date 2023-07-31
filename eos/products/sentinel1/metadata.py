@@ -29,9 +29,8 @@ T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
 # TODO: cannot be frozen because of apply_new_statevectors_to_bursts
-@dataclass # (frozen=True)
+@dataclass  # (frozen=True)
 class Sentinel1BurstMetadata:
-
     mission_id: str
     absolute_orbit_number: int
     relative_orbit_number: int
@@ -40,7 +39,6 @@ class Sentinel1BurstMetadata:
     slice_count: int
     orbit_pass: str
     swath: str
-
     relative_burst_id: int
     azimuth_frequency: float
     range_frequency: float
@@ -68,11 +66,11 @@ class Sentinel1BurstMetadata:
     approx_altitude: list[float]
     bsid: str
 
-    # def __getitem__(self, name: str) -> Any:
-        # import warnings
-        # warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
-                      # DeprecationWarning)
-        # return self.__dict__[name]
+    def __getitem__(self, name: str) -> Any:
+        import warnings
+        warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
+                      DeprecationWarning)
+        return self.__dict__[name]
 
     def to_dict(self) -> dict[str, Any]:
         d = self.__dict__.copy()

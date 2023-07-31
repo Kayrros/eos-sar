@@ -51,4 +51,10 @@ def test_bid_hard_case(xml):
     assert (np.diff(relative_bids) == 1).all()
 
 
-# TODO: add test for meta[key]
+def test_deprecated_dict():
+    xml = './tests/data/S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650.SAFE/annotation/s1a-iw1-slc-vh-20210216t151207-20210216t151232-036617-044d40-001.xml'
+    xml_content = open(xml).read()
+    meta = sentinel1.metadata.extract_burst_metadata(xml_content, 0)
+    with pytest.warns(DeprecationWarning):
+        bsid = meta['bsid']
+    assert meta.bsid == bsid
