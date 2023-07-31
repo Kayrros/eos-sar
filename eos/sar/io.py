@@ -61,6 +61,27 @@ def open_image_osio(uri, **reader_options):
     return rasterio.open(fh)
 
 
+def open_image_fsspec(uri, **extra_args):
+    """
+    Open an image using fsspec.
+
+    Parameters
+    ----------
+    uri : str
+        uri to the image.
+    extra_args: parameters passed to fsspec.open
+
+    Returns
+    -------
+    image_reader : rasterio.DatasetReader
+        opened image.
+    """
+    import fsspec
+
+    with fsspec.open(uri, mode="rb", compression=None, **extra_args) as f:
+        return rasterio.open(f)
+
+
 def read_xml_file(xml_path, s3_client=None, requester_pays=False):
     """
     Read the content of a local or remote (S3) xml file.
