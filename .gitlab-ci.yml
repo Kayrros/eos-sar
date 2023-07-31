@@ -28,6 +28,13 @@ checkstyle:
   script:
     - flake8 --show-source .
 
+mypy:
+  stage: test
+  before_script:
+    - pip install mypy~=1.4.0 numpy
+  script:
+    - mypy --install-types --non-interactive --ignore-missing-imports --check-untyped-defs eos/ tests/ usage/
+
 fakedeploy:
   stage: test
   before_script:

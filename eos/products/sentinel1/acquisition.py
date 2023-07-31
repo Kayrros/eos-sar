@@ -18,8 +18,8 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
                  slant_range_time_iw1: float,
                  slant_range_time_iw2: float,
                  slant_range_time_iw3: float,
-                 bursts_rois: list[tuple],
-                 bursts_times: list[tuple],
+                 bursts_rois: list[tuple[int, int, int, int]],
+                 bursts_times: list[tuple[float, float, float]],
                  bsids: list[str]):
         self.range_frequency = range_frequency
         self.azimuth_frequency = azimuth_frequency
@@ -108,7 +108,7 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
         self._compute_cuts()
 
     def _compute_cuts(self):
-        bsids_per_swath = {}
+        bsids_per_swath: dict[str, list[str]] = {}
         for bsid in self.bsids:
             swath = bsid.split('_')[1].lower()
             bsids_per_swath.setdefault(swath, []).append(bsid)
@@ -174,8 +174,7 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
                 self._inner_burst_roi[bsid] = inner_roi
                 self._outer_burst_roi[bsid] = burst_roi
 
-    def get_debursting_rois(self, roi: Roi):
-
+    def get_debursting_rois(self, roi: Roi) -> tuple[set[str], dict[str, Roi], dict[str, Roi]]:
         bsids = set()
         within_burst_rois = {}
         write_rois = {}

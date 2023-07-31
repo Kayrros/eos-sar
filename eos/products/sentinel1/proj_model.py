@@ -1,4 +1,6 @@
 """Sentinel1 models for projection/localization."""
+from __future__ import annotations
+
 import numpy as np
 import pyproj
 from eos.sar import model, range_doppler, coordinates, roi, utils
@@ -48,9 +50,9 @@ def grd_model_from_meta(meta, orbit,
     return proj_model
 
 
-def burst_model_from_burst_meta(burst_meta, orbit,
+def burst_model_from_burst_meta(burst_meta, orbit: Orbit,
                                 coord_corrector=projection_correction.Corrector(),
-                                **kwargs):
+                                **kwargs) -> Sentinel1BurstModel:
     """Create a Sentinel1BurstModel from a burst meta dict.
 
     Parameters
@@ -900,7 +902,7 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         return model
 
 
-def swath_model_from_bursts_meta(bursts_metadata, orbit, **kwargs):
+def swath_model_from_bursts_meta(bursts_metadata, orbit: Orbit, **kwargs) -> Sentinel1SwathModel:
     """
     Generate Sentinel1SwathModel instance from list of bursts metadata.
 
@@ -1067,7 +1069,7 @@ def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,
 
         # project points that should fall in secondary burst
         # (according to previous primary projection)
-        azt_no_correc[bsid], rng_no_correc[bsid], incidence = proj_model.projection(
+        azt_no_correc[bsid], rng_no_correc[bsid], _ = proj_model.projection(
             gx[burst_mask], gy[burst_mask], gz[burst_mask], crs='epsg:4978', as_azt_rng=True)
 
         # create geo_im_pt

@@ -3,7 +3,7 @@ import xmltodict
 import datetime
 
 from eos.sar.roi import Roi
-from . import _calibration as _cal
+from . import _calibration as _cal  # type: ignore
 
 
 class CalibrationError(Exception):
@@ -143,7 +143,7 @@ def _read_lut_from_calibration_xml(xml):
     # extract lists of points and values
     lines = []
     pixels = []
-    values = {
+    values: dict[str, list[list[float]]] = {
         "sigmaNought": [],
         "betaNought": [],
         "gamma": [],

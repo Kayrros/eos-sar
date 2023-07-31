@@ -163,8 +163,8 @@ def simulate_set_of_maximas(h, w, step=3, p=0.1):
     candidate_cols = np.arange(0, w - step - 1, step)
     Candidate_cols, Candidate_rows = np.meshgrid(
         candidate_cols, candidate_rows)
-    mask = 0
-    while not np.any(mask):
+    mask = None
+    while mask is None or not np.any(mask):
         # at least one location validated for simulation
         mask = np.random.binomial(
             1, p=p, size=Candidate_cols.shape).astype(bool)
