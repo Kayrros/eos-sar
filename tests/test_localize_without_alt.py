@@ -3,7 +3,7 @@ import os
 import shapely
 from eos.sar import model, io, roi
 from eos.products import sentinel1
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 
 
 def test_localize_without_alt():
@@ -21,7 +21,7 @@ def test_localize_without_alt():
         xml_content, burst_id)
 
     # create an orbit
-    orbit = Orbit(burst_meta["state_vectors"])
+    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, orbit)
     rows = np.round(np.random.rand(5) * 1000)

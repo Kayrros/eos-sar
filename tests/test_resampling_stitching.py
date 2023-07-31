@@ -2,7 +2,7 @@ import numpy as np
 import os
 import eos.products.sentinel1 as s1
 import eos.sar
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 import pytest
 
 
@@ -83,7 +83,7 @@ def dem(inputs):
 
 def _get_objects(burst_meta, ref_meta=None):
     # create an orbit
-    orbit = Orbit(burst_meta["state_vectors"])
+    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
     # create a doppler
     doppler = s1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector

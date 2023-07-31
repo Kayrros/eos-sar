@@ -5,7 +5,7 @@ have s1m installed on your system."""
 import numpy as np
 import s1m
 from eos.products import sentinel1
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 
 
 def test_projection_vs_s1m():
@@ -15,7 +15,7 @@ def test_projection_vs_s1m():
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
     # create an orbit
-    orbit = Orbit(burst_meta["state_vectors"])
+    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
     # create a doppler
     doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector

@@ -1,25 +1,63 @@
 """Encapsulation of ephemerides position and speed interpolation."""
+from __future__ import annotations
 
+from dataclasses import dataclass, field
+from typing import Any
+import warnings
+
+import numpy as np
+from numpy.typing import NDArray
 from eos.sar import cheb
 
 
+@dataclass(frozen=True)
+class StateVector:
+    time: float
+    position: tuple[float, float, float]
+    velocity: tuple[float, float, float]
+
+    def __getitem__(self, name: str) -> Any:
+        warnings.warn("Indexing a StateVector is deprecated (they no longer are dict).",
+                      DeprecationWarning)
+        return self.__dict__[name]
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(
+            time=self.time,
+            position=self.position,
+            velocity=self.velocity,
+        )
+
+    @staticmethod
+    def from_dict(dict: dict[str, Any]) -> StateVector:
+        return StateVector(
+            time=dict["time"],
+            position=dict["position"],
+            velocity=dict["velocity"],
+        )
+
+
+@dataclass
 class Orbit:
-    """Orbit object encapsulating the position variation with time, \
-    as well as the possibility to get the nth derivative (for speed \
+    """Orbit object encapsulating the position variation with time,
+    as well as the possibility to get the nth derivative (for speed
     and acceleration for ex)."""
 
-    def __init__(self, state_vectors, degree=11):
-        """Instantiate orbit object.
+    sv: list[StateVector]
+    """ List of state vectors (time, position, velocity) """
+    degree: int = 11
+    """ Degree of the polynomial """
+    coeffs: list[NDArray[np.float64]] = field(init=False)
+    cheb_domain: tuple[float, float] = field(init=False)
 
-        Parameters
-        ----------
-        state_vectors: list of dict
-                        List of state vectors (time, position, velocity)
-        degree: int
-                Degree of the polynomial
-        """
-        self.sv = state_vectors
-        self.degree = degree
+    def __post_init__(self) -> None:
+        # this is a temporary workaround, since the interface of Orbit.__init__ changed
+        # from accepting a list[dict] to a list[StateVector]
+        if self.sv and isinstance(self.sv[0], dict):
+            self.sv = [StateVector.from_dict(s) for s in self.sv]  # type: ignore
+            warnings.warn("The Orbit constructor will no longer accept a list of dict for the sv parameter. "
+                          "Use StateVector.from_dict or Orbit.from_dict(dict(state_vectors=sv)) instead.",
+                          DeprecationWarning)
         self.fit()
 
     def fit(self):
@@ -33,8 +71,8 @@ class Orbit:
                 self.coeffs[-1], self.cheb_domain, der=1))
 
     def evaluate(self, azt, order=0):
-        """Evaluate the nth order derivative of the position of satellite\
-            along the orbit at time azt.
+        """Evaluate the nth order derivative of the position of satellite
+        along the orbit at time azt.
 
         Parameters
         ----------
@@ -56,13 +94,15 @@ class Orbit:
                 self.coeffs[0], self.cheb_domain, der=order)
         return cheb.evaluate_cheb_interp(azt, coeff, self.cheb_domain)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         metadata = dict(
-            state_vectors=self.sv,
+            state_vectors=[s.to_dict() for s in self.sv],
             degree=self.degree,
         )
         return metadata
 
     @staticmethod
-    def from_dict(dict):
-        return Orbit(**dict)
+    def from_dict(dict: dict[str, Any]) -> Orbit:
+        sv = [StateVector.from_dict(s) for s in dict["state_vectors"]]
+        degree = dict.get("degree", 11)
+        return Orbit(sv=sv, degree=degree)

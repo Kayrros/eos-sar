@@ -9,7 +9,7 @@ from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter
 from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel, Sentinel1GRDModel, Sentinel1MosaicModel, Sentinel1SwathModel
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 from eos.sar.projection_correction import Corrector, ImageCorrection
 from eos.sar.roi import Roi
 import eos.sar
@@ -84,10 +84,11 @@ class Sentinel1Assembler:
         return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree)
 
     def __prepare_orbit(self, orbit_degree: int) -> None:
-        all_state_vectors = [sv for meta_per_bsid in self.meta_per_bsid_per_swath.values()
+        all_state_vectors = [StateVector.from_dict(sv)
+                             for meta_per_bsid in self.meta_per_bsid_per_swath.values()
                              for m in meta_per_bsid.values() for sv in m["state_vectors"]]
         unique_state_vectors = sentinel1.metadata._unique_sv(all_state_vectors)
-        self.orbit = Orbit(unique_state_vectors, orbit_degree)
+        self.orbit = Orbit(sv=unique_state_vectors, degree=orbit_degree)
 
     def get_primary_cutter(self) -> PrimarySentinel1AcquisitionCutter:
         if self._prim_cutter is None:
@@ -379,7 +380,8 @@ class Sentinel1GRDAssembler:
         self._rois = rois
         self._rois_orig = rois_orig
         self._meta = meta
-        self.orbit = Orbit(meta["state_vectors"], orbit_degree)
+        svs = [StateVector.from_dict(s) for s in meta["state_vectors"]]
+        self.orbit = Orbit(svs, degree=orbit_degree)
 
     @staticmethod
     def from_products(products: Sequence[Sentinel1GRDProductInfo],

@@ -9,7 +9,10 @@ polynomials. Same notations are used. Additional notations are:
 The following does not assume the samples are equidistant in time. It may, or
 may not, be better... Usually, the best fit is performed at polynomial roots.
 """
+from typing import Sequence
 import numpy as np
+
+from eos.sar.orbit import StateVector
 
 
 def chebpoly(order):
@@ -169,7 +172,7 @@ def matrix_C2(T, W, K):
                      [U]])
 
 
-def matrix_f(state_vectors):
+def matrix_f(state_vectors: Sequence[StateVector]):
     """Compute the matrix f.
 
     Parameters
@@ -188,18 +191,18 @@ def matrix_f(state_vectors):
 
     f = np.zeros((2 * K, 3))
 
-    t0 = state_vectors[0]['time']
-    t1 = state_vectors[-1]['time']
+    t0 = state_vectors[0].time
+    t1 = state_vectors[-1].time
 
     delta_t = t1 - t0
 
     samples = np.zeros((K,))
 
     for k, i in enumerate(reversed(range(K))):
-        f[2 * k, :] = np.array(state_vectors[i]['position'])
-        f[2 * k + 1, :] = np.array(state_vectors[i]['velocity']) * delta_t / 2
+        f[2 * k, :] = np.array(state_vectors[i].position)
+        f[2 * k + 1, :] = np.array(state_vectors[i].velocity) * delta_t / 2
 
-        samples[i] = -1 + 2 * (state_vectors[i]['time'] - t0) / (t1 - t0)
+        samples[i] = -1 + 2 * (state_vectors[i].time - t0) / (t1 - t0)
 
     return f, samples, (t0, t1)
 
@@ -256,7 +259,7 @@ def poly_B(A, N):
     return coeffs
 
 
-def build_cheb_interp(state_vectors, N):
+def build_cheb_interp(state_vectors: Sequence[StateVector], N):
     """.
 
     Parameters

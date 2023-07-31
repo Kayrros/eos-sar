@@ -2,7 +2,7 @@ import os
 import numpy as np
 from eos.sar import io, dem_to_radar, regist, roi
 from eos.products import sentinel1
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 
 
 def test_radar_coding():
@@ -26,7 +26,7 @@ def test_radar_coding():
         xml_content, burst_id)
 
     # create an orbit
-    orbit = Orbit(burst_meta["state_vectors"])
+    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
     # create a doppler
     doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector
