@@ -1,12 +1,14 @@
 """Fill needed metadata of a burst or a product."""
 import math
 import datetime
+from typing import Sequence
 import xmltodict
 import numpy as np
 import logging
 import shapely.geometry
 
 from eos.sar import const
+from eos.sar.orbit import StateVector
 
 logger = logging.Logger(__name__)
 
@@ -471,7 +473,8 @@ def assemble_multiple_grd_products_into_meta(metas):
 
     # combine state vectors
     all_state_vectors = [sv for m in metas for sv in m["state_vectors"]]
-    meta["state_vectors"] = _unique_sv(all_state_vectors)
+    # TODO: this line is ugly, but will get better once the metas will be classes and not dicts
+    meta["state_vectors"] = [s.to_dict() for s in _unique_sv([StateVector.from_dict(s) for s in all_state_vectors])]
 
     # for now, we do not support assembling these quantities
     del meta["az_fm_info"]
@@ -523,35 +526,33 @@ def assemble_multiple_grd_products_into_meta(metas):
     return meta
 
 
-def _unique_sv(state_vectors: list[dict]):
+def _unique_sv(state_vectors: Sequence[StateVector]) -> list[StateVector]:
     """
     Get a list of unique state vectors from a list of redundant state_vectors.
 
     Parameters
     ----------
-    state_vectors : list[dict]
-        Each state vector is a dict with time, position, velocity of satellite.
+    state_vectors : list[StateVector]
         Here, state vectors may be duplicates.
 
     Returns
     -------
-    unique_state_vectors : list[dict]
-        Each state vector is a dict with time, position, velocity of satellite.
+    unique_state_vectors : list[StateVector]
         Here state vectors have been filtered and are unique.
 
     """
-    state_vectors = sorted(state_vectors, key=lambda x: x["time"])
+    state_vectors = sorted(state_vectors, key=lambda x: x.time)
 
     unique_state_vectors = [state_vectors[0]]
     for sv in state_vectors[1:]:
-        if sv["time"] - unique_state_vectors[-1]["time"]:
+        if sv.time - unique_state_vectors[-1].time:
             # different sample
             unique_state_vectors.append(sv)
 
     return unique_state_vectors
 
 
-def unique_sv_from_bursts_meta(bursts_meta: list[dict]):
+def unique_sv_from_bursts_meta(bursts_meta: list[dict]) -> list[StateVector]:
     """
     Get an aggregated list of state_vectors from bursts_meta
 
@@ -565,7 +566,9 @@ def unique_sv_from_bursts_meta(bursts_meta: list[dict]):
     unique_state_vectors: list[dict]
         Each element is a unique state_vectors
     """
-    state_vectors = [sv for bmeta in bursts_meta for sv in bmeta["state_vectors"]]
+    state_vectors = [StateVector.from_dict(sv)
+                     for bmeta in bursts_meta
+                     for sv in bmeta["state_vectors"]]
     return _unique_sv(state_vectors)
 
 

@@ -3,9 +3,10 @@
 import numpy as np
 from eos.sar import const
 from eos.sar import geoconfig
+from eos.sar.orbit import Orbit
 
 
-def iterative_projection(orbit, gx, gy, gz, azt_init=None,
+def iterative_projection(orbit: Orbit, gx, gy, gz, azt_init=None,
                          max_iterations=20, tol=1.2 * 1e-7):
     """Solves the point of closest approach using the Newton-Raphson algorithm.
 
@@ -33,7 +34,7 @@ def iterative_projection(orbit, gx, gy, gz, azt_init=None,
     points = np.column_stack((gx, gy, gz))
     if azt_init is None:
         # determine which state vectors to use
-        sv_times = [s['time'] for s in orbit.sv]
+        sv_times = [s.time for s in orbit.sv]
         start = min(sv_times)
         end = max(sv_times)
         # initial guess
@@ -64,7 +65,9 @@ def iterative_projection(orbit, gx, gy, gz, azt_init=None,
     return azt_curr, rng, i
 
 
-def ascending_node_crossing_time(orbit, max_iterations=20, tol=1.2 * 1e-7):
+def ascending_node_crossing_time(orbit: Orbit,
+                                 max_iterations: int = 20,
+                                 tol: float = 1.2 * 1e-7) -> float:
     """Find the azimuth time solving `orbit(azt).z = 0`.
     The orbit instance should be defined around the solution.
 
@@ -84,7 +87,7 @@ def ascending_node_crossing_time(orbit, max_iterations=20, tol=1.2 * 1e-7):
         time of crossing the ascending node
     """
     # determine which state vectors to use
-    sv_times: list[float] = [s['time'] for s in orbit.sv]
+    sv_times: list[float] = [s.time for s in orbit.sv]
     start = min(sv_times)
     end = max(sv_times)
 
@@ -104,7 +107,7 @@ def ascending_node_crossing_time(orbit, max_iterations=20, tol=1.2 * 1e-7):
     return azt_curr
 
 
-def get_E_dE(azt, orbit, M):
+def get_E_dE(azt, orbit: Orbit, M):
     """Get the function that needs to be 0 and its derivative.
 
     Parameters
@@ -154,7 +157,7 @@ def get_E_dE(azt, orbit, M):
 # localization functions
 
 
-def iterative_localization(orbit, azt, rng, alt, gxyz_init,
+def iterative_localization(orbit: Orbit, azt, rng, alt, gxyz_init,
                            max_iterations=10000, tol=0.01):
     """Solves the Range-Doppler equations for a set of points using \
         the Newton-Raphson method.
