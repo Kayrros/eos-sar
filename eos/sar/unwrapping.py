@@ -157,7 +157,7 @@ def solve_smcf(residue: NDArray[np.int8]):
     Theorem (Integrality): Any minimum cost network flow problem instance whose demands are
     all integers has an optimal solution with integer flow on each edge.
 
-    Any, care must be taken for the costs in the future, not to use floats, quantize in integers...
+    Anyway, care must be taken for the costs in the future, not to use floats, quantize in integers...
 
     Parameters
     ----------
@@ -212,7 +212,8 @@ def solve_smcf(residue: NDArray[np.int8]):
 
 def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
     """
-
+    Get the integer 2pi ambiguities from the flow arrays, assuming the
+    flows are ordered [x1_plus, x1_minus, x2_minus, x2_plus]
 
     Parameters
     ----------
@@ -240,23 +241,23 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
 
     end = (N - 1) * M
     # left -> right
-    x_1_plus = flows[:end].reshape(N - 1, M)
+    x1_plus = flows[:end].reshape(N - 1, M)
 
     start = end
     end = 2 * start
     # right -> left
-    x_1_minus = flows[start:end].reshape(N - 1, M)
+    x1_minus = flows[start:end].reshape(N - 1, M)
 
     # vertical flows correspond to horizontal gradients
 
     start = end
     end = start + N * (M - 1)
     # up -> down
-    x_2_minus = flows[start:end].reshape(N, M - 1)
+    x2_minus = flows[start:end].reshape(N, M - 1)
 
     start = end
     # down -> up
-    x_2_plus = flows[start:].reshape(N, M - 1)
+    x2_plus = flows[start:].reshape(N, M - 1)
 
     # some assertions
 
@@ -264,20 +265,20 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
     if you change the mcf solver, such that the solution is not int64
     you need to check that it is integer
     for instance do the following
-    x_1_plus = round_assert_almost_int(x_1_plus)
-    x_1_minus = round_assert_almost_int(x_1_minus)
-    x_2_plus = round_assert_almost_int(x_2_plus)
-    x_2_minus = round_assert_almost_int(x_2_minus)
+    x1_plus = round_assert_almost_int(x1_plus)
+    x1_minus = round_assert_almost_int(x1_minus)
+    x2_plus = round_assert_almost_int(x2_plus)
+    x2_minus = round_assert_almost_int(x2_minus)
     """
 
     # assert at least one is 0
-    assert np.all(np.logical_or(x_1_plus == 0, x_1_minus == 0)
+    assert np.all(np.logical_or(x1_plus == 0, x1_minus == 0)
                   ), "horizontal flow error: at leat one flow from + and - should be zero"
-    assert np.all(np.logical_or(x_2_plus == 0, x_2_minus == 0)
+    assert np.all(np.logical_or(x2_plus == 0, x2_minus == 0)
                   ), "vertical flow error: at leat one flow from + and - should be zero"
 
-    K1 = x_1_plus - x_1_minus
-    K2 = x_2_plus - x_2_minus
+    K1 = x1_plus - x1_minus
+    K2 = x2_plus - x2_minus
 
     return K1, K2
 
