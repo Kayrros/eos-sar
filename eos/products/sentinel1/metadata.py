@@ -28,7 +28,7 @@ N_bursts_per_cycle = 375887
 T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
-# TODO: cannot be frozen because of apply_new_statevectors_to_bursts
+# TODO: cannot be frozen because of apply_new_statevectors_to_slc_bursts
 @dataclass  # (frozen=True)
 class Sentinel1BurstMetadata:
     mission_id: str
@@ -505,6 +505,8 @@ def extract_grd_metadata(xml):
     o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
     o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
 
+    o["state_vectors"] = [StateVector.from_dict(s) for s in o["state_vectors"]]
+
     return o
 
 
@@ -534,8 +536,7 @@ def assemble_multiple_grd_products_into_meta(metas):
 
     # combine state vectors
     all_state_vectors = [sv for m in metas for sv in m["state_vectors"]]
-    # TODO: this line is ugly, but will get better once the metas will be classes and not dicts
-    meta["state_vectors"] = [s.to_dict() for s in _unique_sv([StateVector.from_dict(s) for s in all_state_vectors])]
+    meta["state_vectors"] = _unique_sv(all_state_vectors)
 
     # for now, we do not support assembling these quantities
     del meta["az_fm_info"]
