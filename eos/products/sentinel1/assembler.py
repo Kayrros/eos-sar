@@ -8,6 +8,7 @@ from eos.products import sentinel1
 from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter, SecondarySentinel1AcquisitionCutter
 from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel, Sentinel1GRDModel, Sentinel1MosaicModel, Sentinel1SwathModel
 from eos.sar.orbit import Orbit, StateVector
 from eos.sar.projection_correction import Corrector, ImageCorrection
@@ -18,7 +19,10 @@ from eos.dem import DEMSource
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo, Sentinel1GRDProductInfo
 
 
-def _get_bursts(products, swath, pol, orbit_provider):
+def _get_bursts(products: Sequence[Sentinel1SLCProductInfo],
+                swath: str,
+                pol: str,
+                orbit_provider: Optional[Any]) -> list[list[Sentinel1BurstMetadata]]:
     xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
     bursts = [sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls]
 
@@ -47,7 +51,7 @@ def _swath_from_bsid(bsid: str) -> str:
 
 class Sentinel1Assembler:
 
-    meta_per_bsid_per_swath: dict[str, dict[str, dict]] = {}
+    meta_per_bsid_per_swath: dict[str, dict[str, Sentinel1BurstMetadata]] = {}
     product_id_per_bsid: dict[str, str] = {}
     bsids: set[str] = set()
     orbit_degree: int
@@ -69,7 +73,7 @@ class Sentinel1Assembler:
                       orbit_provider=None,
                       orbit_degree: int = 11) -> Sentinel1Assembler:
         bsids = set()
-        bursts_per_swath = {}
+        bursts_per_swath: dict[str, list[Sentinel1BurstMetadata]] = {}
         product_id_per_bsid = {}
         for swath in swaths:
             bursts = _get_bursts(products, swath, pol, orbit_provider)
@@ -77,16 +81,16 @@ class Sentinel1Assembler:
 
             for product, metas in zip(products, bursts):
                 for m in metas:
-                    product_id_per_bsid[m['bsid']] = product.product_id
-                    bsids.add(m['bsid'])
+                    product_id_per_bsid[m.bsid] = product.product_id
+                    bsids.add(m.bsid)
 
-        meta_per_bsid_per_swath = {swath: {m['bsid']: m for m in bursts_per_swath[swath]} for swath in swaths}
+        meta_per_bsid_per_swath = {swath: {m.bsid: m for m in bursts_per_swath[swath]} for swath in swaths}
         return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree)
 
     def __prepare_orbit(self, orbit_degree: int) -> None:
-        all_state_vectors = [StateVector.from_dict(sv)
+        all_state_vectors = [sv
                              for meta_per_bsid in self.meta_per_bsid_per_swath.values()
-                             for m in meta_per_bsid.values() for sv in m["state_vectors"]]
+                             for m in meta_per_bsid.values() for sv in m.state_vectors]
         unique_state_vectors = sentinel1.metadata._unique_sv(all_state_vectors)
         self.orbit = Orbit(sv=unique_state_vectors, degree=orbit_degree)
 
@@ -113,11 +117,11 @@ class Sentinel1Assembler:
         # compute the approx_geom of the swaths
         bursts = [b for meta_per_bsid in self.meta_per_bsid_per_swath.values()
                   for b in meta_per_bsid.values()]
-        geoms = [b['approx_geom'] for b in bursts]
+        geoms = [b.approx_geom for b in bursts]
         multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
         approx_geom = list(multipolygon.convex_hull.exterior.coords)
 
-        wavelength = bursts[0]['wave_length']
+        wavelength = bursts[0].wave_length
 
         # instanciate the mosaic model
         proj_model = Sentinel1MosaicModel(
@@ -160,7 +164,6 @@ class Sentinel1Assembler:
     def _set_full_bistatic_reference(self) -> None:
         assert 'iw2' in self.meta_per_bsid_per_swath, "No IW2 metadata, full bistatic can't be applied"
 
-        keys = ['slant_range_time', 'samples_per_burst', 'range_frequency']
         self._ref_per_product_id = {}
 
         # loop on 'iw2' bursts and meta
@@ -169,9 +172,11 @@ class Sentinel1Assembler:
 
             # check if product already processed
             if product_id not in self._ref_per_product_id:
-                self._ref_per_product_id[product_id] = {}
-                for key in keys:
-                    self._ref_per_product_id[product_id][key] = bmeta[key]
+                self._ref_per_product_id[product_id] = dict(
+                    slant_range_time=bmeta.slant_range_time,
+                    samples_per_burst=bmeta.samples_per_burst,
+                    range_frequency=bmeta.range_frequency,
+                )
 
     def get_full_bistatic_reference(self, bsid: str):
         if self._ref_per_product_id is None:
@@ -225,11 +230,11 @@ class Sentinel1Assembler:
             self.get_single_burst_meta(bsid), dst_burst_shape, matrix,
             self.get_doppler(bsid))
 
-    def get_single_burst_meta(self, bsid: str):
+    def get_single_burst_meta(self, bsid: str) -> Sentinel1BurstMetadata:
         swath = _swath_from_bsid(bsid)
         return self.meta_per_bsid_per_swath[swath][bsid]
 
-    def get_burst_metas(self, bsids: Iterable[str]):
+    def get_burst_metas(self, bsids: Iterable[str]) -> dict[str, Sentinel1BurstMetadata]:
         metas = {}
         for bsid in bsids:
             metas[bsid] = self.get_single_burst_meta(bsid)
@@ -237,7 +242,8 @@ class Sentinel1Assembler:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            'meta_per_bsid_per_swath': self.meta_per_bsid_per_swath,
+            'meta_per_bsid_per_swath': {k: {kk: vv.to_dict() for kk, vv in v.items()}
+                                        for k, v in self.meta_per_bsid_per_swath.items()},
             'product_id_per_bsid': self.product_id_per_bsid,
             'bsids': list(self.bsids),
             'orbit_degree': self.orbit.degree
@@ -245,12 +251,15 @@ class Sentinel1Assembler:
 
     @staticmethod
     def from_dict(dict) -> Sentinel1Assembler:
-        meta_per_bsid_per_swath = dict['meta_per_bsid_per_swath']
+        meta_per_bsid_per_swath = {k: {kk: Sentinel1BurstMetadata.from_dict(vv) for kk, vv in v.items()}
+                                   for k, v in dict['meta_per_bsid_per_swath'].items()}
         product_id_per_bsid = dict['product_id_per_bsid']
         bsids = set(dict['bsids'])
         orbit_degree = int(dict['orbit_degree'])
-        return Sentinel1Assembler(bsids, product_id_per_bsid,
-                                  meta_per_bsid_per_swath, orbit_degree)
+        return Sentinel1Assembler(bsids,
+                                  product_id_per_bsid,
+                                  meta_per_bsid_per_swath,
+                                  orbit_degree)
 
 
 class Sentinel1AssemblyCropper:

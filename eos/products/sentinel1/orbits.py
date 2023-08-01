@@ -3,11 +3,13 @@ import io
 import glob
 import datetime
 import functools
-from typing import Any
+from typing import Any, Sequence, Union
 
 from lxml import etree
 
-from .metadata import isostring_to_timestamp
+from eos.sar.orbit import StateVector
+
+from .metadata import Sentinel1BurstMetadata, isostring_to_timestamp
 
 
 def _string_to_timestamp(s):
@@ -60,18 +62,36 @@ def select_orbit_files_from_filelist(files, date, missionid):
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
 
-def apply_new_statevectors_to_burst(xml_content, burst, orbtype):
-    apply_new_statevectors_to_bursts(xml_content, [burst], orbtype)
+def apply_new_statevectors_to_slc_burst(xml_content, burst: Sentinel1BurstMetadata, orbtype):
+    apply_new_statevectors_to_slc_bursts(xml_content, [burst], orbtype)
 
 
-def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
+def apply_new_statevectors_to_slc_bursts(xml_content: Union[str, bytes, io.BytesIO],
+                                         bursts: Sequence[Sentinel1BurstMetadata],
+                                         orbtype: str) -> None:
+    new_list = get_new_list_of_statevectors(xml_content, [b.state_vectors for b in bursts])
+    for b, sv in zip(bursts, new_list):
+        b.state_vectors = sv
+        b.state_vectors_origin = orbtype
+
+
+def apply_new_statevectors_to_grd_meta(xml_content: Union[str, bytes, io.BytesIO],
+                                       meta: dict[str, Any],
+                                       orbtype: str) -> None:
+    meta["state_vectors"] = get_new_list_of_statevectors(xml_content, (meta["state_vectors"],))[0]
+    meta["state_vectors_origin"] = orbtype
+
+
+def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
+                                 statevectors_list: Sequence[Sequence[StateVector]]
+                                 ) -> list[list[StateVector]]:
     # compute the approximative middle time of the burst/product
     # we will extract all orbit data over a window of 3 minutes centered around this middle
-    start = min([burst['state_vectors'][0]['time'] for burst in bursts])
-    end = max([burst['state_vectors'][-1]['time'] for burst in bursts])
+    start = min([state_vectors[0].time for state_vectors in statevectors_list])
+    end = max([state_vectors[-1].time for state_vectors in statevectors_list])
     mid = (start + end) / 2
 
-    newsvs: list[list[dict[str, Any]]] = [[] for _ in bursts]
+    newsvs: list[list[StateVector]] = [[] for _ in statevectors_list]
 
     if type(xml_content) == str:
         xml_content = io.BytesIO(xml_content.encode('utf-8'))
@@ -85,18 +105,20 @@ def apply_new_statevectors_to_bursts(xml_content, bursts, orbtype):
         if date > mid + 90:
             break
 
-        for i, b in enumerate(bursts):
-            newsvs[i].append({
-                'time': date,
-                'position': [float(element.findtext(k)) for k in ['X', 'Y', 'Z']],
-                'velocity': [float(element.findtext(k)) for k in ['VX', 'VY', 'VZ']]
-            })
+        for i in range(len(statevectors_list)):
+            x = float(element.findtext("X"))
+            y = float(element.findtext("Y"))
+            z = float(element.findtext("Z"))
+            vx = float(element.findtext("VX"))
+            vy = float(element.findtext("VY"))
+            vz = float(element.findtext("VZ"))
+            newsvs[i].append(StateVector(
+                time=date,
+                position=(x, y, z),
+                velocity=(vx, vy, vz),
+            ))
 
-    for i, b in enumerate(bursts):
-        # make sure we fetched enough state_vectors
-        assert len(newsvs[i]) >= 15
-        b['state_vectors'] = newsvs[i]
-        b['state_vectors_origin'] = orbtype
+    return newsvs
 
 
 def search_valid_orbit_files_from_local_folder(path, product_info, type):
@@ -127,10 +149,14 @@ def _update_statevectors_from_source(product_info, burst, *, force_type, source)
             return None
 
         orbtype = f'orb{type}'
-        if isinstance(burst, dict):
-            apply_new_statevectors_to_burst(xml, burst, orbtype)
+        if isinstance(burst, Sentinel1BurstMetadata):
+            apply_new_statevectors_to_slc_burst(xml, burst, orbtype)
+        elif isinstance(burst, list) and isinstance(burst[0], Sentinel1BurstMetadata):
+            apply_new_statevectors_to_slc_bursts(xml, burst, orbtype)
+        elif isinstance(burst, dict):
+            apply_new_statevectors_to_grd_meta(xml, burst, orbtype)
         else:
-            apply_new_statevectors_to_bursts(xml, burst, orbtype)
+            assert False, burst
 
         return orbtype
 

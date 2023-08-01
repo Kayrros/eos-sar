@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 import pyproj
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar import projection_correction
@@ -50,18 +51,16 @@ def grd_model_from_meta(meta, orbit,
     return proj_model
 
 
-def burst_model_from_burst_meta(burst_meta, orbit: Orbit,
+def burst_model_from_burst_meta(burst_meta: Sentinel1BurstMetadata,
+                                orbit: Orbit,
                                 coord_corrector=projection_correction.Corrector(),
                                 **kwargs) -> Sentinel1BurstModel:
     """Create a Sentinel1BurstModel from a burst meta dict.
 
     Parameters
     ----------
-    burst_meta : dict
-        Dict containing all metadata of the burst and sentinel1 product needed
-        for processing
+    burst_meta : Sentinel1BurstMetadata
     orbit: Orbit
-         Orbit instance
     coord_corrector: eos.sar.projection_correction.Corrector
         Corrector object containing a list of ImageCorrection in this case
     **kwargs : keyword arguments for the constructor of Sentinel1BurstModel.
@@ -71,13 +70,13 @@ def burst_model_from_burst_meta(burst_meta, orbit: Orbit,
     Sentinel1BurstModel instance.
 
     """
-    return Sentinel1BurstModel(burst_meta['range_frequency'],
-                               burst_meta['azimuth_frequency'],
-                               burst_meta['slant_range_time'],
-                               burst_meta['wave_length'],
-                               burst_meta['burst_times'],
-                               burst_meta['burst_roi'],
-                               burst_meta['approx_geom'],
+    return Sentinel1BurstModel(burst_meta.range_frequency,
+                               burst_meta.azimuth_frequency,
+                               burst_meta.slant_range_time,
+                               burst_meta.wave_length,
+                               burst_meta.burst_times,
+                               burst_meta.burst_roi,
+                               burst_meta.approx_geom,
                                orbit,
                                coord_corrector=coord_corrector,
                                **kwargs)
@@ -902,14 +901,16 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         return model
 
 
-def swath_model_from_bursts_meta(bursts_metadata, orbit: Orbit, **kwargs) -> Sentinel1SwathModel:
+def swath_model_from_bursts_meta(bursts_metadata: list[Sentinel1BurstMetadata],
+                                 orbit: Orbit,
+                                 **kwargs) -> Sentinel1SwathModel:
     """
     Generate Sentinel1SwathModel instance from list of bursts metadata.
 
     Parameters
     ----------
-    bursts_metadata : list of dicts
-        each dict contains attribute metadata relative to the bursts of the
+    bursts_metadata : list of Sentinel1BurstMetadata
+        each object contains attribute metadata relative to the bursts of the
         swath.
     orbit: Orbit
         Orbit instance
@@ -921,17 +922,16 @@ def swath_model_from_bursts_meta(bursts_metadata, orbit: Orbit, **kwargs) -> Sen
     -------
     Sentinel1SwathModel
         Model for projection and localization inside the swath.
-
     """
     # TODO: aggregate state_vectors as well
-    bursts_times = [b['burst_times'] for b in bursts_metadata]
-    bursts_rois = [b['burst_roi'] for b in bursts_metadata]
-    bursts_approx_geom = [b['approx_geom'] for b in bursts_metadata]
-    bsids = [b['bsid'] for b in bursts_metadata]
+    bursts_times = [b.burst_times for b in bursts_metadata]
+    bursts_rois = [b.burst_roi for b in bursts_metadata]
+    bursts_approx_geom = [b.approx_geom for b in bursts_metadata]
+    bsids = [b.bsid for b in bursts_metadata]
 
     def alleq(prop):
         burst = bursts_metadata[0]
-        return all(b[prop] == burst[prop] for b in bursts_metadata)
+        return all(getattr(b, prop) == getattr(burst, prop) for b in bursts_metadata)
     assert alleq('range_frequency')
     assert alleq('azimuth_frequency')
     assert alleq('slant_range_time')
@@ -939,10 +939,10 @@ def swath_model_from_bursts_meta(bursts_metadata, orbit: Orbit, **kwargs) -> Sen
     assert alleq('pri')
     assert alleq('rank')
 
-    return Sentinel1SwathModel(bursts_metadata[0]['range_frequency'],
-                               bursts_metadata[0]['azimuth_frequency'],
-                               bursts_metadata[0]['slant_range_time'],
-                               bursts_metadata[0]['wave_length'],
+    return Sentinel1SwathModel(bursts_metadata[0].range_frequency,
+                               bursts_metadata[0].azimuth_frequency,
+                               bursts_metadata[0].slant_range_time,
+                               bursts_metadata[0].wave_length,
                                bursts_times,
                                bursts_rois,
                                bursts_approx_geom,

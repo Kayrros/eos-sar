@@ -13,12 +13,12 @@ def test_S1_metadata():
     metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
 
     b = metadatas[0]
-    assert b['swath'] == 'IW1'
-    assert b['relative_burst_id'] == 309576
+    assert b.swath == 'IW1'
+    assert b.relative_burst_id == 309576
 
     b = metadatas[8]
-    assert b['swath'] == 'IW1'
-    assert b['relative_burst_id'] == 309584
+    assert b.swath == 'IW1'
+    assert b.relative_burst_id == 309584
 
 
 xmls_with_reference_bid = glob.glob('./tests/data/samples_ipf_39/*/*/*.xml')
@@ -34,7 +34,7 @@ def test_reference_burstids(xml):
     for i, b in enumerate(metadatas):
         true_b = parsed[i]
         true_relative = int(true_b['burstId']['#text'])
-        assert b['relative_burst_id'] == true_relative
+        assert b.relative_burst_id == true_relative
 
 
 bid_hard_cases = glob.glob('./tests/data/bid-hard-cases/*.xml')
@@ -45,7 +45,16 @@ def test_bid_hard_case(xml):
     xml_content = open(xml).read()
     metadatas = sentinel1.metadata.extract_bursts_metadata(xml_content)
 
-    absolute_bids = [b['absolute_burst_id'] for b in metadatas]
-    relative_bids = [b['relative_burst_id'] for b in metadatas]
+    absolute_bids = [b.absolute_burst_id for b in metadatas]
+    relative_bids = [b.relative_burst_id for b in metadatas]
     assert (np.diff(absolute_bids) == 1).all()
     assert (np.diff(relative_bids) == 1).all()
+
+
+def test_deprecated_dict():
+    xml = './tests/data/S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650.SAFE/annotation/s1a-iw1-slc-vh-20210216t151207-20210216t151232-036617-044d40-001.xml'
+    xml_content = open(xml).read()
+    meta = sentinel1.metadata.extract_burst_metadata(xml_content, 0)
+    with pytest.warns(DeprecationWarning):
+        bsid = meta['bsid']
+    assert meta.bsid == bsid

@@ -1,25 +1,30 @@
+from typing import Any
 import numpy as np
 import os
 import eos.products.sentinel1 as s1
+from eos.products.sentinel1.doppler_info import Sentinel1Doppler
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from eos.products.sentinel1.proj_model import Sentinel1BurstModel
 import eos.sar
-from eos.sar.orbit import Orbit, StateVector
+import eos.products.sentinel1
+from eos.sar.orbit import Orbit
 import pytest
 
+from eos.sar.projection_correction import Corrector
 
-def extract_keys(big_dict, list_keys):
-    o = {}
-    for key in list_keys:
-        o[key] = big_dict[key]
-    return o
+
+def meta_into_ref(meta: Sentinel1BurstMetadata) -> dict[str, Any]:
+    return dict(
+        slant_range_time=meta.slant_range_time,
+        samples_per_burst=meta.samples_per_burst,
+        range_frequency=meta.range_frequency,
+    )
 
 
 def get_ref_metas(ref_xml_paths):
     xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in ref_xml_paths]
-    keys = ['slant_range_time',
-            'samples_per_burst',
-            'range_frequency']
-    ref_metas = [extract_keys(s1.metadata.extract_burst_metadata(
-        xml_content, 0), keys) for xml_content in xml_contents]
+    ref_metas = [meta_into_ref(s1.metadata.extract_burst_metadata(xml_content, 0))
+                 for xml_content in xml_contents]
     return ref_metas
 
 
@@ -81,9 +86,12 @@ def dem(inputs):
     return x, y, alt, crs
 
 
-def _get_objects(burst_meta, ref_meta=None):
+def _get_objects(
+    burst_meta: Sentinel1BurstMetadata,
+    ref_meta=None,
+) -> tuple[Orbit, Sentinel1Doppler, Corrector, Sentinel1BurstModel]:
     # create an orbit
-    orbit = Orbit([StateVector.from_dict(s) for s in burst_meta["state_vectors"]])
+    orbit = Orbit(burst_meta.state_vectors)
     # create a doppler
     doppler = s1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector
@@ -111,7 +119,7 @@ class Test_Resample_Stitch:
         # get the indices of the common bursts
         prim_burst_ids, sec_burst_ids = s1.deburst.get_bursts_intersection(
             [len(primary_bursts_meta), len(secondary_bursts_meta)],
-            [primary_bursts_meta[0]['relative_burst_id'], secondary_bursts_meta[0]['relative_burst_id']]
+            [primary_bursts_meta[0].relative_burst_id, secondary_bursts_meta[0].relative_burst_id]
         )
         assert np.all(sec_burst_ids == np.arange(5))
         assert np.all(prim_burst_ids == np.arange(2, 7))
@@ -162,8 +170,8 @@ class Test_Resample_Stitch:
                       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
 
         # resampler on the complex secondary burst
-        col_dst, row_dst, w_dst, h_dst = primary_burst_meta['burst_roi']
-        col_src, row_src, w_src, h_src = secondary_burst_meta['burst_roi']
+        col_dst, row_dst, w_dst, h_dst = primary_burst_meta.burst_roi
+        col_src, row_src, w_src, h_src = secondary_burst_meta.burst_roi
 
         secondary_doppler = _get_objects(secondary_burst_meta)[1]
         burst_resampler = s1.burst_resamp.burst_resample_from_meta(secondary_burst_meta,
@@ -236,9 +244,9 @@ class Test_Resample_Stitch:
         secondary_image_readers = {bsid: image_readers[1] for bsid in bsids}
 
         # construct burst models with appropriate corrections
-        primary_correctors = {b['bsid']: _get_objects(b, ref_metas[0])[2]
-                              for b in primary_bursts_meta if b['bsid'] in bsids}
-        primary_bursts_meta = {b['bsid']: b for b in primary_bursts_meta}
+        primary_correctors = {b.bsid: _get_objects(b, ref_metas[0])[2]
+                              for b in primary_bursts_meta if b.bsid in bsids}
+        primary_bursts_meta = {b.bsid: b for b in primary_bursts_meta}
 
         # project in the mosaic
         azt_primary_flat, rng_primary_flat, _ = primary_swath_model.projection(x, y, alt, crs=crs, as_azt_rng=True)
@@ -286,9 +294,9 @@ class Test_Resample_Stitch:
             secondary_bursts_meta, orbit)
         secondary_cutter = s1.acquisition.make_secondary_cutter_from_bursts_meta(secondary_bursts_meta)
 
-        secondary_correctors = {b['bsid']: _get_objects(b, ref_metas[0])[2]
-                                for b in secondary_bursts_meta if b['bsid'] in bsids}
-        secondary_bursts_meta = {b['bsid']: b for b in secondary_bursts_meta}
+        secondary_correctors = {b.bsid: _get_objects(b, ref_metas[0])[2]
+                                for b in secondary_bursts_meta if b.bsid in bsids}
+        secondary_bursts_meta = {b.bsid: b for b in secondary_bursts_meta}
 
         secondary_crop, _ = regist(secondary_swath_model,
                                    secondary_cutter,
