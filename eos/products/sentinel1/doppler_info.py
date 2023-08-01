@@ -2,20 +2,19 @@
 from __future__ import annotations
 
 import numpy as np
-
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar.orbit import Orbit
 
 
-def doppler_from_meta(burst_meta, orbit: Orbit) -> Sentinel1Doppler:
+def doppler_from_meta(burst_meta: Sentinel1BurstMetadata,
+                      orbit: Orbit) -> Sentinel1Doppler:
     """
     Construct a Sentinel1Doppler object from burst metadata.
 
     Parameters
     ----------
-    burst_meta : dict
-        Dict of burst metadata.
+    burst_meta : Sentinel1BurstMetadata
     orbit: Orbit
-        Orbit instance
 
     Returns
     -------
@@ -24,19 +23,19 @@ def doppler_from_meta(burst_meta, orbit: Orbit) -> Sentinel1Doppler:
 
     """
     return Sentinel1Doppler.from_meta_fields(
-        burst_times=burst_meta['burst_times'],
-        lines_per_burst=burst_meta['lines_per_burst'],
-        samples_per_burst=burst_meta['samples_per_burst'],
-        azimuth_frequency=burst_meta['azimuth_frequency'],
-        range_frequency=burst_meta['range_frequency'],
-        slant_range_time=burst_meta['slant_range_time'],
-        az_fm_times=burst_meta['az_fm_times'],
-        az_fm_info=burst_meta['az_fm_info'],
-        dc_estimate_time=burst_meta['dc_estimate_time'],
-        dc_estimate_t0=burst_meta['dc_estimate_t0'],
-        dc_estimate_poly=burst_meta['dc_estimate_poly'],
-        steering_rate=burst_meta['steering_rate'],
-        wave_length=burst_meta['wave_length'],
+        burst_times=burst_meta.burst_times,
+        lines_per_burst=burst_meta.lines_per_burst,
+        samples_per_burst=burst_meta.samples_per_burst,
+        azimuth_frequency=burst_meta.azimuth_frequency,
+        range_frequency=burst_meta.range_frequency,
+        slant_range_time=burst_meta.slant_range_time,
+        az_fm_times=burst_meta.az_fm_times,
+        az_fm_info=burst_meta.az_fm_info,
+        dc_estimate_time=burst_meta.dc_estimate_time,
+        dc_estimate_t0=burst_meta.dc_estimate_t0,
+        dc_estimate_poly=burst_meta.dc_estimate_poly,
+        steering_rate=burst_meta.steering_rate,
+        wave_length=burst_meta.wave_length,
         orbit=orbit
     )
 

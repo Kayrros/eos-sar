@@ -1,3 +1,6 @@
+from typing import Sequence
+
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar.roi import Roi
 from eos.sar import coordinates
 
@@ -246,17 +249,17 @@ class SecondarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
     pass
 
 
-def _make_cutter(bursts_metadata, cls):
-    bursts_times = [b['burst_times'] for b in bursts_metadata]
-    bursts_rois = [b['burst_roi'] for b in bursts_metadata]
-    bsids = [b['bsid'] for b in bursts_metadata]
+def _make_cutter(bursts_metadata: Sequence[Sentinel1BurstMetadata], cls):
+    bursts_times = [b.burst_times for b in bursts_metadata]
+    bursts_rois = [b.burst_roi for b in bursts_metadata]
+    bsids = [b.bsid for b in bursts_metadata]
 
     slt_iw1 = None
     slt_iw2 = None
     slt_iw3 = None
     for b in bursts_metadata:
-        sw = b['swath']
-        sl = b['slant_range_time']
+        sw = b.swath
+        sl = b.slant_range_time
         if sw == 'IW1':
             if not slt_iw1:
                 slt_iw1 = sl
@@ -276,8 +279,8 @@ def _make_cutter(bursts_metadata, cls):
     slt_iw3 = slt_iw3 or 0
 
     return cls(
-        bursts_metadata[0]['range_frequency'],
-        bursts_metadata[0]['azimuth_frequency'],
+        bursts_metadata[0].range_frequency,
+        bursts_metadata[0].azimuth_frequency,
         slt_iw1,
         slt_iw2,
         slt_iw3,

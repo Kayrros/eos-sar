@@ -1,7 +1,9 @@
 """Fill needed metadata of a burst or a product."""
+from __future__ import annotations
+from dataclasses import dataclass
 import math
 import datetime
-from typing import Sequence
+from typing import Any, Iterable, Optional, Sequence, Union
 import xmltodict
 import numpy as np
 import logging
@@ -26,6 +28,62 @@ N_bursts_per_cycle = 375887
 T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
+# TODO: cannot be frozen because of apply_new_statevectors_to_slc_bursts
+@dataclass  # (frozen=True)
+class Sentinel1BurstMetadata:
+    mission_id: str
+    absolute_orbit_number: int
+    relative_orbit_number: int
+    absolute_burst_id: int
+    slice_number: int
+    slice_count: int
+    orbit_pass: str
+    swath: str
+    relative_burst_id: int
+    azimuth_frequency: float
+    range_frequency: float
+    slant_range_time: float
+    anx_time: float
+    lines_per_burst: int
+    samples_per_burst: int
+    state_vectors: list[StateVector]
+    state_vectors_origin: str
+    steering_rate: float
+    wave_length: float
+    az_fm_times: list[float]
+    az_fm_info: list[list[float]]
+    dc_estimate_time: list[float]
+    dc_estimate_t0: list[float]
+    dc_estimate_poly: list[list[float]]
+    chirp_rate: float
+    pri: float
+    rank: float
+    burst_times: tuple[float, float, float]
+    burst_roi: tuple[int, int, int, int]
+    azimuth_anx_time: float
+    burst_sensing_time: float
+    approx_geom: list[tuple[float, float]]
+    approx_altitude: list[float]
+    bsid: str
+
+    def __getitem__(self, name: str) -> Any:
+        import warnings
+        warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
+                      DeprecationWarning)
+        return self.__dict__[name]
+
+    def to_dict(self) -> dict[str, Any]:
+        d = self.__dict__.copy()
+        d["state_vectors"] = [s.to_dict() for s in self.state_vectors]
+        return d
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> Sentinel1BurstMetadata:
+        d = d.copy()
+        d["state_vectors"] = [StateVector.from_dict(s) for s in d["state_vectors"]]
+        return Sentinel1BurstMetadata(**d)
+
+
 def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: int) -> int:
     if mission_id == 'S1A':
         return (absolute_orbit_number - 73) % 175 + 1
@@ -34,7 +92,7 @@ def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: 
     raise ValueError(f'Invalid mission_id {mission_id}')
 
 
-def isostring_to_timestamp(s):
+def isostring_to_timestamp(s: str) -> float:
     """Convert a string representing a date and time to a float number."""
     return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=datetime.timezone.utc).timestamp()
 
@@ -303,7 +361,8 @@ def extract_common_metadata(xml):
     return o, i
 
 
-def extract_bursts_metadata(xml, burst_ids=None):
+def extract_bursts_metadata(xml: Union[str, bytes],
+                            burst_ids: Optional[Iterable[int]] = None) -> list[Sentinel1BurstMetadata]:
     """Extract metadata for a list of bursts.
 
     Parameters
@@ -316,7 +375,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
 
     Returns
     -------
-    bursts: List of dicts
+    bursts: List of Sentinel1BurstMetadata
         The metadata of the bursts.
     """
     o, i = extract_common_metadata(xml)
@@ -332,7 +391,7 @@ def extract_bursts_metadata(xml, burst_ids=None):
     # longitude, latitude bounding box: select the four corners of the gcp grid
     gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
 
-    bursts = []
+    bursts: list[Sentinel1BurstMetadata] = []
     for bid in burst_ids:
         b = dictbursts[bid]
 
@@ -384,12 +443,12 @@ def extract_bursts_metadata(xml, burst_ids=None):
         swath = burst['swath']
         burst['bsid'] = f'{relative_burst_id}_{swath}'
 
-        bursts.append(burst)
+        bursts.append(Sentinel1BurstMetadata.from_dict(burst))
 
     return bursts
 
 
-def extract_burst_metadata(xml, burst_id):
+def extract_burst_metadata(xml: Union[str, bytes], burst_id: int) -> Sentinel1BurstMetadata:
     """Extract metadata for a single burst.
 
     Parameters
@@ -401,7 +460,7 @@ def extract_burst_metadata(xml, burst_id):
 
     Returns
     -------
-    b_dicts: dicts
+    b_dict:  Sentinel1BurstMetadata
         The metadata of the burst.
     """
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
@@ -446,10 +505,14 @@ def extract_grd_metadata(xml):
     o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
     o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
 
+    o["state_vectors"] = [StateVector.from_dict(s) for s in o["state_vectors"]]
+
     return o
 
 
-def assemble_multiple_products_into_metas(metas_per_product):
+def assemble_multiple_products_into_metas(
+    metas_per_product: list[list[Sentinel1BurstMetadata]]
+) -> list[Sentinel1BurstMetadata]:
     bursts = list(sum(metas_per_product, []))
     return bursts
 
@@ -473,8 +536,7 @@ def assemble_multiple_grd_products_into_meta(metas):
 
     # combine state vectors
     all_state_vectors = [sv for m in metas for sv in m["state_vectors"]]
-    # TODO: this line is ugly, but will get better once the metas will be classes and not dicts
-    meta["state_vectors"] = [s.to_dict() for s in _unique_sv([StateVector.from_dict(s) for s in all_state_vectors])]
+    meta["state_vectors"] = _unique_sv(all_state_vectors)
 
     # for now, we do not support assembling these quantities
     del meta["az_fm_info"]
@@ -552,27 +614,26 @@ def _unique_sv(state_vectors: Sequence[StateVector]) -> list[StateVector]:
     return unique_state_vectors
 
 
-def unique_sv_from_bursts_meta(bursts_meta: list[dict]) -> list[StateVector]:
+def unique_sv_from_bursts_meta(bursts_meta: list[Sentinel1BurstMetadata]) -> list[StateVector]:
     """
     Get an aggregated list of state_vectors from bursts_meta
 
     Parameters
     ----------
-    bursts_meta : list[dict]
+    bursts_meta : list[Sentinel1BurstMetadata]
         List of bursts metadata.
 
     Returns
     -------
-    unique_state_vectors: list[dict]
+    unique_state_vectors: list[StateVector]
         Each element is a unique state_vectors
     """
-    state_vectors = [StateVector.from_dict(sv)
-                     for bmeta in bursts_meta
-                     for sv in bmeta["state_vectors"]]
+    state_vectors = [sv for bmeta in bursts_meta
+                     for sv in bmeta.state_vectors]
     return _unique_sv(state_vectors)
 
 
-def get_file_links_from_manifest(manifest_content: str):
+def get_file_links_from_manifest(manifest_content: str) -> list[str]:
     """
     Get the links to the files in the SAFE directory from the content of the manifest.safe.
 

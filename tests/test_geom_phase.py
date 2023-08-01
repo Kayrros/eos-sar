@@ -25,7 +25,7 @@ def test_geom_phase_prediction():
     # get the indices of the common bursts
     prim_burst_ids, sec_burst_ids = s1.deburst.get_bursts_intersection(
         [len(primary_bursts_meta), len(secondary_bursts_meta)],
-        [primary_bursts_meta[0]['relative_burst_id'], secondary_bursts_meta[0]['relative_burst_id']]
+        [primary_bursts_meta[0].relative_burst_id, secondary_bursts_meta[0].relative_burst_id]
     )
 
     # keep only the bursts intersecting
