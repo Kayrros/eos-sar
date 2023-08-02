@@ -170,3 +170,19 @@ else:
         # it should only contain values
         raster = asm2.crop(roi2, {product_id: reader})
         assert (raster != 0).all()
+
+    def test_grd_assemble_metadata():
+        product_id1 = 'S1A_IW_GRDH_1SDV_20220908T170044_20220908T170109_044916_055D72_82EF'
+        product_id2 = 'S1A_IW_GRDH_1SDV_20220908T170109_20220908T170134_044916_055D72_83D3'
+
+        product1 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id1)
+        product2 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id2)
+
+        xml1 = product1.get_xml_annotation('vv')
+        xml2 = product2.get_xml_annotation('vv')
+
+        meta1 = sentinel1.metadata.extract_grd_metadata(xml1)
+        meta2 = sentinel1.metadata.extract_grd_metadata(xml2)
+
+        combined = sentinel1.metadata.assemble_multiple_grd_products_into_meta((meta1, meta2))
+        assert combined.height == meta1.height + meta2.height
