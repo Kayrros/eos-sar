@@ -1,6 +1,34 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
 import numpy as np
 
 import eos.sar
+
+
+@dataclass(frozen=True)
+class Sentinel1GRDSRGRMetadata:
+
+    times: list[float]
+    srgr_coeffs: list[list[float]]
+    grsr_coeffs: list[list[float]]
+    sr0: list[float]
+    gr0: list[float]
+
+    def __getitem__(self, name: str) -> Any:
+        import warnings
+        warnings.warn("Indexing a Sentinel1GRDSRGRMetadata is deprecated (they no longer are dict).",
+                      DeprecationWarning)
+        return self.__dict__[name]
+
+    def to_dict(self) -> dict[str, Any]:
+        d = self.__dict__.copy()
+        return d
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> Sentinel1GRDSRGRMetadata:
+        return Sentinel1GRDSRGRMetadata(**d)
 
 
 def _evaluate(azt, x, times, coeffs, origins):
@@ -60,13 +88,13 @@ def _evaluate(azt, x, times, coeffs, origins):
 
 class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
 
-    def __init__(self, times, srgr_coeffs, grsr_coeffs, sr0, gr0):
+    def __init__(self, srgr_meta: Sentinel1GRDSRGRMetadata):
         super().__init__()
-        self.times = np.asarray(times)
-        self.srgr_coeffs = np.asarray(srgr_coeffs)
-        self.grsr_coeffs = np.asarray(grsr_coeffs)
-        self.sr0 = np.asarray(sr0)
-        self.gr0 = np.asarray(gr0)
+        self.times = np.asarray(srgr_meta.times)
+        self.srgr_coeffs = np.asarray(srgr_meta.srgr_coeffs)
+        self.grsr_coeffs = np.asarray(srgr_meta.grsr_coeffs)
+        self.sr0 = np.asarray(srgr_meta.sr0)
+        self.gr0 = np.asarray(srgr_meta.gr0)
 
     def gr_to_rng(self, gr, azt):
         gr = np.atleast_1d(gr)

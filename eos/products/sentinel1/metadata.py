@@ -9,6 +9,7 @@ import numpy as np
 import logging
 import shapely.geometry
 
+from eos.products.sentinel1.srgr import Sentinel1GRDSRGRMetadata
 from eos.sar import const
 from eos.sar.orbit import StateVector
 
@@ -111,7 +112,7 @@ class Sentinel1GRDMetadata:
     image_end: float
     azimuth_time_interval: float
     range_pixel_spacing: float
-    srgr: dict[str, Any]  # TODO: make a dataclass
+    srgr: Sentinel1GRDSRGRMetadata
     width: int
     height: int
 
@@ -124,12 +125,14 @@ class Sentinel1GRDMetadata:
     def to_dict(self) -> dict[str, Any]:
         d = self.__dict__.copy()
         d["state_vectors"] = [s.to_dict() for s in self.state_vectors]
+        d["srgr"] = self.srgr.to_dict()
         return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> Sentinel1GRDMetadata:
         d = d.copy()
         d["state_vectors"] = [StateVector.from_dict(s) for s in d["state_vectors"]]
+        d["srgr"] = Sentinel1GRDSRGRMetadata.from_dict(d["srgr"])
         return Sentinel1GRDMetadata(**d)
 
 
@@ -594,11 +597,11 @@ def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadat
     meta["state_vectors"] = [s.to_dict() for s in _unique_sv(all_state_vectors)]
 
     # combine srgr info
-    all_times_: list[float] = sum((m.srgr["times"] for m in metas), [])
-    all_srgr_coeffs_: list[list[float]] = sum((m.srgr["srgr_coeffs"] for m in metas), [])
-    all_grsr_coeffs_: list[list[float]] = sum((m.srgr["grsr_coeffs"] for m in metas), [])
-    all_gr0_: list[float] = sum((m.srgr["gr0"] for m in metas), [])
-    all_sr0_: list[float] = sum((m.srgr["sr0"] for m in metas), [])
+    all_times_: list[float] = sum((m.srgr.times for m in metas), [])
+    all_srgr_coeffs_: list[list[float]] = sum((m.srgr.srgr_coeffs for m in metas), [])
+    all_grsr_coeffs_: list[list[float]] = sum((m.srgr.grsr_coeffs for m in metas), [])
+    all_gr0_: list[float] = sum((m.srgr.gr0 for m in metas), [])
+    all_sr0_: list[float] = sum((m.srgr.sr0 for m in metas), [])
 
     all_srgr_ = zip(all_times_, all_srgr_coeffs_, all_grsr_coeffs_, all_gr0_, all_sr0_)
     all_srgr = sorted(all_srgr_, key=lambda e: e[0])

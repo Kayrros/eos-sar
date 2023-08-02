@@ -27,13 +27,7 @@ def grd_model_from_meta(meta: Sentinel1GRDMetadata,
     Sentinel1GRDModel instance.
 
     """
-    srgr = sentinel1.srgr.Sentinel1SRGRConverter(
-        meta.srgr['times'],
-        meta.srgr['srgr_coeffs'],
-        meta.srgr['grsr_coeffs'],
-        meta.srgr['sr0'],
-        meta.srgr['gr0'],
-    )
+    srgr = sentinel1.srgr.Sentinel1SRGRConverter(meta.srgr)
     proj_model = Sentinel1GRDModel(
         meta.image_start,
         meta.approx_geom,
