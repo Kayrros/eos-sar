@@ -1,3 +1,5 @@
+from __future__ import annotations
+from dataclasses import dataclass
 from typing import Any, Optional
 import numpy as np
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
@@ -118,6 +120,39 @@ class Bistatic(ImageCorrection):
                              0.5 * self.samples_per_burst / self.range_frequency)
 
 
+@dataclass(frozen=True)
+class FullBistaticReference:
+    slant_range_time: float
+    """Two way time to the first column in the sentinel1 raster of IW2."""
+    samples_per_burst: int
+    """Number of columns per burst in the sentinel1 raster of IW2."""
+    range_frequency: float
+    """Two way range time sampling frequency of IW2."""
+
+    def __getitem__(self, name: str) -> Any:
+        import warnings
+        warnings.warn("Indexing a FullBistaticReference is deprecated (they no longer are dict).",
+                      DeprecationWarning)
+        return self.__dict__[name]
+
+    @staticmethod
+    def from_burst_metadata(burst: Sentinel1BurstMetadata) -> FullBistaticReference:
+        return FullBistaticReference(
+            slant_range_time=burst.slant_range_time,
+            samples_per_burst=burst.samples_per_burst,
+            range_frequency=burst.range_frequency,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        d = self.__dict__.copy()
+        return d
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> FullBistaticReference:
+        d = d.copy()
+        return FullBistaticReference(**d)
+
+
 class FullBistatic(ImageCorrection):
     """
     full bistatic error correction, as described by Gisinger et al., in
@@ -128,25 +163,21 @@ class FullBistatic(ImageCorrection):
     samples_per_burst and range_frequency from the ref metadata
     """
 
-    def __init__(self, ref_slant_range_time, ref_samples_per_burst,
-                 ref_range_frequency, pri, rank):
+    def __init__(self,
+                 full_bistatic_reference: FullBistaticReference,
+                 pri: float,
+                 rank: float):
         """
         Create FullBistatic object.
 
         Parameters
         ----------
-        ref_slant_range_time : float
-            Two way time to the first column in the sentinel1 raster of IW2.
-        ref_samples_per_burst : int
-            Number of columns per burst in the sentinel1 raster of IW2.
-        ref_range_frequency : float
-            Two way range time sampling frequency of IW2.
-        pri: float, optional
+        full_bistatic_reference : FullBistaticReference
+            Metadata extracted from the IW2 raster
+        pri: float
             Pulse Repetition Interval [s].
-            The default is None.
-        rank: float, optional
+        rank: float
             The number of PRI between transmitted pulse and return echo.
-            The default is None.
 
         Returns
         -------
@@ -154,9 +185,9 @@ class FullBistatic(ImageCorrection):
 
         """
         super().__init__()
-        self.ref_slant_range_time = ref_slant_range_time
-        self.ref_samples_per_burst = ref_samples_per_burst
-        self.ref_range_frequency = ref_range_frequency
+        self.ref_slant_range_time = full_bistatic_reference.slant_range_time
+        self.ref_samples_per_burst = full_bistatic_reference.samples_per_burst
+        self.ref_range_frequency = full_bistatic_reference.range_frequency
         self.pri = pri
         self.rank = rank
 
@@ -284,7 +315,7 @@ def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
                              doppler: Sentinel1Doppler,
                              apd: bool = False,
                              bistatic: bool = False,
-                             full_bistatic_reference: Optional[dict[str, Any]] = None,
+                             full_bistatic_reference: Optional[FullBistaticReference] = None,
                              intra_pulse: bool = False,
                              alt_fm_mismatch: bool = False
                              ) -> list[ImageCorrection]:
@@ -303,7 +334,7 @@ def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
         If True, add ApdCorrection to the list. The default is False.
     bistatic : Boolean, optional
         If True, add Bistatic or FullBistatic to the list. The default is False.
-    full_bistatic_reference : dict, optional
+    full_bistatic_reference : FullBistaticReference, optional
         If bistatic is True and if this dict is not None, add FullBistatic to the list.
         The default is None.
     intra_pulse : Boolean, optional
@@ -327,10 +358,7 @@ def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
         bistatic_corr: ImageCorrection
         if full_bistatic_reference is not None:
             bistatic_corr = FullBistatic(
-                full_bistatic_reference["slant_range_time"],
-                full_bistatic_reference["samples_per_burst"],
-                full_bistatic_reference["range_frequency"],
-                burst_meta.pri, burst_meta.rank)
+                full_bistatic_reference, burst_meta.pri, burst_meta.rank)
 
         else:
             bistatic_corr = Bistatic(

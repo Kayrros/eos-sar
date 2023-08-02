@@ -7,6 +7,7 @@ import shapely.geometry
 from eos.products import sentinel1
 from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter, SecondarySentinel1AcquisitionCutter
 from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
+from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel, Sentinel1GRDModel, Sentinel1MosaicModel, Sentinel1SwathModel
@@ -57,7 +58,7 @@ class Sentinel1Assembler:
     orbit_degree: int
     _prim_cutter: Optional[sentinel1.acquisition.PrimarySentinel1AcquisitionCutter] = None
     _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = None
-    _ref_per_product_id: Optional[dict[str, dict]] = None
+    _ref_per_product_id: Optional[dict[str, FullBistaticReference]] = None
 
     def __init__(self, bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree=11):
         self.bsids = bsids
@@ -172,13 +173,9 @@ class Sentinel1Assembler:
 
             # check if product already processed
             if product_id not in self._ref_per_product_id:
-                self._ref_per_product_id[product_id] = dict(
-                    slant_range_time=bmeta.slant_range_time,
-                    samples_per_burst=bmeta.samples_per_burst,
-                    range_frequency=bmeta.range_frequency,
-                )
+                self._ref_per_product_id[product_id] = FullBistaticReference.from_burst_metadata(bmeta)
 
-    def get_full_bistatic_reference(self, bsid: str):
+    def get_full_bistatic_reference(self, bsid: str) -> FullBistaticReference:
         if self._ref_per_product_id is None:
             self._set_full_bistatic_reference()
         assert self._ref_per_product_id
