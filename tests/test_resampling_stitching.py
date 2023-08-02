@@ -2,6 +2,7 @@ from typing import Any
 import numpy as np
 import os
 import eos.products.sentinel1 as s1
+from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel
@@ -13,17 +14,9 @@ import pytest
 from eos.sar.projection_correction import Corrector
 
 
-def meta_into_ref(meta: Sentinel1BurstMetadata) -> dict[str, Any]:
-    return dict(
-        slant_range_time=meta.slant_range_time,
-        samples_per_burst=meta.samples_per_burst,
-        range_frequency=meta.range_frequency,
-    )
-
-
 def get_ref_metas(ref_xml_paths):
     xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in ref_xml_paths]
-    ref_metas = [meta_into_ref(s1.metadata.extract_burst_metadata(xml_content, 0))
+    ref_metas = [FullBistaticReference.from_burst_metadata(s1.metadata.extract_burst_metadata(xml_content, 0))
                  for xml_content in xml_contents]
     return ref_metas
 
