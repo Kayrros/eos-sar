@@ -574,31 +574,31 @@ def assemble_multiple_products_into_metas(
 
 def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadata]) -> Sentinel1GRDMetadata:
     # make sure the product are ordered by time
-    metas = sorted(metas, key=lambda m: m["image_start"])
+    metas = sorted(metas, key=lambda m: m.image_start)
 
     # make sure all products start at the same range time
-    assert all(abs(m["slant_range_time"] - metas[0]["slant_range_time"]) < 1e-9 for m in metas)
+    assert all(abs(m.slant_range_time - metas[0].slant_range_time) < 1e-9 for m in metas)
     # and some quantities should be equal
-    assert all(abs(m["azimuth_time_interval"] - metas[0]["azimuth_time_interval"]) < 1e-7 for m in metas)
-    assert all(m["range_pixel_spacing"] == metas[0]["range_pixel_spacing"] for m in metas)
-    assert all(m["wave_length"] == metas[0]["wave_length"] for m in metas)
-    assert all(m["steering_rate"] == metas[0]["steering_rate"] for m in metas)
-    assert all(m["state_vectors_origin"] == metas[0]["state_vectors_origin"] for m in metas)
-    assert all(m["range_frequency"] == metas[0]["range_frequency"] for m in metas)
-    assert all(m["azimuth_frequency"] == metas[0]["azimuth_frequency"] for m in metas)
+    assert all(abs(m.azimuth_time_interval - metas[0].azimuth_time_interval) < 1e-7 for m in metas)
+    assert all(m.range_pixel_spacing == metas[0].range_pixel_spacing for m in metas)
+    assert all(m.wave_length == metas[0].wave_length for m in metas)
+    assert all(m.steering_rate == metas[0].steering_rate for m in metas)
+    assert all(m.state_vectors_origin == metas[0].state_vectors_origin for m in metas)
+    assert all(m.range_frequency == metas[0].range_frequency for m in metas)
+    assert all(m.azimuth_frequency == metas[0].azimuth_frequency for m in metas)
 
     meta = metas[0].to_dict()
 
     # combine state vectors
-    all_state_vectors = [sv for m in metas for sv in m["state_vectors"]]
-    meta["state_vectors"] = _unique_sv(all_state_vectors)
+    all_state_vectors = [sv for m in metas for sv in m.state_vectors]
+    meta["state_vectors"] = [s.to_dict() for s in _unique_sv(all_state_vectors)]
 
     # combine srgr info
-    all_times_: list[float] = sum((m["srgr"]["times"] for m in metas), [])
-    all_srgr_coeffs_: list[list[float]] = sum((m["srgr"]["srgr_coeffs"] for m in metas), [])
-    all_grsr_coeffs_: list[list[float]] = sum((m["srgr"]["grsr_coeffs"] for m in metas), [])
-    all_gr0_: list[float] = sum((m["srgr"]["gr0"] for m in metas), [])
-    all_sr0_: list[float] = sum((m["srgr"]["sr0"] for m in metas), [])
+    all_times_: list[float] = sum((m.srgr["times"] for m in metas), [])
+    all_srgr_coeffs_: list[list[float]] = sum((m.srgr["srgr_coeffs"] for m in metas), [])
+    all_grsr_coeffs_: list[list[float]] = sum((m.srgr["grsr_coeffs"] for m in metas), [])
+    all_gr0_: list[float] = sum((m.srgr["gr0"] for m in metas), [])
+    all_sr0_: list[float] = sum((m.srgr["sr0"] for m in metas), [])
 
     all_srgr_ = zip(all_times_, all_srgr_coeffs_, all_grsr_coeffs_, all_gr0_, all_sr0_)
     all_srgr = sorted(all_srgr_, key=lambda e: e[0])
@@ -620,23 +620,23 @@ def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadat
     }
 
     # merge geometries
-    geoms = [m['approx_geom'] for m in metas]
+    geoms = [m.approx_geom for m in metas]
     multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
     meta["approx_geom"] = list(multipolygon.convex_hull.exterior.coords)
 
     def find_alt(p) -> float:
         for m in metas:
-            if p in m["approx_geom"]:
-                idx = m["approx_geom"].index(p)
-                return m["approx_altitude"][idx]
+            if p in m.approx_geom:
+                idx = m.approx_geom.index(p)
+                return m.approx_altitude[idx]
         assert False
     meta["approx_altitude"] = [find_alt(p) for p in meta["approx_geom"]]
 
     # adjust the size of the mosaic
-    meta["width"] = max(m["width"] for m in metas)
-    meta["height"] = sum(m["height"] for m in metas)
-    meta["image_start"] = min(m["image_start"] for m in metas)
-    meta["image_end"] = max(m["image_end"] for m in metas)
+    meta["width"] = max(m.width for m in metas)
+    meta["height"] = sum(m.height for m in metas)
+    meta["image_start"] = min(m.image_start for m in metas)
+    meta["image_end"] = max(m.image_end for m in metas)
 
     # for now we say that there is only one slice since we are combining multiple slices into one
     meta["slice_number"] = 1

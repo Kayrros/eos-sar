@@ -7,9 +7,8 @@ from eos.sar.roi import Roi
 def compute_proj_model(product, polarization):
     xml = product.get_xml_annotation(polarization)
     meta = sentinel1.metadata.extract_grd_metadata(xml)
-    orbit = Orbit([StateVector.from_dict(s) for s in meta["state_vectors"]])
+    orbit = Orbit(meta.state_vectors)
     proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit)
-
     return proj_model
 
 
