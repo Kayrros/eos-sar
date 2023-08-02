@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Optional, Sequence
+from typing import Any, Callable, Iterable, Optional, Sequence, Union
 import numpy as np
 import shapely.geometry
 
@@ -20,16 +20,25 @@ from eos.dem import DEMSource
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo, Sentinel1GRDProductInfo
 
 
+GRDOrbitProvider = Callable[[str, Sentinel1GRDMetadata], Sentinel1GRDMetadata]
+SLCOrbitProvider = Callable[[str, Sequence[Sentinel1BurstMetadata]], list[Sentinel1BurstMetadata]]
+
+
 def _get_bursts(products: Sequence[Sentinel1SLCProductInfo],
                 swath: str,
                 pol: str,
-                orbit_provider: Optional[Any]) -> list[list[Sentinel1BurstMetadata]]:
+                orbit_provider: Optional[SLCOrbitProvider]) -> list[list[Sentinel1BurstMetadata]]:
     xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
     bursts = [sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls]
 
     if orbit_provider:
+        new_bursts = []
         for p, bs in zip(products, bursts):
-            orbit_provider(p.product_id, bs)
+            ret = orbit_provider(p.product_id, bs)
+            if ret is None or ret is bs or all(r is b for r, b in zip(ret, bs)):
+                raise RuntimeError("The orbit_provider should return the new bursts, and not update the object(s) in-place.")
+            new_bursts.append(ret)
+        bursts = new_bursts
 
     return bursts
 
@@ -71,7 +80,7 @@ class Sentinel1Assembler:
                       pol: str,
                       *,
                       swaths: Sequence[str] = ['iw1', 'iw2', 'iw3'],
-                      orbit_provider=None,
+                      orbit_provider: Optional[SLCOrbitProvider] = None,
                       orbit_degree: int = 11) -> Sentinel1Assembler:
         bsids = set()
         bursts_per_swath: dict[str, list[Sentinel1BurstMetadata]] = {}
@@ -296,7 +305,12 @@ class Sentinel1AssemblyCropper:
             azt_primary[bsid] = azt_primary_flat[burst_mask]
             rng_primary[bsid] = rng_primary_flat[burst_mask]
 
-        def regist(products, pol, orbit_provider, *, get_complex, calibration=None, reramp=True):
+        def regist(products: list[Sentinel1SLCProductInfo],
+                   pol: str,
+                   orbit_provider: Optional[SLCOrbitProvider], *,
+                   get_complex: bool,
+                   calibration: Optional[str] = None,
+                   reramp: bool = True):
             # PS: here the secondary assembler contains all the swaths
             # which enables access to IW2 metadata for ex., useful for some corrections
             secondary_asm = Sentinel1Assembler.from_products(products, pol,
@@ -369,13 +383,18 @@ class Sentinel1AssemblyCropper:
 
 def _get_metas(products: Sequence[Sentinel1GRDProductInfo],
                pol: str,
-               orbit_provider: Optional[Any]) -> list[Sentinel1GRDMetadata]:
+               orbit_provider: Optional[GRDOrbitProvider]) -> list[Sentinel1GRDMetadata]:
     xmls = [p.get_xml_annotation(pol) for p in products]
     metas = [sentinel1.metadata.extract_grd_metadata(xml) for xml in xmls]
 
     if orbit_provider:
+        new_metas: list[Sentinel1GRDMetadata] = []
         for p, meta in zip(products, metas):
-            orbit_provider(p.product_id, meta)
+            ret = orbit_provider(p.product_id, meta)
+            if ret is None or ret is meta:
+                raise RuntimeError("The orbit_provider should return the new metadata, and not update the object(s) in-place.")
+            new_metas.append(ret)
+        metas = new_metas
 
     return metas
 
@@ -394,7 +413,7 @@ class Sentinel1GRDAssembler:
     def from_products(products: Sequence[Sentinel1GRDProductInfo],
                       pol: str,
                       *,
-                      orbit_provider=None,
+                      orbit_provider: Optional[GRDOrbitProvider] = None,
                       orbit_degree: int = 11,
                       startend_datatake_cut: bool = True,
                       ) -> Sentinel1GRDAssembler:

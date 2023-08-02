@@ -29,8 +29,7 @@ N_bursts_per_cycle = 375887
 T_orb2 = T_beam * N_bursts_per_cycle / N_orbits_per_cycle
 
 
-# TODO: cannot be frozen because of apply_new_statevectors_to_slc_bursts
-@dataclass  # (frozen=True)
+@dataclass(frozen=True)
 class Sentinel1BurstMetadata:
     mission_id: str
     absolute_orbit_number: int
@@ -67,6 +66,15 @@ class Sentinel1BurstMetadata:
     approx_altitude: list[float]
     bsid: str
 
+    def with_new_state_vectors(self, state_vectors: list[StateVector], state_vectors_origin: str) -> Sentinel1BurstMetadata:
+        d = self.__dict__.copy()
+        del d["state_vectors"]
+        del d["state_vectors_origin"]
+        return Sentinel1BurstMetadata(
+            state_vectors=state_vectors,
+            state_vectors_origin=state_vectors_origin,
+            **d)
+
     def __getitem__(self, name: str) -> Any:
         import warnings
         warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
@@ -84,10 +92,8 @@ class Sentinel1BurstMetadata:
         d["state_vectors"] = [StateVector.from_dict(s) for s in d["state_vectors"]]
         return Sentinel1BurstMetadata(**d)
 
-# TODO: cannot be frozen because of apply_new_statevectors_to_slc_bursts
 
-
-@dataclass  # (frozen=True)
+@dataclass(frozen=True)
 class Sentinel1GRDMetadata:
 
     mission_id: str
@@ -115,6 +121,15 @@ class Sentinel1GRDMetadata:
     srgr: Sentinel1GRDSRGRMetadata
     width: int
     height: int
+
+    def with_new_state_vectors(self, state_vectors: list[StateVector], state_vectors_origin: str) -> Sentinel1GRDMetadata:
+        d = self.__dict__.copy()
+        del d["state_vectors"]
+        del d["state_vectors_origin"]
+        return Sentinel1GRDMetadata(
+            state_vectors=state_vectors,
+            state_vectors_origin=state_vectors_origin,
+            **d)
 
     def __getitem__(self, name: str) -> Any:
         import warnings

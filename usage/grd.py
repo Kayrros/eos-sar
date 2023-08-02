@@ -37,7 +37,8 @@ def main(
 
     xml = product.get_xml_annotation(pol)
     meta = sentinel1.metadata.extract_grd_metadata(xml)
-    sentinel1.orbits.update_statevectors_using_phoenix(client, product_id, meta)
+    sv, orig = sentinel1.orbits.retrieve_statevectors_using_phoenix(client, product_id, meta)
+    meta = meta.with_new_state_vectors(sv, orig)
 
     orbit = eos.sar.orbit.Orbit(meta.state_vectors)
     corr = [
