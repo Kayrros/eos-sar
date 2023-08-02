@@ -3,7 +3,7 @@ import io
 import glob
 import datetime
 import functools
-from typing import Any, Sequence, Union
+from typing import Any, Optional, Sequence, Union
 
 from lxml import etree
 
@@ -62,43 +62,35 @@ def select_orbit_files_from_filelist(files, date, missionid):
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
 
-def apply_new_statevectors_to_slc_burst(xml_content, burst: Sentinel1BurstMetadata, orbtype):
-    apply_new_statevectors_to_slc_bursts(xml_content, [burst], orbtype)
+def retrieve_new_statevectors_to_slc_burst(xml_content, burst: Sentinel1BurstMetadata) -> list[StateVector]:
+    return retrieve_new_statevectors_to_slc_bursts(xml_content, [burst])
 
 
-def apply_new_statevectors_to_slc_bursts(xml_content: Union[str, bytes, io.BytesIO],
-                                         bursts: Sequence[Sentinel1BurstMetadata],
-                                         orbtype: str) -> None:
-    new_list = get_new_list_of_statevectors(xml_content, [b.state_vectors for b in bursts])
-    for b, sv in zip(bursts, new_list):
-        b.state_vectors = sv
-        b.state_vectors_origin = orbtype
+def retrieve_new_statevectors_to_slc_bursts(xml_content: Union[str, bytes, io.BytesIO],
+                                            bursts: Sequence[Sentinel1BurstMetadata]) -> list[StateVector]:
+    return get_new_list_of_statevectors(xml_content, [b.state_vectors for b in bursts])
 
 
-def apply_new_statevectors_to_grd_meta(xml_content: Union[str, bytes, io.BytesIO],
-                                       meta: Sentinel1GRDMetadata,
-                                       orbtype: str) -> None:
-    meta.state_vectors = get_new_list_of_statevectors(xml_content, (meta.state_vectors,))[0]
-    meta.state_vectors_origin = orbtype
+def retrieve_new_statevectors_to_grd_meta(xml_content: Union[str, bytes, io.BytesIO],
+                                          meta: Sentinel1GRDMetadata) -> list[StateVector]:
+    return get_new_list_of_statevectors(xml_content, (meta.state_vectors,))
 
 
-def apply_new_statevectors_to_dict_meta(xml_content: Union[str, bytes, io.BytesIO],
-                                        meta: dict[str, Any],
-                                        orbtype: str) -> None:
-    meta["state_vectors"] = get_new_list_of_statevectors(xml_content, (meta["state_vectors"],))[0]
-    meta["state_vectors_origin"] = orbtype
+def retrieve_new_statevectors_to_dict_meta(xml_content: Union[str, bytes, io.BytesIO],
+                                           meta: dict[str, Any]) -> list[StateVector]:
+    return get_new_list_of_statevectors(xml_content, (meta["state_vectors"],))
 
 
 def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
                                  statevectors_list: Sequence[Sequence[StateVector]]
-                                 ) -> list[list[StateVector]]:
+                                 ) -> list[StateVector]:
     # compute the approximative middle time of the burst/product
     # we will extract all orbit data over a window of 3 minutes centered around this middle
     start = min([state_vectors[0].time for state_vectors in statevectors_list])
     end = max([state_vectors[-1].time for state_vectors in statevectors_list])
     mid = (start + end) / 2
 
-    newsvs: list[list[StateVector]] = [[] for _ in statevectors_list]
+    newsvs: list[StateVector] = []
 
     if type(xml_content) == str:
         xml_content = io.BytesIO(xml_content.encode('utf-8'))
@@ -112,18 +104,17 @@ def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
         if date > mid + 90:
             break
 
-        for i in range(len(statevectors_list)):
-            x = float(element.findtext("X"))
-            y = float(element.findtext("Y"))
-            z = float(element.findtext("Z"))
-            vx = float(element.findtext("VX"))
-            vy = float(element.findtext("VY"))
-            vz = float(element.findtext("VZ"))
-            newsvs[i].append(StateVector(
-                time=date,
-                position=(x, y, z),
-                velocity=(vx, vy, vz),
-            ))
+        x = float(element.findtext("X"))
+        y = float(element.findtext("Y"))
+        z = float(element.findtext("Z"))
+        vx = float(element.findtext("VX"))
+        vy = float(element.findtext("VY"))
+        vz = float(element.findtext("VZ"))
+        newsvs.append(StateVector(
+            time=date,
+            position=(x, y, z),
+            velocity=(vx, vy, vz),
+        ))
 
     return newsvs
 
@@ -140,7 +131,7 @@ def search_valid_orbit_files_from_local_folder(path, product_info, type):
     return files[-1]
 
 
-def _update_statevectors_from_source(product_info, burst, *, force_type, source):
+def _retrieve_statevectors_from_source(product_info, burst, *, force_type, source) -> tuple[list[StateVector], str]:
     if isinstance(product_info, tuple):
         # ('20210216T151206', 'S1A')
         date, missionid = product_info
@@ -150,46 +141,53 @@ def _update_statevectors_from_source(product_info, burst, *, force_type, source)
         missionid = product_info[:3]
         date = product_info[17:32]
 
-    def try_for_orbit_type(type):
+    def try_for_orbit_type(type) -> Optional[tuple[list[StateVector], str]]:
         xml = source(date, missionid, type)
         if not xml:
             return None
 
         orbtype = f'orb{type}'
         if isinstance(burst, Sentinel1BurstMetadata):
-            apply_new_statevectors_to_slc_burst(xml, burst, orbtype)
+            statevectors = retrieve_new_statevectors_to_slc_burst(xml, burst)
         elif isinstance(burst, list) and isinstance(burst[0], Sentinel1BurstMetadata):
-            apply_new_statevectors_to_slc_bursts(xml, burst, orbtype)
+            statevectors = retrieve_new_statevectors_to_slc_bursts(xml, burst)
         elif isinstance(burst, Sentinel1GRDMetadata):
-            apply_new_statevectors_to_grd_meta(xml, burst, orbtype)
+            statevectors = retrieve_new_statevectors_to_grd_meta(xml, burst)
         elif isinstance(burst, dict):
-            apply_new_statevectors_to_dict_meta(xml, burst, orbtype)
+            statevectors = retrieve_new_statevectors_to_dict_meta(xml, burst)
         else:
             assert False, burst
 
-        return orbtype
+        return statevectors, orbtype
 
     if force_type:
-        type = try_for_orbit_type(force_type.replace('orb', ''))
+        ret = try_for_orbit_type(force_type.replace('orb', ''))
     else:
-        type = try_for_orbit_type('poe') or try_for_orbit_type('res')
-    if type:
-        return type
+        ret = try_for_orbit_type('poe') or try_for_orbit_type('res')
+    if ret is not None:
+        return ret
 
     raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
 
 
-def update_statevectors_using_local_folder(path, product_info, burst, *, force_type=None):
+def retrieve_statevectors_using_local_folder(path,
+                                             product_info,
+                                             burst,
+                                             b,
+                                             force_type=None
+                                             ) -> tuple[list[StateVector], str]:
     '''Retrieve the orbit statevectors of the given bursts using a local folder.
 
     Args
         path: filesystem path to a folder containing .EOF files
         product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
-        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
+        burst: can be either a single burst metadata (Sentinel1BurstMetadata or Sentinel1GRDMetadata) or a list of burst metadata (list[Sentinel1BurstMetadata]). It should be metadata corresponding to a single acquisition/datatake.
         force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
 
     Returns
+        The two return values can be used for the *Metadata.with_new_state_vectors() method:
         str: the type of orbit found ('orbres' or 'orbpre')
+        list: list of StateVector retrieved
 
     Raises
         FileNotFoundError: if no orbit file is found for the product_info
@@ -202,21 +200,29 @@ def update_statevectors_using_local_folder(path, product_info, burst, *, force_t
 
         return open(file, 'rb')
 
-    return _update_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
+    return _retrieve_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
 
 
-def update_statevectors_using_phoenix(phx_client, product_info, burst,
-                                      *, force_type=None, phx_source="aws:proxima:kayrros-prod-sentinel-aux"):
+def retrieve_statevectors_using_phoenix(
+    phx_client,
+    product_info,
+    burst,
+    *,
+    force_type=None,
+    phx_source="aws:proxima:kayrros-prod-sentinel-aux"
+) -> tuple[list[StateVector], str]:
     '''Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
 
     Args
         phx_client: phoenix client
         product_info: can be either a S1 SLC product_id (str) or a tuple containing the missionid (str) and the date (str)
-        burst: can be either a single burst metadata (dict) or a list of burst metadata (list[dict])
+        burst: can be either a single burst metadata (Sentinel1BurstMetadata or Sentinel1GRDMetadata) or a list of burst metadata (list[Sentinel1BurstMetadata]). It should be metadata corresponding to a single acquisition/datatake.
         force_type (str, optional): request a specific type of orbit file (can be 'orbres' or 'orbpoe')
         phx_source (str, default to Kayrros Proxima): phoenix source from the esa-sentinel-1-csar-aux collection
 
     Returns
+        The two return values can be used for the *Metadata.with_new_state_vectors() method:
+        list: list of StateVector retrieved
         str: the type of orbit found ('orbres' or 'orbpre')
 
     Raises
@@ -259,4 +265,4 @@ def update_statevectors_using_phoenix(phx_client, product_info, burst,
         xml = io.BytesIO(item.assets.download_as_bytes("PRODUCT"))
         return xml
 
-    return _update_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
+    return _retrieve_statevectors_from_source(product_info, burst, force_type=force_type, source=source)

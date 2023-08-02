@@ -163,9 +163,9 @@ def test_projection_corner_reflectors():
     def fetch_orbits(pid, bursts):
         import phoenix.catalog
         phx_client = phoenix.catalog.Client()
-        sentinel1.orbits.update_statevectors_using_phoenix(phx_client, pid, bursts,
-                                                           force_type="orbpoe")
-        return bursts
+        sv, orig = sentinel1.orbits.retrieve_statevectors_using_phoenix(phx_client, pid, bursts,
+                                                                        force_type="orbpoe")
+        return [b.with_new_state_vectors(sv, orig) for b in bursts]
 
     asm = sentinel1.assembler.Sentinel1Assembler.from_products(
         products, pol, orbit_provider=fetch_orbits, swaths=swaths)
