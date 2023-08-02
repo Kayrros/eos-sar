@@ -35,9 +35,10 @@ def _get_bursts(products: Sequence[Sentinel1SLCProductInfo],
         new_bursts = []
         for p, bs in zip(products, bursts):
             ret = orbit_provider(p.product_id, bs)
-            if ret is None:
+            if ret is None or ret is bs or all(r is b for r, b in zip(ret, bs)):
                 raise RuntimeError("The orbit_provider should return the new bursts, and not update the object(s) in-place.")
             new_bursts.append(ret)
+        bursts = new_bursts
 
     return bursts
 
@@ -390,9 +391,10 @@ def _get_metas(products: Sequence[Sentinel1GRDProductInfo],
         new_metas: list[Sentinel1GRDMetadata] = []
         for p, meta in zip(products, metas):
             ret = orbit_provider(p.product_id, meta)
-            if ret is None:
+            if ret is None or ret is meta:
                 raise RuntimeError("The orbit_provider should return the new metadata, and not update the object(s) in-place.")
             new_metas.append(ret)
+        metas = new_metas
 
     return metas
 
