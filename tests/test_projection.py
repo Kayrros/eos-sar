@@ -89,7 +89,7 @@ def test_projection_grd():
     meta = sentinel1.metadata.extract_grd_metadata(xml_content)
 
     # create an orbit
-    orbit = Orbit([StateVector.from_dict(s) for s in meta["state_vectors"]])
+    orbit = Orbit(meta.state_vectors)
     # create a corrector
     corrector = eos.sar.projection_correction.Corrector()
 

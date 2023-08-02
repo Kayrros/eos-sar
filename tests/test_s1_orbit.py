@@ -58,3 +58,17 @@ def test_update_statevectors_using_phoenix_invalid(phx_client):
 
     with pytest.raises(FileNotFoundError):
         sentinel1.orbits.update_statevectors_using_phoenix(phx_client, product_id, {})
+
+
+try:
+    from eos.products.sentinel1.product import PhoenixSentinel1GRDProductInfo
+except ImportError:
+    pass
+else:
+    def test_grd_assemble_metadata(phx_client):
+        product_id = 'S1A_IW_GRDH_1SDV_20220908T170044_20220908T170109_044916_055D72_82EF'
+        product = PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
+        xml = product.get_xml_annotation('vv')
+        meta = sentinel1.metadata.extract_grd_metadata(xml)
+
+        assert sentinel1.orbits.update_statevectors_using_phoenix(phx_client, product_id, meta) == 'orbpoe'

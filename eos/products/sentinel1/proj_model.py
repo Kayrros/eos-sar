@@ -3,24 +3,22 @@ from __future__ import annotations
 
 import numpy as np
 import pyproj
-from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
-from eos.sar import projection_correction
+from eos.sar.projection_correction import Corrector, GeoImagePoints
 from eos.products import sentinel1
 
 
-def grd_model_from_meta(meta, orbit,
-                        coord_corrector=projection_correction.Corrector()):
+def grd_model_from_meta(meta: Sentinel1GRDMetadata,
+                        orbit: Orbit,
+                        coord_corrector: Corrector = Corrector()):
     """ Create a Sentinel1GRDModel from a GRD meta dict.
 
     Parameters
     ----------
-    meta : dict
-        Dict containing all metadata of the GRD Sentinel-1 product needed
-        for processing
+    meta : Sentinel1GRDMetadata
     orbit: Orbit
-         Orbit instance
     coord_corrector: eos.sar.projection_correction.Corrector
         Corrector object containing a list of ImageCorrection in this case
 
@@ -29,21 +27,15 @@ def grd_model_from_meta(meta, orbit,
     Sentinel1GRDModel instance.
 
     """
-    srgr = sentinel1.srgr.Sentinel1SRGRConverter(
-        meta['srgr']['times'],
-        meta['srgr']['srgr_coeffs'],
-        meta['srgr']['grsr_coeffs'],
-        meta['srgr']['sr0'],
-        meta['srgr']['gr0'],
-    )
+    srgr = sentinel1.srgr.Sentinel1SRGRConverter(meta.srgr)
     proj_model = Sentinel1GRDModel(
-        meta['image_start'],
-        meta['approx_geom'],
-        meta['range_pixel_spacing'],
-        meta['azimuth_time_interval'],
-        meta['width'],
-        meta['height'],
-        meta['wave_length'],
+        meta.image_start,
+        meta.approx_geom,
+        meta.range_pixel_spacing,
+        meta.azimuth_time_interval,
+        meta.width,
+        meta.height,
+        meta.wave_length,
         orbit,
         srgr,
         coord_corrector,
@@ -53,7 +45,7 @@ def grd_model_from_meta(meta, orbit,
 
 def burst_model_from_burst_meta(burst_meta: Sentinel1BurstMetadata,
                                 orbit: Orbit,
-                                coord_corrector=projection_correction.Corrector(),
+                                coord_corrector=Corrector(),
                                 **kwargs) -> Sentinel1BurstModel:
     """Create a Sentinel1BurstModel from a burst meta dict.
 
@@ -92,7 +84,7 @@ class Sentinel1BaseModel(model.SensorModel):
                  height,
                  wavelength,
                  orbit: Orbit,
-                 coord_corrector: projection_correction.Corrector,
+                 coord_corrector: Corrector,
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BaseModel used to perform projection and localization\
@@ -213,7 +205,7 @@ class Sentinel1BaseModel(model.SensorModel):
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = projection_correction.GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
@@ -312,7 +304,7 @@ class Sentinel1BaseModel(model.SensorModel):
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = projection_correction.GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)
@@ -409,7 +401,7 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
                  burst_roi,
                  approx_geom,
                  orbit: Orbit,
-                 coord_corrector=projection_correction.Corrector(),
+                 coord_corrector=Corrector(),
                  max_iterations=20,
                  tolerance=0.001):
         """Sentinel1BurstModel used to perform projection and localization\
@@ -557,7 +549,7 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
                          h,
                          wavelength,
                          orbit,
-                         projection_correction.Corrector(),
+                         Corrector(),
                          max_iterations,
                          tolerance)
 
@@ -852,7 +844,7 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
                          height,
                          wavelength,
                          orbit,
-                         projection_correction.Corrector(),
+                         Corrector(),
                          max_iterations,
                          tolerance)
 
@@ -1073,8 +1065,8 @@ def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,
             gx[burst_mask], gy[burst_mask], gz[burst_mask], crs='epsg:4978', as_azt_rng=True)
 
         # create geo_im_pt
-        geo_im_pt = projection_correction.GeoImagePoints(gx[burst_mask], gy[burst_mask], gz[burst_mask],
-                                                         azt_no_correc[bsid], rng_no_correc[bsid])
+        geo_im_pt = GeoImagePoints(gx[burst_mask], gy[burst_mask], gz[burst_mask],
+                                   azt_no_correc[bsid], rng_no_correc[bsid])
 
         # estimate and apply corrections
         geo_im_pt = corrector.estimate_and_apply(geo_im_pt)
