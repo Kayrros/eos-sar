@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
+import warnings
 import numpy as np
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 
@@ -357,6 +358,10 @@ def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
     if bistatic:
         bistatic_corr: ImageCorrection
         if full_bistatic_reference is not None:
+            if isinstance(full_bistatic_reference, dict):
+                warnings.warn("Using dict for `full_bistatic_reference` is deprecated. Use a full_bistatic_reference object.",
+                              DeprecationWarning)
+                full_bistatic_reference = FullBistaticReference.from_dict(full_bistatic_reference)
             bistatic_corr = FullBistatic(
                 full_bistatic_reference, burst_meta.pri, burst_meta.rank)
 
