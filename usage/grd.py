@@ -39,7 +39,7 @@ def main(
     meta = sentinel1.metadata.extract_grd_metadata(xml)
     sentinel1.orbits.update_statevectors_using_phoenix(client, product_id, meta)
 
-    orbit = eos.sar.orbit.Orbit(meta["state_vectors"])
+    orbit = eos.sar.orbit.Orbit(meta.state_vectors)
     corr = [
         eos.sar.atmospheric_correction.ApdCorrection(orbit),
     ]
@@ -47,7 +47,7 @@ def main(
 
     proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit, corrector)
 
-    midx, midy = meta['width'] // 2, meta['height'] // 2
+    midx, midy = meta.width // 2, meta.height // 2
     lon, lat, alt = proj_model.localization(midx, midy, 0)
     print(lon, lat, alt)
 

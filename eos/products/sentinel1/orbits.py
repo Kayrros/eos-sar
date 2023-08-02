@@ -9,7 +9,7 @@ from lxml import etree
 
 from eos.sar.orbit import StateVector
 
-from .metadata import Sentinel1BurstMetadata, isostring_to_timestamp
+from .metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata, isostring_to_timestamp
 
 
 def _string_to_timestamp(s):
@@ -76,8 +76,15 @@ def apply_new_statevectors_to_slc_bursts(xml_content: Union[str, bytes, io.Bytes
 
 
 def apply_new_statevectors_to_grd_meta(xml_content: Union[str, bytes, io.BytesIO],
-                                       meta: dict[str, Any],
+                                       meta: Sentinel1GRDMetadata,
                                        orbtype: str) -> None:
+    meta.state_vectors = get_new_list_of_statevectors(xml_content, (meta.state_vectors,))[0]
+    meta.state_vectors_origin = orbtype
+
+
+def apply_new_statevectors_to_dict_meta(xml_content: Union[str, bytes, io.BytesIO],
+                                        meta: dict[str, Any],
+                                        orbtype: str) -> None:
     meta["state_vectors"] = get_new_list_of_statevectors(xml_content, (meta["state_vectors"],))[0]
     meta["state_vectors_origin"] = orbtype
 
@@ -153,8 +160,10 @@ def _update_statevectors_from_source(product_info, burst, *, force_type, source)
             apply_new_statevectors_to_slc_burst(xml, burst, orbtype)
         elif isinstance(burst, list) and isinstance(burst[0], Sentinel1BurstMetadata):
             apply_new_statevectors_to_slc_bursts(xml, burst, orbtype)
-        elif isinstance(burst, dict):
+        elif isinstance(burst, Sentinel1GRDMetadata):
             apply_new_statevectors_to_grd_meta(xml, burst, orbtype)
+        elif isinstance(burst, dict):
+            apply_new_statevectors_to_dict_meta(xml, burst, orbtype)
         else:
             assert False, burst
 

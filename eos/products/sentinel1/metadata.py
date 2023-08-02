@@ -9,6 +9,7 @@ import numpy as np
 import logging
 import shapely.geometry
 
+from eos.products.sentinel1.srgr import Sentinel1GRDSRGRMetadata
 from eos.sar import const
 from eos.sar.orbit import StateVector
 
@@ -82,6 +83,57 @@ class Sentinel1BurstMetadata:
         d = d.copy()
         d["state_vectors"] = [StateVector.from_dict(s) for s in d["state_vectors"]]
         return Sentinel1BurstMetadata(**d)
+
+# TODO: cannot be frozen because of apply_new_statevectors_to_slc_bursts
+
+
+@dataclass  # (frozen=True)
+class Sentinel1GRDMetadata:
+
+    mission_id: str
+    absolute_orbit_number: int
+    relative_orbit_number: int
+    slice_number: int
+    slice_count: int
+    orbit_pass: str
+    azimuth_frequency: float
+    range_frequency: float
+    slant_range_time: float
+    anx_time: float
+    state_vectors: list[StateVector]
+    state_vectors_origin: str
+
+    steering_rate: float
+    wave_length: float
+    approx_geom: list[tuple[float, float]]
+    approx_altitude: list[float]
+
+    image_start: float
+    image_end: float
+    azimuth_time_interval: float
+    range_pixel_spacing: float
+    srgr: Sentinel1GRDSRGRMetadata
+    width: int
+    height: int
+
+    def __getitem__(self, name: str) -> Any:
+        import warnings
+        warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
+                      DeprecationWarning)
+        return self.__dict__[name]
+
+    def to_dict(self) -> dict[str, Any]:
+        d = self.__dict__.copy()
+        d["state_vectors"] = [s.to_dict() for s in self.state_vectors]
+        d["srgr"] = self.srgr.to_dict()
+        return d
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> Sentinel1GRDMetadata:
+        d = d.copy()
+        d["state_vectors"] = [StateVector.from_dict(s) for s in d["state_vectors"]]
+        d["srgr"] = Sentinel1GRDSRGRMetadata.from_dict(d["srgr"])
+        return Sentinel1GRDMetadata(**d)
 
 
 def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: int) -> int:
@@ -466,7 +518,7 @@ def extract_burst_metadata(xml: Union[str, bytes], burst_id: int) -> Sentinel1Bu
     return extract_bursts_metadata(xml, burst_ids=[burst_id])[0]
 
 
-def extract_grd_metadata(xml):
+def extract_grd_metadata(xml: Union[str, bytes]) -> Sentinel1GRDMetadata:
     """Extract metadata for a GRD product.
 
     Parameters
@@ -480,6 +532,14 @@ def extract_grd_metadata(xml):
         The metadata of the product.
     """
     o, i = extract_common_metadata(xml)
+    del o["lines_per_burst"]
+    del o["samples_per_burst"]
+    del o["swath"]
+    del o["az_fm_info"]
+    del o["az_fm_times"]
+    del o["dc_estimate_time"]
+    del o["dc_estimate_t0"]
+    del o["dc_estimate_poly"]
 
     gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
     corners = corners_of_geolocation_grid_points_list(gcp, 0)
@@ -505,9 +565,7 @@ def extract_grd_metadata(xml):
     o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
     o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
 
-    o["state_vectors"] = [StateVector.from_dict(s) for s in o["state_vectors"]]
-
-    return o
+    return Sentinel1GRDMetadata.from_dict(o)
 
 
 def assemble_multiple_products_into_metas(
@@ -517,40 +575,33 @@ def assemble_multiple_products_into_metas(
     return bursts
 
 
-def assemble_multiple_grd_products_into_meta(metas):
+def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadata]) -> Sentinel1GRDMetadata:
     # make sure the product are ordered by time
-    metas = sorted(metas, key=lambda m: m["image_start"])
+    metas = sorted(metas, key=lambda m: m.image_start)
 
     # make sure all products start at the same range time
-    assert all(abs(m["slant_range_time"] - metas[0]["slant_range_time"]) < 1e-9 for m in metas)
+    assert all(abs(m.slant_range_time - metas[0].slant_range_time) < 1e-9 for m in metas)
     # and some quantities should be equal
-    assert all(abs(m["azimuth_time_interval"] - metas[0]["azimuth_time_interval"]) < 1e-7 for m in metas)
-    assert all(m["range_pixel_spacing"] == metas[0]["range_pixel_spacing"] for m in metas)
-    assert all(m["wave_length"] == metas[0]["wave_length"] for m in metas)
-    assert all(m["steering_rate"] == metas[0]["steering_rate"] for m in metas)
-    assert all(m["state_vectors_origin"] == metas[0]["state_vectors_origin"] for m in metas)
-    assert all(m["range_frequency"] == metas[0]["range_frequency"] for m in metas)
-    assert all(m["azimuth_frequency"] == metas[0]["azimuth_frequency"] for m in metas)
+    assert all(abs(m.azimuth_time_interval - metas[0].azimuth_time_interval) < 1e-7 for m in metas)
+    assert all(m.range_pixel_spacing == metas[0].range_pixel_spacing for m in metas)
+    assert all(m.wave_length == metas[0].wave_length for m in metas)
+    assert all(m.steering_rate == metas[0].steering_rate for m in metas)
+    assert all(m.state_vectors_origin == metas[0].state_vectors_origin for m in metas)
+    assert all(m.range_frequency == metas[0].range_frequency for m in metas)
+    assert all(m.azimuth_frequency == metas[0].azimuth_frequency for m in metas)
 
-    meta = dict(**metas[0])
+    meta = metas[0].to_dict()
 
     # combine state vectors
-    all_state_vectors = [sv for m in metas for sv in m["state_vectors"]]
-    meta["state_vectors"] = _unique_sv(all_state_vectors)
-
-    # for now, we do not support assembling these quantities
-    del meta["az_fm_info"]
-    del meta["az_fm_times"]
-    del meta["dc_estimate_poly"]
-    del meta["dc_estimate_t0"]
-    del meta["dc_estimate_time"]
+    all_state_vectors = [sv for m in metas for sv in m.state_vectors]
+    meta["state_vectors"] = [s.to_dict() for s in _unique_sv(all_state_vectors)]
 
     # combine srgr info
-    all_times_: list[float] = sum((m["srgr"]["times"] for m in metas), [])
-    all_srgr_coeffs_: list[list[float]] = sum((m["srgr"]["srgr_coeffs"] for m in metas), [])
-    all_grsr_coeffs_: list[list[float]] = sum((m["srgr"]["grsr_coeffs"] for m in metas), [])
-    all_gr0_: list[float] = sum((m["srgr"]["gr0"] for m in metas), [])
-    all_sr0_: list[float] = sum((m["srgr"]["sr0"] for m in metas), [])
+    all_times_: list[float] = sum((m.srgr.times for m in metas), [])
+    all_srgr_coeffs_: list[list[float]] = sum((m.srgr.srgr_coeffs for m in metas), [])
+    all_grsr_coeffs_: list[list[float]] = sum((m.srgr.grsr_coeffs for m in metas), [])
+    all_gr0_: list[float] = sum((m.srgr.gr0 for m in metas), [])
+    all_sr0_: list[float] = sum((m.srgr.sr0 for m in metas), [])
 
     all_srgr_ = zip(all_times_, all_srgr_coeffs_, all_grsr_coeffs_, all_gr0_, all_sr0_)
     all_srgr = sorted(all_srgr_, key=lambda e: e[0])
@@ -572,20 +623,29 @@ def assemble_multiple_grd_products_into_meta(metas):
     }
 
     # merge geometries
-    geoms = [m['approx_geom'] for m in metas]
+    geoms = [m.approx_geom for m in metas]
     multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
     meta["approx_geom"] = list(multipolygon.convex_hull.exterior.coords)
-    del meta["approx_altitude"]
+
+    def find_alt(p) -> float:
+        for m in metas:
+            if p in m.approx_geom:
+                idx = m.approx_geom.index(p)
+                return m.approx_altitude[idx]
+        assert False
+    meta["approx_altitude"] = [find_alt(p) for p in meta["approx_geom"]]
 
     # adjust the size of the mosaic
-    meta["width"] = max(m["width"] for m in metas)
-    meta["height"] = sum(m["height"] for m in metas)
-    meta["image_start"] = min(m["image_start"] for m in metas)
-    meta["image_end"] = max(m["image_end"] for m in metas)
-    del meta["slice_number"]
-    del meta["slice_count"]
+    meta["width"] = max(m.width for m in metas)
+    meta["height"] = sum(m.height for m in metas)
+    meta["image_start"] = min(m.image_start for m in metas)
+    meta["image_end"] = max(m.image_end for m in metas)
 
-    return meta
+    # for now we say that there is only one slice since we are combining multiple slices into one
+    meta["slice_number"] = 1
+    meta["slice_count"] = 1
+
+    return Sentinel1GRDMetadata.from_dict(meta)
 
 
 def _unique_sv(state_vectors: Sequence[StateVector]) -> list[StateVector]:

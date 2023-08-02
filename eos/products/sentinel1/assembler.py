@@ -8,9 +8,9 @@ from eos.products import sentinel1
 from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter, SecondarySentinel1AcquisitionCutter
 from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
-from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel, Sentinel1GRDModel, Sentinel1MosaicModel, Sentinel1SwathModel
-from eos.sar.orbit import Orbit, StateVector
+from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, ImageCorrection
 from eos.sar.roi import Roi
 import eos.sar
@@ -370,7 +370,9 @@ class Sentinel1AssemblyCropper:
         return mosaic_model.to_cropped_mosaic(self.roi)
 
 
-def _get_metas(products, pol, orbit_provider):
+def _get_metas(products: Sequence[Sentinel1GRDProductInfo],
+               pol: str,
+               orbit_provider: Optional[Any]) -> list[Sentinel1GRDMetadata]:
     xmls = [p.get_xml_annotation(pol) for p in products]
     metas = [sentinel1.metadata.extract_grd_metadata(xml) for xml in xmls]
 
@@ -385,12 +387,11 @@ class Sentinel1GRDAssembler:
 
     orbit: Orbit
 
-    def __init__(self, rois, rois_orig, meta, orbit_degree):
+    def __init__(self, rois, rois_orig, meta: Sentinel1GRDMetadata, orbit_degree):
         self._rois = rois
         self._rois_orig = rois_orig
         self._meta = meta
-        svs = [StateVector.from_dict(s) for s in meta["state_vectors"]]
-        self.orbit = Orbit(svs, degree=orbit_degree)
+        self.orbit = Orbit(meta.state_vectors, degree=orbit_degree)
 
     @staticmethod
     def from_products(products: Sequence[Sentinel1GRDProductInfo],
@@ -404,7 +405,7 @@ class Sentinel1GRDAssembler:
         metas = _get_metas(products, pol, orbit_provider)
 
         # make sure the products are consecutive
-        assert (np.diff([m['slice_number'] for m in metas]) == 1).all()
+        assert (np.diff([m.slice_number for m in metas]) == 1).all()
 
         meta_per_pid = {product.product_id: prod_meta
                         for product, prod_meta in zip(products, metas)}
@@ -413,14 +414,14 @@ class Sentinel1GRDAssembler:
         rois = {}
         rois_orig = {}
         row = 0
-        slice_count = metas[0]['slice_count']
+        slice_count = metas[0].slice_count
         for product in products:
             pid = product.product_id
             prod_meta = meta_per_pid[pid]
 
-            w = prod_meta["width"]
-            h = prod_meta["height"]
-            slice_number = prod_meta['slice_number']
+            w = prod_meta.width
+            h = prod_meta.height
+            slice_number = prod_meta.slice_number
 
             adj_row = 0
             if startend_datatake_cut:
