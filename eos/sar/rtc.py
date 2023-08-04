@@ -1,5 +1,6 @@
 import numpy as np
 
+import eos.dem
 from eos.sar import model, roi
 from eos.sar import simulator  # type: ignore
 
@@ -18,10 +19,11 @@ class RadiometricTerrainCorrector:
 
     def __init__(self,
                  proj_model: model.SensorModel,
+                 dem_source: eos.dem.DEMSource,
                  roi: roi.Roi,
                  simulator_kwargs={},
                  ):
-        self.simulator = simulator.SARSimulator(proj_model, **simulator_kwargs)
+        self.simulator = simulator.SARSimulator(proj_model, dem_source, **simulator_kwargs)
         self.roi = roi
         self._simulation = None
 

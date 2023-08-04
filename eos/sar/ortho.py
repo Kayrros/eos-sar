@@ -7,6 +7,7 @@ import rasterio
 import rasterio.warp
 
 from eos.sar import model, regist
+import eos.dem
 
 
 @dataclass
@@ -85,9 +86,9 @@ class _DEMInfo:
     shape: tuple
 
     @staticmethod
-    def from_proj_model(proj_model, roi):
-        refined_geom, _, _ = proj_model.get_approx_geom(roi=roi)
-        x, y, alt, transform, crs = regist.dem_points(refined_geom)
+    def from_proj_model(proj_model, roi, dem: eos.dem.DEM):
+        refined_geom, _, _ = proj_model.get_approx_geom(roi=roi, elev=dem.elevation)
+        x, y, alt, transform, crs = regist.dem_points(refined_geom, dem=dem)
 
         deminfo = _DEMInfo()
         deminfo.shape = alt.shape
@@ -106,8 +107,9 @@ class Orthorectifier:
     crs: rasterio.CRS
 
     @staticmethod
-    def from_roi(proj_model, roi, resolution, crs=None, align=None):
-        coords, _, _ = proj_model.get_approx_geom(roi=roi)
+    def from_roi(proj_model, roi, resolution, dem: eos.dem.DEM,
+                 crs=None, align=None):
+        coords, _, _ = proj_model.get_approx_geom(roi=roi, elev=dem.elevation)
         geometry = shapely.geometry.Polygon(coords)
         bbox = geometry.bounds
 
@@ -116,19 +118,21 @@ class Orthorectifier:
 
         transform, shape, _ = _compute_transform_shape(crs, resolution, bbox, align)
         origin_col, origin_row = roi.get_origin()
-        deminfo = _DEMInfo.from_proj_model(proj_model, roi)
+        deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
         ortho = Orthorectifier(proj_model, deminfo, origin_col, origin_row, crs, transform, shape)
         return ortho
 
     @staticmethod
-    def from_transform(proj_model, roi, crs, transform, shape, previous_orthorectifier=None):
+    def from_transform(proj_model, roi, crs, transform, shape, 
+                       dem: eos.dem.DEM,
+                       previous_orthorectifier=None):
         if previous_orthorectifier:
             assert previous_orthorectifier.crs == crs
             assert previous_orthorectifier.transform == transform
             assert previous_orthorectifier.shape == shape
             deminfo = previous_orthorectifier._deminfo
         else:
-            deminfo = _DEMInfo.from_proj_model(proj_model, roi)
+            deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
 
         origin_col, origin_row = roi.get_origin()
         ortho = Orthorectifier(proj_model, deminfo, origin_col, origin_row, crs, transform, shape)

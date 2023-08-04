@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 
 import eos.products.sentinel1 as s1
 import eos.sar
+import eos.dem
 from eos.sar.orbit import Orbit
 
 
@@ -119,13 +120,14 @@ def main(result_dir='.'):
     os.makedirs(result_dir, exist_ok=True)
 
     image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs()
+    dem = eos.dem.get_any_source()
 
     orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
     # construct primary swath model
-    primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
+    primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
         primary_bursts_meta, orbit)
     # get dem points
-    x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
+    x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model, dem=dem)
 
     primary_cutter = s1.acquisition.make_primary_cutter_from_bursts_meta(primary_bursts_meta)
     #

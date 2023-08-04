@@ -1,8 +1,9 @@
 import os
 import numpy as np
+import eos.dem
 from eos.sar import io, dem_to_radar, regist, roi
 from eos.products import sentinel1
-from eos.sar.orbit import Orbit, StateVector
+from eos.sar.orbit import Orbit
 
 
 def test_radar_coding():
@@ -42,16 +43,18 @@ def test_radar_coding():
 
     # get a good approximation of the geometry of the burst
     # with a margin of 10 pixels
-    refined_geom, alts, mask = bmod.get_approx_geom(margin=margin)
+    dem_source = eos.dem.get_any_source()
+    dem = bmod.fetch_dem(dem_source)
+    refined_geom, alts, mask = bmod.get_approx_geom(margin=margin, elev=dem.elevation)
 
     # get a dem on the previously estimated geometry
-    x, y, raster, transform, crs = regist.dem_points(refined_geom)
+    x, y, raster, transform, crs = regist.dem_points(refined_geom, dem=dem)
 
     # define a region of interest where geocoding should occur
     crop_roi = roi.Roi(6000, 80, 500, 200)
     # estimate altitude only on roi
     # the approximate geometry is implicitly re-estimated (since not passed as param)
-    crop_alt = dem_to_radar.dem_radarcoding(raster, transform, bmod,
+    crop_alt = dem_to_radar.dem_radarcoding(dem, bmod,
                                             roi=crop_roi,
                                             margin=margin,
                                             get_xy=True)

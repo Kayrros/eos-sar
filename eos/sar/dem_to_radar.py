@@ -2,6 +2,7 @@ import numpy as np
 from shapely.geometry import Polygon, MultiPoint
 from scipy.interpolate import LinearNDInterpolator
 import eos.sar
+import eos.dem
 
 # TODO add support for dem crs
 
@@ -159,7 +160,7 @@ def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry=None,
     return interpolator(rows, cols)
 
 
-def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
+def dem_radarcoding(dem: eos.dem.DEM, model, roi=None, approx_geometry=None,
                     margin=10, get_xy=False):
     """
     Project a dem in radar coordinates and compute a height value for
@@ -171,6 +172,7 @@ def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
         Rectangular array of the height of dem points.
     transform : affine.Affine
         Raster transform (From px coordinates to earth coords x, y)
+    dem: eos.dem.DEM
     model : SensorModel
         model to perform projections and localizations.
     roi : eos.sar.roi.Roi
@@ -198,20 +200,19 @@ def dem_radarcoding(raster, transform, model, roi=None, approx_geometry=None,
     if roi is None:
         roi = eos.sar.roi.Roi(0, 0, model.w, model.h)
     if approx_geometry is None:
-        approx_geometry = model.get_buffered_geom(
-            roi, margin=margin)
+        approx_geometry = model.get_buffered_geom(dem, roi, margin=margin)
 
     # get the raster grid x, y and crop it
-    x, y = eos.sar.utils.raster_xy_grid(raster.shape, transform,
+    x, y = eos.sar.utils.raster_xy_grid(dem.array.shape, dem.transform,
                                         px_is_area=True)
 
     # roi on the bounds of approximate geometry in raster
     crop_roi = eos.sar.utils.geom_to_raster_roi(
-        approx_geometry, transform, raster.shape)
+        approx_geometry, dem.transform, dem.array.shape)
     # crop raster and x, y coordinates
     x = crop_roi.crop_array(x)
     y = crop_roi.crop_array(y)
-    raster = crop_roi.crop_array(raster)
+    raster = crop_roi.crop_array(dem.array)
 
     # get meshgrid on which to predict
     cols_grid, rows_grid = roi.get_meshgrid()

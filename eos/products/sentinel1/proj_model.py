@@ -875,7 +875,7 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         first_col_time = self.first_col_time + roi.col / self.range_frequency
         first_row_time = self.first_row_time + roi.row / self.azimuth_frequency
 
-        approx_geom, _, _ = self.get_approx_geom(roi)
+        approx_geom, _, _ = self.get_approx_geom(roi, elev=None) # TODO
 
         model = Sentinel1MosaicModel(
             first_row_time,
