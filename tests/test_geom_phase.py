@@ -63,8 +63,7 @@ def test_geom_phase_prediction():
     # get dem points
     x, y, raster, transform, crs = eos.sar.regist.dem_points(approx_geom, dem=dem)
     # Dem projection in radar coordinates
-    heights = eos.sar.dem_to_radar.dem_radarcoding(raster, transform,
-                                                   primary_swath_model,
+    heights = eos.sar.dem_to_radar.dem_radarcoding(dem, primary_swath_model,
                                                    roi=primary_swath_roi,
                                                    approx_geometry=approx_geom,
                                                    margin=margin)
