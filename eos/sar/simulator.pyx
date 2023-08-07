@@ -168,10 +168,10 @@ class SARSimulator:
 
     def __init__(self,
                  proj_model: model.SensorModel,
-                 dem_source: eos.dem.DEMSource,
+                 dem: eos.dem.DEM,
                  oversampling=(4, 4)):
         self.proj_model = proj_model
-        self.dem_source = dem_source
+        self.dem = dem
 
         self.oversampling_x, self.oversampling_y = oversampling
 
@@ -199,11 +199,10 @@ class SARSimulator:
 
     def _resample_dem(self, roi: Roi):
         h, w = roi.get_shape()
-        geometry, _, _ = self.proj_model.get_approx_geom(roi)
+        geometry, _, _ = self.proj_model.get_approx_geom(roi, dem=self.dem)
         lons, lats = zip(*geometry)
         bounds = (min(lons), min(lats), max(lons), max(lats))
-        dem = self.dem_source.fetch_dem(bounds)
-        src_raster, src_transform, crs = dem.crop(bounds)
+        src_raster, src_transform, crs = self.dem.crop(bounds)
 
         # NOTE: an affine transform is a poor approximation?
         # we could warp with a higher order model, and use it to get the lon,lat as well
@@ -453,7 +452,7 @@ class SARSimulator:
         rows = rows.ravel()
 
         lon, lat, alt = self.proj_model.localization(rows, cols, alt=np.zeros_like(rows))
-        alt = self.dem_source.elevation(lon, lat)
+        alt = self.dem.elevation(lon, lat)
         _, cols2, _ = self.proj_model.projection(lon, lat, alt)
 
         # over-estimate a bit

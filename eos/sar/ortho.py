@@ -87,7 +87,7 @@ class _DEMInfo:
 
     @staticmethod
     def from_proj_model(proj_model, roi, dem: eos.dem.DEM):
-        refined_geom, _, _ = proj_model.get_approx_geom(roi=roi, elev=dem.elevation)
+        refined_geom, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
         x, y, alt, transform, crs = regist.dem_points(refined_geom, dem=dem)
 
         deminfo = _DEMInfo()
@@ -109,7 +109,7 @@ class Orthorectifier:
     @staticmethod
     def from_roi(proj_model, roi, resolution, dem: eos.dem.DEM,
                  crs=None, align=None):
-        coords, _, _ = proj_model.get_approx_geom(roi=roi, elev=dem.elevation)
+        coords, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
         geometry = shapely.geometry.Polygon(coords)
         bbox = geometry.bounds
 
@@ -123,7 +123,7 @@ class Orthorectifier:
         return ortho
 
     @staticmethod
-    def from_transform(proj_model, roi, crs, transform, shape, 
+    def from_transform(proj_model, roi, crs, transform, shape,
                        dem: eos.dem.DEM,
                        previous_orthorectifier=None):
         if previous_orthorectifier:

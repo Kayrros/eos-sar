@@ -1,6 +1,8 @@
+from __future__ import annotations
 from dataclasses import dataclass
 import os
 from typing import Any, Iterable, TypeAlias, Union
+import affine
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -28,7 +30,7 @@ except ImportError:
     has_demstitcher = False
 
 
-Bounds: TypeAlias = tuple[float, float, float, float]  # 
+Bounds: TypeAlias = tuple[float, float, float, float]
 """ (lon_min, lat_min, lon_max, lat_max) """
 
 
@@ -60,6 +62,15 @@ def write_crop_to_file(array, transform, crs, path):
     with rasterio.open(path, "w", **profile) as f:
         f.write(array, 1)
 
+
+def lonlat_list_to_bounds(lons: ArrayLike, lats: ArrayLike) -> Bounds:
+    lon_min = np.min(lons)
+    lat_min = np.min(lats)
+    lon_max = np.max(lons)
+    lat_max = np.max(lats)
+    return (lon_min, lat_min, lon_max, lat_max)
+
+
 def _bilinear_interp(array, x, y):
     """Returns the value for the fractional row/col using bilinear interpolation
         between the cells.
@@ -89,9 +100,15 @@ def _bilinear_interp(array, x, y):
 
 @dataclass(frozen=True)
 class DEM:
-    array: NDArray[np.float32]  # should be relative to the ellipsoid and with good pixel convention (TODO)
-    transform: Any
+    array: NDArray[np.float32]
+    """ raster containing heights in meters relative to the ellipsoid """
+    transform: affine.Affine
     crs: str = "EPSG:4326"
+    """ always "EPSG:4326" """
+
+    def __post_init__(self):
+        # make the array read-only, just in case
+        self.array.setflags(write=False)
 
     def elevation(self,
                   lons: ArrayLike,
@@ -109,24 +126,25 @@ class DEM:
         """
         is_input_iterable = isinstance(lons, Iterable)
 
-        lats = np.asarray(lats)
-        lons = np.asarray(lons)
-        assert len(lons) == len(lats), "arguments must have same length"
+        lats_arr = np.atleast_1d(np.asarray(lats))
+        lons_arr = np.atleast_1d(np.asarray(lons))
+        assert len(lons_arr) == len(lats_arr), "arguments must have same length"
 
-        geo_coords = np.array([lons, lats])
+        geo_coords = np.array([lons_arr, lats_arr])
+        # TODO: not sure about the -0.5
         img_coords = np.around(~self.transform * geo_coords, 6) - 0.5
         assert (img_coords >= 0).all()
-        assert (img_coords[0] < self.array.shape[1]).all()
-        assert (img_coords[1] < self.array.shape[0]).all()
+        assert (img_coords[0] + 1 < self.array.shape[1]).all()  # +1 because we need data for interpolation
+        assert (img_coords[1] + 1 < self.array.shape[0]).all()
 
         if interpolation == "nearest":
-            alts = np.array([self.array[y, x] for x, y in img_coords])
+            alts = np.array([self.array[int(y), int(x)] for x, y in zip(*img_coords)])
         else:
             dem_subparts = []
             for x, y in zip(img_coords[0], img_coords[1]):
                 xx = int(x)
                 yy = int(y)
-                dem = self.array[yy:yy+2, xx:xx+2]
+                dem = self.array[yy:yy + 2, xx:xx + 2]
                 dem_subparts.append(dem.flatten())
 
             dem_subparts = np.stack(dem_subparts, axis=0)
@@ -139,9 +157,9 @@ class DEM:
         else:
             return alts.tolist() if isinstance(alts, np.ndarray) else alts
 
-    def crop(self, bounds: Bounds) -> tuple[NDArray[np.float32], Any, str]:
+    def crop(self, bounds: Bounds) -> tuple[NDArray[np.float32], affine.Affine, str]:
         """
-        Return a crop of the `source` DEM on the given `bounds`.
+        Return a crop of the DEM on the given `bounds`, as an array, transform, crs.
 
         Args:
             bounds (4-tuple): tuple of floats lon_min, lat_min, lon_max, lat_max
@@ -151,8 +169,43 @@ class DEM:
             affine.Affine: transform
             rasterio.crs.CRS: CRS
         """
-        # TODO: actually crop (array and transform)
-        return self.array, self.transform, self.crs
+
+        xmin, ymin = np.array(~self.transform * np.array((bounds[0], bounds[3])))
+        xmax, ymax = np.array(~self.transform * np.array((bounds[2], bounds[1])))
+
+        print("parent shape:", self.array.shape)
+        print("x:", xmin, xmax, "y:", ymin, ymax)
+
+        xmin = int(np.floor(xmin))
+        ymin = int(np.floor(ymin))
+        xmax = int(np.floor(xmax))
+        ymax = int(np.floor(ymax))
+
+        if xmin < 0 or ymin < 0 or xmax >= self.array.shape[1] or ymax >= self.array.shape[0]:
+            raise ValueError("out of bounds")
+
+        array = self.array[ymin:ymax + 1, xmin:xmax + 1]
+        resx = self.transform.a
+        resy = self.transform.e
+        transform = affine.Affine.translation(xmin * resx, ymin * resy) * self.transform
+
+        return array, transform, self.crs
+
+    def subset(self, bounds: Bounds, copy: bool = False) -> DEM:
+        """
+        Return a subset of the DEM on the given `bounds` as a new DEM instance.
+
+        Args:
+            bounds (4-tuple): tuple of floats lon_min, lat_min, lon_max, lat_max
+            copy (bool optional): Copy the array so that the parent instance can be freed. Otherwise it uses a view.
+
+        Returns:
+            DEM: subset
+        """
+        array, transform, _ = self.crop(bounds)
+        if copy:
+            array = array.copy()
+        return DEM(array=array, transform=transform)
 
 
 class DEMSource:
@@ -172,7 +225,6 @@ class DEMSource:
             dem: eos.dem.DEM instance
         """
         raise NotImplementedError
-
 
 
 @dataclass(frozen=True)

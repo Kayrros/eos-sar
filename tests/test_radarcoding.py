@@ -45,7 +45,7 @@ def test_radar_coding():
     # with a margin of 10 pixels
     dem_source = eos.dem.get_any_source()
     dem = bmod.fetch_dem(dem_source)
-    refined_geom, alts, mask = bmod.get_approx_geom(margin=margin, elev=dem.elevation)
+    refined_geom, alts, mask = bmod.get_approx_geom(margin=margin, dem=dem)
 
     # get a dem on the previously estimated geometry
     x, y, raster, transform, crs = regist.dem_points(refined_geom, dem=dem)

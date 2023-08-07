@@ -44,7 +44,7 @@ class SensorModel(abc.ABC):
 
     def localize_without_alt(self, row, col, max_iter=5, eps=1.0,
                              alt_min=-1000, alt_max=9000, num_alt=100,
-                             verbosity=False, *, elev):
+                             verbosity=False, *, dem: eos.dem.DEM):
         """
         Localize a pixel in the image to the 3D point without needing the
         the altitude. A set of altitude values are tested recursively.
@@ -67,10 +67,8 @@ class SensorModel(abc.ABC):
             Number of altitudes to test in each iteration. The default is 100.
         verbosity : bool, optional
             If True, print messages about the optimization. The default is False.
-        elev: function
-            Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-            lon, lat are in wgs84 crs.
-            Should be vectorized (able to handle a query of arrays).
+        dem: DEM
+            Should contain the expected lon/lat
 
         Returns
         -------
@@ -92,7 +90,7 @@ class SensorModel(abc.ABC):
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
             self, row, col, alt_min, alt_max, num_alt,
-            max_iter=max_iter, eps=eps, verbosity=verbosity, elev=elev)
+            max_iter=max_iter, eps=eps, verbosity=verbosity, dem=dem)
 
         # do a last linear interpolation
         alt_opt = alt_min - alt_diff1 * \
@@ -154,7 +152,7 @@ class SensorModel(abc.ABC):
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
         return approx_geom
 
-    def get_approx_geom(self, roi=None, margin=0, *, elev, **kwargs):
+    def get_approx_geom(self, roi=None, margin=0, *, dem: eos.dem.DEM, **kwargs):
         """
         Get the approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
@@ -166,7 +164,7 @@ class SensorModel(abc.ABC):
             Defines the region to localize. The default is None.
         margin : int, optional
             Margin in px to buffer the roi. The default is 0.
-       **kwargs: Keyword arguments for localize_without_alt function.
+        **kwargs: Keyword arguments for localize_without_alt function.
 
         Returns
         -------
@@ -186,7 +184,7 @@ class SensorModel(abc.ABC):
         rows, cols = roi.to_bounding_points()
 
         lons, lats, alts, masks = self.localize_without_alt(
-            rows, cols, elev=elev, **kwargs)
+            rows, cols, dem=dem, **kwargs)
 
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
@@ -231,7 +229,7 @@ class SensorModel(abc.ABC):
 
         # deal with the left boundary
         lons_left, lats_left, alts, masks = self.localize_without_alt(
-            _rows, col * np.ones_like(_rows), elev=dem.elevation, **kwargs)
+            _rows, col * np.ones_like(_rows), dem=dem, **kwargs)
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -240,7 +238,7 @@ class SensorModel(abc.ABC):
 
         # deal with the right boundary
         lons_right, lats_right, alts, masks = self.localize_without_alt(
-            _rows, (col + w - 1) * np.ones_like(_rows), elev=dem.elevation, **kwargs)
+            _rows, (col + w - 1) * np.ones_like(_rows), dem=dem, **kwargs)
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -259,7 +257,7 @@ class SensorModel(abc.ABC):
         return buffered_geom
 
 
-def localized_vs_dem(sensor_model, row, col, alt, elev):
+def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM):
     """
     Computes the error between localized point at a certain height and the dem.
 
@@ -273,10 +271,7 @@ def localized_vs_dem(sensor_model, row, col, alt, elev):
         col in image.
     alt : ndarray
         Altitude to test vs dem.
-    elev: function
-        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-        lon, lat are in wgs84 crs.
-        Should be vectorized (able to handle a query of arrays).
+    dem: eos.dem.DEM
 
     Returns
     -------
@@ -285,11 +280,11 @@ def localized_vs_dem(sensor_model, row, col, alt, elev):
 
     """
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - elev(lon, lat)
+    return alt - dem.elevation(lon, lat)
 
 
 def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
-                    *, elev):
+                    *, dem: eos.dem.DEM):
     """
     Shrink a search interval by num_alt
 
@@ -307,10 +302,7 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
         upper bound of the search space.
     num_alt : int
         number of altitudes to test.
-    elev: function
-        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-        lon, lat are in wgs84 crs.
-        Should be vectorized (able to handle a query of arrays).
+    dem: eos.dem.DEM
 
     Returns
     -------
@@ -348,7 +340,7 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
                                 utils.hrepeat(rows, num_alt).ravel(),
                                 utils.hrepeat(cols, num_alt).ravel(),
                                 potential_alt.ravel(),
-                                elev)
+                                dem)
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
@@ -395,7 +387,7 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
 
 def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
                               num_alt, max_iter=10, eps=1e-1,
-                              verbosity=False, *, elev):
+                              verbosity=False, *, dem: eos.dem.DEM):
     """
     Iteratively shrink the search interval for the altitude of a point.
 
@@ -420,10 +412,7 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
         The default is 1e-1.
     verbosity : bool, optional
         if True, print optim messages. The default is False.
-    elev: function
-        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-        lon, lat are in wgs84 crs.
-        Should be vectorized (able to handle a query of arrays).
+    dem: eos.dem.DEM
 
     Returns
     -------
@@ -461,7 +450,7 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
             col[iterate_mask],
             alts_min[iterate_mask],
             alts_max[iterate_mask],
-            num_alt, elev=elev)
+            num_alt, dem=dem)
         # update masks
         zero_mask[iterate_mask] = masks["zeros"]
         invalid_mask[iterate_mask] = masks["invalid"]

@@ -18,7 +18,7 @@ test:
     - pip install pytest-parallel
     - pip install py  # see https://github.com/browsertron/pytest-parallel/issues/118
   script:
-    - pip install multidem 'kayrros-phoenix[source-s3]'
+    - pip install multidem 'kayrros-phoenix[source-s3]' dem-stitcher
     - pytest . --workers auto
 
 checkstyle:

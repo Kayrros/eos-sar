@@ -19,11 +19,11 @@ class RadiometricTerrainCorrector:
 
     def __init__(self,
                  proj_model: model.SensorModel,
-                 dem_source: eos.dem.DEMSource,
+                 dem: eos.dem.DEM,
                  roi: roi.Roi,
                  simulator_kwargs={},
                  ):
-        self.simulator = simulator.SARSimulator(proj_model, dem_source, **simulator_kwargs)
+        self.simulator = simulator.SARSimulator(proj_model, dem, **simulator_kwargs)
         self.roi = roi
         self._simulation = None
 

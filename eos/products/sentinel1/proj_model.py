@@ -8,6 +8,7 @@ from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 from eos.products import sentinel1
+import eos.dem
 
 
 def grd_model_from_meta(meta: Sentinel1GRDMetadata,
@@ -875,7 +876,9 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         first_col_time = self.first_col_time + roi.col / self.range_frequency
         first_row_time = self.first_row_time + roi.row / self.azimuth_frequency
 
-        approx_geom, _, _ = self.get_approx_geom(roi, elev=None) # TODO
+        # NOTE: in order not to require a DEM here, compute a very approximate geometry
+        # currently the approx_geom is not used for precise computation anyway.
+        approx_geom = self.get_coarse_approx_geom(roi, margin=100, alt_min=-1000, alt_max=9000)
 
         model = Sentinel1MosaicModel(
             first_row_time,

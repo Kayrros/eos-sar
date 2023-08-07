@@ -45,7 +45,6 @@ def test_geom_phase_prediction():
 
     dem_source = eos.dem.get_any_source()
     dem = primary_swath_model.fetch_dem(dem_source, primary_swath_roi)
-    elev = dem.elevation
 
     topo = eos.sar.geom_phase.TopoCorrection(primary_swath_model,
                                              [secondary_swath_model],
@@ -58,7 +57,7 @@ def test_geom_phase_prediction():
 
     margin = 10
     approx_geom, alts, mask = primary_swath_model.get_approx_geom(primary_swath_roi,
-                                                                  elev=elev,
+                                                                  dem=dem,
                                                                   margin=margin)
     # get dem points
     x, y, raster, transform, crs = eos.sar.regist.dem_points(approx_geom, dem=dem)
