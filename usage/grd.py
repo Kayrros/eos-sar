@@ -1,15 +1,17 @@
 import numpy as np
 import rasterio
+import rasterio.control
 
 import phoenix.catalog
 import eos.sar
 import eos.dem
 import eos.products.sentinel1 as sentinel1
+from eos.sar.roi import Roi
 
 client = phoenix.catalog.Client()
 
 
-def _get_gcps(model, roi, dem: eos.dem.DEMSource):
+def _get_gcps(model, roi: Roi, dem: eos.dem.DEM):
     h, w = roi.get_shape()
     ox, oy = roi.get_origin()
     gcps = []
@@ -34,7 +36,7 @@ def main(
     rtc_after_ortho=False,
 ):
     product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
-    dem = eos.dem.get_any_source()
+    dem_source = eos.dem.get_any_source()
 
     xml = product.get_xml_annotation(pol)
     meta = sentinel1.metadata.extract_grd_metadata(xml)
@@ -61,6 +63,7 @@ def main(
                           crop_size,
                           crop_size)
 
+    dem = proj_model.fetch_dem(dem_source, roi)
     reader = product.get_image_reader(pol)
 
     if calibration:

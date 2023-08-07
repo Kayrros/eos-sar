@@ -100,20 +100,31 @@ class SensorModel(abc.ABC):
         lon, lat, alt_opt = self.localization(row, col, alt_opt)
         return lon, lat, alt_opt, masks
 
-    def fetch_dem(self, dem_source: eos.dem.DEMSource, roi: Optional[Roi] = None,
-                  alt_min: float = -1000, alt_max: float = 9000) -> eos.dem.DEM:
-        geometry = self.get_coarse_approx_geom(roi, alt_min=alt_min, alt_max=alt_max)
+    def fetch_dem(self,
+                  dem_source: eos.dem.DEMSource,
+                  roi: Optional[Roi] = None,
+                  margin: int = 1000,
+                  alt_min: float = -1000,
+                  alt_max: float = 9000) -> eos.dem.DEM:
+        """
+        Given a eos.dem.DEMSource, returns a eos.dem.DEM of the scene (restricted to an ROI if provided).
+        The DEM will be large enough to contain the scene, for this very imprecise assumptions are used.
+        One can obtain a smaller dem (= faster cropping and less memory) by adjusting the margin and alt_min/max.
+        """
+        geometry = self.get_coarse_approx_geom(roi, margin=margin,
+                                               alt_min=alt_min, alt_max=alt_max)
         lons = [P[0] for P in geometry]
         lats = [P[1] for P in geometry]
         bounds = (min(lons), min(lats), max(lons), max(lats))
         dem = dem_source.fetch_dem(bounds)
         return dem
 
-    def get_coarse_approx_geom(self, roi: Optional[Roi] = None, margin: int = 1000, alt_min=-1000., alt_max=9000.):
+    def get_coarse_approx_geom(self, roi: Optional[Roi] = None, *, margin, alt_min, alt_max):
         """
         Get the very approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
-        assuming coarse elevation bounds: alt_min in near-range, alt_max in far-range.
+        assuming coarse elevation bounds: alt_min in near-range, alt_max in far-range,
+        in order to have a dilated geometry encompassing all possible elevation landscapes.
 
         Parameters
         ----------
@@ -121,6 +132,10 @@ class SensorModel(abc.ABC):
             Defines the region to localize. The default is None.
         margin : int, optional
             Margin in px to buffer the roi. The default is 1000.
+        alt_min : float, optional
+            Minimum altitude, assumed in near-range. The default is -1000.
+        alt_max : float, optional
+            Maximum altitude, assumed in far-range. The default is 9000.
 
         Returns
         -------
