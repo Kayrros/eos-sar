@@ -1,7 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import os
-from typing import Any, Iterable, TypeAlias, Union
+from typing import Iterable, Union
+from typing_extensions import TypeAlias
 import affine
 
 import numpy as np
