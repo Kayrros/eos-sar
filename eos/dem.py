@@ -251,13 +251,13 @@ class SRTM4Source(DEMSource):
 
     def elevation(self, lons, lats, interpolation="bilinear"):
         warnings.warn("DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
-                     DeprecationWarning)
+                      DeprecationWarning)
         assert interpolation == "bilinear"
         return srtm4.srtm4(lons, lats)
 
     def crop(self, bounds):
         warnings.warn("DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
-                     DeprecationWarning)
+                      DeprecationWarning)
         return srtm4.crop(bounds, datum="ellipsoidal")
 
 
@@ -281,13 +281,13 @@ class MultidemSource(DEMSource):
 
     def elevation(self, lons, lats, interpolation="bilinear"):
         warnings.warn("DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
-                     DeprecationWarning)
+                      DeprecationWarning)
         return multidem.elevation(lons, lats, interpolation=interpolation,
                                   source=self.demsource, datum="ellipsoidal")
 
     def crop(self, bounds):
         warnings.warn("DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
-                     DeprecationWarning)
+                      DeprecationWarning)
         return multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
 
 
