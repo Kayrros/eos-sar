@@ -4,6 +4,7 @@ import os
 from typing import Iterable, Union
 from typing_extensions import TypeAlias
 import affine
+import warnings
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -238,6 +239,17 @@ class SRTM4Source(DEMSource):
         assert crs == 'EPSG:4326'
         return DEM(array=array, transform=transform)
 
+    def elevation(self, lons, lats, interpolation="bilinear"):
+        warnings.warn("DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
+                     DeprecationWarning)
+        assert interpolation == "bilinear"
+        return srtm4.srtm4(lons, lats)
+
+    def crop(self, bounds):
+        warnings.warn("DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
+                     DeprecationWarning)
+        return srtm4.crop(bounds, datum="ellipsoidal")
+
 
 class MultidemSource(DEMSource):
 
@@ -256,6 +268,17 @@ class MultidemSource(DEMSource):
         assert array.dtype == np.float32
         assert crs == 'EPSG:4326'
         return DEM(array=array, transform=transform)
+
+    def elevation(self, lons, lats, interpolation="bilinear"):
+        warnings.warn("DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
+                     DeprecationWarning)
+        return multidem.elevation(lons, lats, interpolation=interpolation,
+                                  source=self.demsource, datum="ellipsoidal")
+
+    def crop(self, bounds):
+        warnings.warn("DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
+                     DeprecationWarning)
+        return multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
 
 
 @dataclass(frozen=True)
