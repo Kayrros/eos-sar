@@ -117,7 +117,11 @@ class SensorModel(abc.ABC):
         dem = dem_source.fetch_dem(bounds)
         return dem
 
-    def get_coarse_approx_geom(self, roi: Optional[Roi] = None, *, margin, alt_min, alt_max):
+    def get_coarse_approx_geom(self, roi: Optional[Roi] = None, *,
+                               margin: int,
+                               alt_min: float,
+                               alt_max: float
+                               ) -> list[tuple[float, float]]:
         """
         Get the very approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted

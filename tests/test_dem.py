@@ -21,24 +21,24 @@ def test_phx_dem():
     dem = dem_source.fetch_dem(bounds)
     print(dem.elevation(lons, lats, interp))
     print(time.time() - t)
-    np.save("/tmp/t/a", dem.array)
-    eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, "/tmp/t/a.tif")
+    # np.save("/tmp/t/a", dem.array)
+    # eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, "/tmp/t/a.tif")
 
     dem_source = eos.dem.MultidemSource()
     t = time.time()
     dem = dem_source.fetch_dem(bounds)
     print(dem.elevation(lons, lats, interp))
     print(time.time() - t)
-    np.save("/tmp/t/b", dem.array)
-    eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, "/tmp/t/b.tif")
+    # np.save("/tmp/t/b", dem.array)
+    # eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, "/tmp/t/b.tif")
 
     dem_source = eos.dem.DEMStitcherSource()
     t = time.time()
     dem = dem_source.fetch_dem(bounds)
     print(dem.elevation(lons, lats, interp))
     print(time.time() - t)
-    np.save("/tmp/t/d", dem.array)
-    eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, "/tmp/t/d.tif")
+    # np.save("/tmp/t/d", dem.array)
+    # eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, "/tmp/t/d.tif")
 
     # TODO: assert things
 
