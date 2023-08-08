@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import os
-from typing import Iterable, Union
+from typing import Any, Iterable, Union
 from typing_extensions import TypeAlias
 import affine
 import warnings
@@ -136,8 +136,10 @@ class DEM:
         # TODO: not sure about the -0.5
         img_coords = np.around(~self.transform * geo_coords, 6) - 0.5
         assert (img_coords >= 0).all()
-        assert (img_coords[0] + 1 < self.array.shape[1]).all()  # +1 because we need data for interpolation
-        assert (img_coords[1] + 1 < self.array.shape[0]).all()
+        maxx = img_coords[0].max()
+        maxy = img_coords[1].max()
+        assert (maxx + 1 < self.array.shape[1]).all(), f"x coord max {maxx}, shape: {self.array.shape}"  # +1 because we need data for interpolation
+        assert (maxy + 1 < self.array.shape[0]).all(), f"y coord max {maxy}, shape: {self.array.shape}"
 
         if interpolation == "nearest":
             alts = np.array([self.array[int(y), int(x)] for x, y in zip(*img_coords)])
@@ -207,6 +209,14 @@ class DEM:
         array, transform, _ = self.crop(bounds)
         if copy:
             array = array.copy()
+        return DEM(array=array, transform=transform)
+
+    @staticmethod
+    def from_rasterio_dataset(dataset: rasterio.DatasetReader):
+        array = dataset.read(1)
+        profile: dict[str, Any] = dataset.profile
+        transform = profile["transform"]
+        assert profile["crs"] == "EPSG:4326"
         return DEM(array=array, transform=transform)
 
 
