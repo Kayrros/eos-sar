@@ -108,6 +108,18 @@ class SensorModel(abc.ABC):
         Given a eos.dem.DEMSource, returns a eos.dem.DEM of the scene (restricted to an ROI if provided).
         The DEM will be large enough to contain the scene, for this very imprecise assumptions are used.
         One can obtain a smaller dem (= faster cropping and less memory) by adjusting the margin and alt_min/max.
+
+        Parameters
+        ----------
+        dem_source: eos.dem.DEMSource
+        roi : eos.sar.roi.Roi, optional
+            Defines the region to localize. The default is None.
+        margin : int, optional
+            Margin in px to buffer the roi. The default is 1000.
+        alt_min : float, optional
+            Minimum altitude, assumed in near-range. The default is -1000.
+        alt_max : float, optional
+            Maximum altitude, assumed in far-range. The default is 9000.
         """
         geometry = self.get_coarse_approx_geom(roi, margin=margin,
                                                alt_min=alt_min, alt_max=alt_max)
@@ -133,11 +145,11 @@ class SensorModel(abc.ABC):
         roi : eos.sar.roi.Roi, optional
             Defines the region to localize. The default is None.
         margin : int, optional
-            Margin in px to buffer the roi. The default is 1000.
+            Margin in px to buffer the roi. The recommended is 1000.
         alt_min : float, optional
-            Minimum altitude, assumed in near-range. The default is -1000.
+            Minimum altitude, assumed in near-range. The recommended is -1000.
         alt_max : float, optional
-            Maximum altitude, assumed in far-range. The default is 9000.
+            Maximum altitude, assumed in far-range. The recommended is 9000.
 
         Returns
         -------
