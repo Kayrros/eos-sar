@@ -1,6 +1,6 @@
 import numpy as np
 import os
-import shapely
+import shapely.geometry
 import eos.dem
 from eos.sar import model, io, roi
 from eos.products import sentinel1
@@ -76,12 +76,19 @@ def test_localize_without_alt():
     np.testing.assert_allclose(rows_roi, [p[0] for p in projected], atol=1e-2)
     np.testing.assert_allclose(cols_roi, [p[1] for p in projected], atol=1e-2)
 
-    initial_geom = shapely.geometry.Polygon(bmod.approx_geom)
-    refined_geom, alts, mask = bmod.get_approx_geom(dem=dem)
-    refined_geom_shp = shapely.geometry.Polygon(refined_geom)
-    assert not refined_geom_shp.equals(initial_geom),\
-        "Refined geometry is exactly the same as the initial geometry!"
-    inter = refined_geom_shp.intersection(initial_geom).area
-    union = refined_geom_shp.union(initial_geom).area
+    # compare get_approx_geom and get_buffered_geom
+    # the two geometries should be quite similar
+    approx_geom, _, _ = bmod.get_approx_geom(dem=dem)
+    buffered_geom = bmod.get_buffered_geom(dem=dem)
+    approx_geom_shp = shapely.geometry.Polygon(approx_geom)
+    buffered_geom_shp = shapely.geometry.Polygon(buffered_geom)
+    inter = approx_geom_shp.intersection(buffered_geom_shp).area
+    union = approx_geom_shp.union(buffered_geom_shp).area
     IoU = inter / union
-    assert IoU > 0.5, "Refined geometry is too different from initial geometry!"
+    assert IoU > 0.9, "Buffered geometry is too different from the approx geometry"
+
+    # compare get_coarse_approx_geom and get_approx_geom
+    # the approx geom should be included in the coarse approx geom
+    coarse_approx_geom = bmod.get_coarse_approx_geom(margin=10, alt_min=-1000.0, alt_max=9000.0)
+    coarse_approx_geom_shp = shapely.geometry.Polygon(coarse_approx_geom)
+    assert coarse_approx_geom_shp.contains(approx_geom_shp), "coarse_approx_geom does not contain the approx_geom"

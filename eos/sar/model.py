@@ -23,7 +23,6 @@ class SensorModel(abc.ABC):
     any eos sensor model. It is expected that this abstract will be \
     implemented for each SAR satellite."""
 
-    approx_geom: list
     w: int  # width of image
     h: int  # height of image
     orbit: Orbit
