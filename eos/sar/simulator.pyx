@@ -11,12 +11,14 @@
 #cython: profile=False
 #cython: infer_types=False
 
+from typing import Union
 import numpy as np
 cimport numpy as np
 from libc.math cimport M_PI, sin, cos, sqrt, ceil, floor, acos
 
 from eos.sar import const, model
 from eos.sar.roi import Roi
+from eos.sar.coordinates import GRDCoordinate, SLCCoordinate
 import eos.dem
 
 from affine import Affine
@@ -166,12 +168,15 @@ cdef inline void saveIlluminationArea(int x0, int y0, int w, int h, double azimu
 
 class SARSimulator:
 
+    coordinate: Union[SLCCoordinate, GRDCoordinate]
+
     def __init__(self,
                  proj_model: model.SensorModel,
                  dem: eos.dem.DEM,
                  oversampling=(4, 4)):
         self.proj_model = proj_model
         self.dem = dem
+        self.coordinate = proj_model.coordinate
 
         self.oversampling_x, self.oversampling_y = oversampling
 
@@ -251,10 +256,12 @@ class SARSimulator:
         # here, we use a different definition for the azimuthSpacing simply because it is more convenient
         cdef double azimuthSpacing = self._get_sar_resolutions(x0 + w // 2, y0 + h // 2)[1]
         cdef double rangeSpacing
-        if hasattr(self.proj_model, 'range_pixel_spacing'):
-            rangeSpacing = self.proj_model.range_pixel_spacing
+        if isinstance(self.coordinate, GRDCoordinate):
+            rangeSpacing = self.coordinate.range_pixel_spacing
+        elif isinstance(self.coordinate, SLCCoordinate):
+            rangeSpacing = const.LIGHT_SPEED_M_PER_SEC / (2 * self.coordinate.range_frequency)
         else:
-            rangeSpacing = const.LIGHT_SPEED_M_PER_SEC / (2 * self.proj_model.range_frequency)
+            assert False
 
         # TODO: make sure this definition of aBeta is ok
         cdef double aBeta = azimuthSpacing * rangeSpacing
@@ -315,7 +322,7 @@ class SARSimulator:
         col0_alts = dem[rrow, mid].astype(np.float64)
         col0_lons, col0_lats = dem_transform * (mid, rrow)
         row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
-        azt0 = self.proj_model.to_azt(row0)
+        azt0 = self.coordinate.to_azt(row0)
 
         cdef np.ndarray[np.float64_t, ndim=2] sats = self.proj_model.orbit.evaluate(azt0)
 
@@ -419,7 +426,7 @@ class SARSimulator:
         cdef double satz = sat[2]
 
         # if the row is not correct, stop early
-        cdef double row0 = self.proj_model.to_row(azt0)
+        cdef double row0 = self.coordinate.to_row(azt0)
         # one pixel margin for the bilinear splatting
         if row0 < y0 - 1 or row0 >= y0 + h:
             return False
@@ -431,7 +438,7 @@ class SARSimulator:
         for i in range(x.size):
             rng[i] = sqrt((satx - x[i]) ** 2 + (saty - y[i]) ** 2 + (satz - z[i]) ** 2)
 
-        cdef np.ndarray[np.float64_t, ndim=1] col = self.proj_model.to_col(rng, azt=azt0)
+        cdef np.ndarray[np.float64_t, ndim=1] col = self.coordinate.to_col(rng, azt=azt0)
         for i in range(x.size):
             out_col[i] = col[i]
 

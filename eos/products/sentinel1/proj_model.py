@@ -1,14 +1,17 @@
 """Sentinel1 models for projection/localization."""
 from __future__ import annotations
+import abc
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 import pyproj
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 from eos.products import sentinel1
-import eos.dem
+
+Arrayf32 = NDArray[np.float32]
 
 
 def grd_model_from_meta(meta: Sentinel1GRDMetadata,
@@ -29,16 +32,18 @@ def grd_model_from_meta(meta: Sentinel1GRDMetadata,
 
     """
     srgr = sentinel1.srgr.Sentinel1SRGRConverter(meta.srgr)
+    coordinate = coordinates.GRDCoordinate(first_row_time=meta.image_start,
+                                           azimuth_time_interval=meta.azimuth_time_interval,
+                                           range_pixel_spacing=meta.range_pixel_spacing,
+                                           srgr=srgr)
     proj_model = Sentinel1GRDModel(
         meta.image_start,
         meta.approx_geom,
-        meta.range_pixel_spacing,
-        meta.azimuth_time_interval,
         meta.width,
         meta.height,
         meta.wave_length,
+        coordinate,
         orbit,
-        srgr,
         coord_corrector,
     )
     return proj_model
@@ -75,8 +80,9 @@ def burst_model_from_burst_meta(burst_meta: Sentinel1BurstMetadata,
                                **kwargs)
 
 
-class Sentinel1BaseModel(model.SensorModel):
-    """Enables operations like projection and localization."""
+class Sentinel1BaseModel(model.SensorModel, abc.ABC):
+    """Enables operations like projection and localization.
+    Subclasses still have to implement to_azt_rng and to_row_col. """
 
     def __init__(self,
                  first_row_time,
@@ -135,7 +141,6 @@ class Sentinel1BaseModel(model.SensorModel):
         self.projection_tolerance = tolerance \
             / np.linalg.norm(orbit.sv[0].velocity)
 
-        # set for the CoordinateMixin
         self.first_row_time = first_row_time
 
         # set some params necessary for processing
@@ -326,7 +331,7 @@ class Sentinel1BaseModel(model.SensorModel):
         return x, y, z
 
 
-class Sentinel1SLCBaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
+class Sentinel1SLCBaseModel(Sentinel1BaseModel):
     def __init__(self,
                  first_row_time,
                  first_col_time,
@@ -384,10 +389,21 @@ class Sentinel1SLCBaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
                          coord_corrector,
                          max_iterations,
                          tolerance)
+        self.coordinate = coordinates.SLCCoordinate(first_row_time=first_row_time,
+                                                    first_col_time=first_col_time,
+                                                    azimuth_frequency=azimuth_frequency,
+                                                    range_frequency=range_frequency)
 
+        # TODO: keep or remove?
         self.first_col_time = first_col_time
         self.range_frequency = range_frequency
         self.azimuth_frequency = azimuth_frequency
+
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_azt_rng(row, col)
+
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_row_col(azt, rng)
 
 
 class Sentinel1BurstModel(Sentinel1SLCBaseModel):
@@ -448,7 +464,8 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
 
         """
 
-        # set these for the SLCCoordinateMixin
+        # set these for the SLCCoordinate
+        # TODO: remove?
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
 
@@ -526,7 +543,7 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         None.
 
         """
-        # set these for the SLCCoordinateMixin
+        # set these for the SLCCoordinate
         first_row_time = bursts_times[0][1]  # start valid
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
@@ -946,19 +963,17 @@ def swath_model_from_bursts_meta(bursts_metadata: list[Sentinel1BurstMetadata],
                                **kwargs)
 
 
-class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
+class Sentinel1GRDModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
                  first_row_time,
                  approx_geom,
-                 range_pixel_spacing,
-                 azimuth_time_interval,
                  width,
                  height,
                  wavelength,
+                 coordinate: coordinates.GRDCoordinate,
                  orbit,
-                 srgr,
                  corrector,
                  max_iterations=20,
                  tolerance=0.001):
@@ -971,18 +986,15 @@ class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
             Azimuth time of the first line in the image
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
-        range_pixel_spacing: float
-        azimuth_time_interval: float
         width: int
             width of the image
         height: int
             height of the image
         wavelength: float
             wavelength in m
+        coordinate: GRDCoordinate
         orbit: Orbit
             Orbit instance
-        srgr: eos.sar.srgr.SRGRConverter
-            SRGR converter for the GRDCoordinateMixin
         corrector: eos.sar.projection_correction.Corrector
             Corrector object containing a list of ImageCorrection in this case
         max_iterations : int, optional
@@ -1006,10 +1018,13 @@ class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
                          corrector,
                          max_iterations,
                          tolerance)
+        self.coordinate = coordinate
 
-        self.srgr = srgr
-        self.azimuth_time_interval = azimuth_time_interval
-        self.range_pixel_spacing = range_pixel_spacing
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_azt_rng(row, col)
+
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_row_col(azt, rng)
 
 
 def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,

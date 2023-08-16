@@ -5,6 +5,7 @@ import logging
 from typing import Optional
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 
 from eos.sar.orbit import Orbit
 from eos.sar import utils
@@ -12,6 +13,8 @@ from eos.sar.roi import Roi as Roi
 import eos.dem
 
 logger = logging.getLogger(__name__)
+
+Arrayf32 = NDArray[np.float32]
 
 
 class SensorModel(abc.ABC):
@@ -26,12 +29,12 @@ class SensorModel(abc.ABC):
     wavelength: float
 
     @abc.abstractmethod
-    def to_azt_rng(self, row, col):
-        pass
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        ...
 
     @abc.abstractmethod
-    def to_row_col(self, azt, rng):
-        pass
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        ...
 
     @abc.abstractmethod
     def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None, as_azt_rng=False):

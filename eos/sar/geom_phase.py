@@ -1,6 +1,8 @@
+from typing import Sequence
 import numpy as np
 from eos.sar.geoconfig import GeometryPredictor
 from eos.sar import utils, roi
+from eos.sar.model import SensorModel
 
 
 class TopoCorrection:
@@ -9,7 +11,11 @@ class TopoCorrection:
     for a set of models
     '''
 
-    def __init__(self, primary_model, secondary_models, grid_size=50, degree=7):
+    def __init__(self,
+                 primary_model: SensorModel,
+                 secondary_models: Sequence[SensorModel],
+                 grid_size: int = 50,
+                 degree: int = 7):
         """
         Constructor.
 
