@@ -1,4 +1,5 @@
 from __future__ import annotations
+import abc
 from dataclasses import dataclass
 import os
 from typing import Any, Iterable, Union
@@ -217,12 +218,13 @@ class DEM:
         return DEM(array=array, transform=transform)
 
 
-class DEMSource:
+class DEMSource(abc.ABC):
     """
     Notes:
         The only supported datum is ellipsoidal.
     """
 
+    @abc.abstractmethod
     def fetch_dem(self, bounds: Bounds) -> DEM:
         """
         Return a DEM instance on the given `bounds`.
@@ -233,7 +235,6 @@ class DEMSource:
         Returns:
             dem: eos.dem.DEM instance
         """
-        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -243,6 +244,7 @@ class SRTM4Source(DEMSource):
         array, transform, crs = srtm4.crop(bounds, datum="ellipsoidal")
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
+        assert transform is not None
         assert crs == 'EPSG:4326'
         return DEM(array=array, transform=transform)
 
