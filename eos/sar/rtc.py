@@ -1,11 +1,16 @@
+from typing import Any
 import numpy as np
+from numpy.typing import NDArray
 
 import eos.dem
 from eos.sar import model, roi
 from eos.sar import simulator  # type: ignore
 
 
-def normalize(raster, simulation, shadow_threshold=0.05, shadow_value=0.0):
+def normalize(raster: NDArray[Any],
+              simulation: NDArray[np.float32],
+              shadow_threshold: float = 0.05,
+              shadow_value: float = 0.0) -> NDArray[Any]:
     normalized = np.sqrt(np.abs(raster)**2 / (simulation + 1e-30))
 
     if shadow_value is not None:
@@ -32,7 +37,8 @@ class RadiometricTerrainCorrector:
         assert raster.shape == sim.shape
         return normalize(raster, sim)
 
-    def get_simulation(self):
+    def get_simulation(self) -> NDArray[np.float32]:
         if self._simulation is None:
             self._simulation = self.simulator.simulate(self.roi).astype(np.float32)
+        assert self._simulation is not None
         return self._simulation
