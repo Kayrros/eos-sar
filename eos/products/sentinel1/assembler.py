@@ -367,7 +367,7 @@ class Sentinel1AssemblyCropper:
              products: Sequence[Sentinel1SLCProductInfo],
              *,
              pol: str,
-             orbit_provider=None,
+             orbit_provider: Optional[SLCOrbitProvider] = None,
              get_complex: bool,
              dem_source: Optional[DEMSource] = None,
              calibration: Optional[str] = None,
