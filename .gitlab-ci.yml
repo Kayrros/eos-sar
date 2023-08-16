@@ -31,9 +31,10 @@ checkstyle:
 mypy:
   stage: test
   before_script:
-    - pip install mypy~=1.4.0 numpy
+    - pip install mypy~=1.4.0 cython numpy
+    - pip install -e ".[test]"
   script:
-    - mypy --install-types --non-interactive --ignore-missing-imports --check-untyped-defs eos/ tests/ usage/
+    - mypy --non-interactive eos/ tests/ usage/
 
 fakedeploy:
   stage: test
