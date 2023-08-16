@@ -1,6 +1,7 @@
 """Sentinel1 models for projection/localization."""
 from __future__ import annotations
 import abc
+from typing import Optional, Union
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -138,8 +139,7 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         self.max_iterations = max_iterations
         # setting the tolerance
         self.localization_tolerance = tolerance
-        self.projection_tolerance = tolerance \
-            / np.linalg.norm(orbit.sv[0].velocity)
+        self.projection_tolerance = float(tolerance / np.linalg.norm(orbit.sv[0].velocity))
 
         self.first_row_time = first_row_time
 
@@ -149,37 +149,14 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         self.coord_corrector = coord_corrector
 
-    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None, as_azt_rng=False):
-        """Projects a 3D point into the image coordinates.
-
-        Parameters
-        ----------
-        x, y : ndarray or scalar
-            Coordinates in the crs defined by crs parameter.
-        alt: ndarray or scalar
-            Altitude defined by vert_crs if provided or EARTH_WGS84 ellipsoid.
-        crs : string, optional
-            CRS in which the point is given
-                    Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-        vert_crs: string, optional
-            Vertical crs
-        azt_init: ndarray or scalar, optional
-            Initial azimuth time guess of the points. If not given, the first
-            row time will be used. The default is None.
-        as_azt_rng: bool, optional
-            Returns azimuth/range instead of rows/cols. The incidence angle is unchanged.
-            Defaults to False.
-
-        Returns
-        -------
-        rows : ndarray or scalar
-            Row coordinate in image referenced to the first line.
-        cols : ndarray or scalar
-            Column coordinate in image referenced to the first column.
-        i : ndarray or scalar
-            Incidence angle.
-
-        """
+    def projection(self,
+                   x: ArrayLike,
+                   y: ArrayLike,
+                   alt: ArrayLike,
+                   crs: Union[str, pyproj.CRS] = 'epsg:4326',
+                   vert_crs: Optional[Union[str, pyproj.CRS]] = None,
+                   azt_init: Optional[ArrayLike] = None,
+                   as_azt_rng: bool = False) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
         alt = np.atleast_1d(alt)
@@ -226,41 +203,15 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         return row, col, i
 
-    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None,
-                     x_init=None, y_init=None, z_init=None):
-        """Localize a point in the image at a certain altitude.
-
-        Parameters
-        ----------
-        row : ndarray or scalar
-            row coordinate in image referenced to the first line.
-        col : ndarray or scalar
-            column coordinate in image referenced to the first column.
-        alt : ndarray or scalar
-            Altitude above the EARTH_WGS84 ellipsoid.
-        crs : string, optional
-            CRS in which the point is returned
-                    Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-        vert_crs: string, optional
-            Vertical crs in which the point is returned
-        x_init: ndarray or scalar, optional
-            Initial guess of the x component. The default is None.
-        y_init: ndarray or scalar, optional
-            Initial guess of the y component. The default is None.
-        z_init: ndarray or scalar, optional
-            Initial guess of the z component. The default is None.
-
-        Returns
-        -------
-        x, y, z : ndarray or scalar
-            Coordinates of the point in the crs
-
-        Notes
-        -----
-        If no initial guess for the 3D point is given, the initial point for
-        the iterative localization is taken at the centroid of the approx
-        geometry of the model, with altitudes given by the alt array.
-        """
+    def localization(self,
+                     row: ArrayLike,
+                     col: ArrayLike,
+                     alt: ArrayLike,
+                     crs: Union[str, pyproj.CRS] = 'epsg:4326',
+                     vert_crs: Optional[Union[str, pyproj.CRS]] = None,
+                     x_init: Optional[ArrayLike] = None,
+                     y_init: Optional[ArrayLike] = None,
+                     z_init: Optional[ArrayLike] = None) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)
         col = np.atleast_1d(col)
