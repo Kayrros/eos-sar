@@ -177,9 +177,6 @@ class DEM:
         xmin, ymin = np.array(~self.transform * np.array((bounds[0], bounds[3])))
         xmax, ymax = np.array(~self.transform * np.array((bounds[2], bounds[1])))
 
-        print("parent shape:", self.array.shape)
-        print("x:", xmin, xmax, "y:", ymin, ymax)
-
         xmin = int(np.floor(xmin))
         ymin = int(np.floor(ymin))
         xmax = int(np.floor(xmax))
