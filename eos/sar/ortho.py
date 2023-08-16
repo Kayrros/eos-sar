@@ -1,3 +1,4 @@
+from __future__ import annotations
 from dataclasses import dataclass
 
 import cv2
@@ -108,7 +109,7 @@ class Orthorectifier:
 
     @staticmethod
     def from_roi(proj_model, roi, resolution, dem: eos.dem.DEM,
-                 crs=None, align=None):
+                 crs=None, align=None) -> Orthorectifier:
         coords, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
         geometry = shapely.geometry.Polygon(coords)
         bbox = geometry.bounds
@@ -125,7 +126,7 @@ class Orthorectifier:
     @staticmethod
     def from_transform(proj_model, roi, crs, transform, shape,
                        dem: eos.dem.DEM,
-                       previous_orthorectifier=None):
+                       previous_orthorectifier=None) -> Orthorectifier:
         if previous_orthorectifier:
             assert previous_orthorectifier.crs == crs
             assert previous_orthorectifier.transform == transform
