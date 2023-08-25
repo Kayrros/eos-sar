@@ -5,7 +5,7 @@ import numpy as np
 import eos.dem
 
 
-def test_phx_dem():
+def test_dem_sources_elevation():
     # interp = "bilinear"
     interp = "nearest"
 

@@ -79,7 +79,9 @@ def _bilinear_interp(array, x, y):
         between the cells.
 
     Args:
-        array (numpy.ndarray): 2-D array of floats.
+        array : numpy.ndarray
+            Values to interpolate. It should be a 3D array of shape (N, 2, 2),
+            where (2, 2) represent the window around each sample, N samples.
         x (list): horizontal image coordinates.
         y (list): vertical image coordinates.
 
@@ -95,7 +97,7 @@ def _bilinear_interp(array, x, y):
     u, v = ones - dx, ones - dy
 
     h_interp = (
-        u * v * array[:, 0] + dx * v * array[:, 1] + u * dy * array[:, 2] + dx * dy * array[:, 3]
+        u * v * array[:, 0, 0] + dx * v * array[:, 0, 1] + u * dy * array[:, 1, 0] + dx * dy * array[:, 1, 1]
     )
 
     return np.around(h_interp, 5)
@@ -143,14 +145,14 @@ class DEM:
         assert (maxy + 1 < self.array.shape[0]).all(), f"y coord max {maxy}, shape: {self.array.shape}"
 
         if interpolation == "nearest":
-            alts = np.array([self.array[int(y), int(x)] for x, y in zip(*img_coords)])
+            alts = np.array([self.array[int(round(y)), int(round(x))] for x, y in zip(*img_coords)])
         else:
             dem_subparts = []
             for x, y in zip(img_coords[0], img_coords[1]):
                 xx = int(x)
                 yy = int(y)
-                dem = self.array[yy:yy + 2, xx:xx + 2]
-                dem_subparts.append(dem.flatten())
+                window = self.array[yy:yy + 2, xx:xx + 2]
+                dem_subparts.append(window)
 
             dem_subparts = np.stack(dem_subparts, axis=0)
             alts = _bilinear_interp(dem_subparts, img_coords[0], img_coords[1])
@@ -298,6 +300,8 @@ class DEMStitcherSource(DEMSource):
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
         array, profile = dem_stitcher.stitch_dem(list(bounds), "glo_30")
+        assert isinstance(array, np.ndarray)
+        assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
         transform = profile["transform"]
         return DEM(array=array, transform=transform)

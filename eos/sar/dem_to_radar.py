@@ -168,11 +168,8 @@ def dem_radarcoding(dem: eos.dem.DEM, model, roi=None, approx_geometry=None,
 
     Parameters
     ----------
-    raster : ndarray
-        Rectangular array of the height of dem points.
-    transform : affine.Affine
-        Raster transform (From px coordinates to earth coords x, y)
-    dem: eos.dem.DEM
+    dem : eos.dem.DEM
+        DEM covering the region of interest (or the model if roi is None)
     model : SensorModel
         model to perform projections and localizations.
     roi : eos.sar.roi.Roi

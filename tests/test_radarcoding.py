@@ -41,14 +41,9 @@ def test_radar_coding():
 
     margin = 10
 
-    # get a good approximation of the geometry of the burst
-    # with a margin of 10 pixels
+    # fetch the dem covering the burst model
     dem_source = eos.dem.get_any_source()
-    dem = bmod.fetch_dem(dem_source)
-    refined_geom, alts, mask = bmod.get_approx_geom(margin=margin, dem=dem)
-
-    # get a dem on the previously estimated geometry
-    x, y, raster, transform, crs = regist.dem_points(refined_geom, dem=dem)
+    dem = bmod.fetch_dem(dem_source, margin=margin)
 
     # define a region of interest where geocoding should occur
     crop_roi = roi.Roi(6000, 80, 500, 200)

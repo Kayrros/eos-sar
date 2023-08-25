@@ -74,8 +74,8 @@ def dem_points(geometry, dem: eos.dem.DEM, outfile=None):
     ----------
     geometry : list of tuple (lon,lat)
         Geometry of the primary image, one point per corner of the image
-    dem : eos.dem.DemSource
-        DEM source
+    dem : eos.dem.DEM
+        DEM covering the geometry
     outfile : string, optional
         Path to save the dem if passed as argument.
         The default is None.
@@ -129,8 +129,8 @@ def get_registration_dem_pts(primary_model: SensorModel,
         The sampling ratio used to sample points from the dem.
         Only the sampled points will be used for the registration.
         The default is 0.01.
-    dem : eos.dem.DemSource
-        DEM source
+    dem : eos.dem.DEM
+        DEM covering the region of interest (or the model if roi is None)
     outfile : string, optional
          Path to save the dem if passed as argument.
          The default is None.

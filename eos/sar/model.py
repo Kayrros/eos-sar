@@ -180,6 +180,8 @@ class SensorModel(abc.ABC):
             Defines the region to localize. The default is None.
         margin : int, optional
             Margin in px to buffer the roi. The default is 0.
+        dem : eos.dem.DEM
+            DEM covering the region of interest (or the model if roi is None)
         **kwargs: Keyword arguments for localize_without_alt function.
 
         Returns
@@ -218,9 +220,10 @@ class SensorModel(abc.ABC):
 
         Parameters
         ----------
+        dem: eos.sar.DEM
+            DEM covering the region of interest (or the model if roi is None)
         roi : eos.sar.roi.Roi, optional
             Defines the region to localize. The default is None.
-        dem: eos.sar.DEM
         margin : int, optional
             Margin in px to buffer the roi. The default is 0.
         row_sampling : int, optional
