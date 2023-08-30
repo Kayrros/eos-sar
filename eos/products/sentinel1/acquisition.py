@@ -2,7 +2,7 @@ from typing import Sequence
 
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar.roi import Roi
-from eos.sar import coordinates
+from eos.sar.coordinates import SLCCoordinate
 
 
 def _avg_or_none(a, b):
@@ -13,7 +13,7 @@ def _avg_or_none(a, b):
     return (a + b) // 2
 
 
-class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
+class _Sentinel1AcquisitionCutter:
 
     def __init__(self,
                  range_frequency: float,
@@ -24,8 +24,6 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
                  bursts_rois: list[tuple[int, int, int, int]],
                  bursts_times: list[tuple[float, float, float]],
                  bsids: list[str]):
-        self.range_frequency = range_frequency
-        self.azimuth_frequency = azimuth_frequency
         self.bursts_times = bursts_times
         self.bsids = bsids
         self._burst_roi_in_tiff = [Roi.from_roi_tuple(roi) for roi in bursts_rois]
@@ -34,18 +32,24 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
         # compute the range origin of the mosaic
         first_swath = sorted(set(bsid.split('_')[1] for bsid in bsids))[0]
         col_min_iw1 = min(r[0] for i, r in enumerate(bursts_rois) if bsids[i].endswith(first_swath))
-        self.first_col_time = slant_range_time_iw1 + col_min_iw1 / range_frequency
+        first_col_time = slant_range_time_iw1 + col_min_iw1 / range_frequency
 
         # compute the azimuth origin of the mosaic
         first_row_time = min(t[1] for t in bursts_times)   # min start valid
         last_next_row_time = max(t[2] for t in bursts_times)
-        self.first_row_time = first_row_time
+
+        self.coordinate = SLCCoordinate(
+            first_row_time=first_row_time,
+            first_col_time=first_col_time,
+            azimuth_frequency=azimuth_frequency,
+            range_frequency=range_frequency,
+        )
 
         # compute the column origin of each swath inside the mosaic
         self._swath_col_orig_in_acquisition = {
-            'iw1': int(round((slant_range_time_iw1 - self.first_col_time) * range_frequency)),
-            'iw2': int(round((slant_range_time_iw2 - self.first_col_time) * range_frequency)),
-            'iw3': int(round((slant_range_time_iw3 - self.first_col_time) * range_frequency)),
+            'iw1': int(round((slant_range_time_iw1 - first_col_time) * range_frequency)),
+            'iw2': int(round((slant_range_time_iw2 - first_col_time) * range_frequency)),
+            'iw3': int(round((slant_range_time_iw3 - first_col_time) * range_frequency)),
         }
 
         # compute the width and height of the mosaic
@@ -68,7 +72,7 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
         for bsid, burst_times, burst_roi_tiff in zip(self.bsids, self.bursts_times, self._burst_roi_in_tiff):
             swath = bsid.split('_')[1].lower()
 
-            row = (burst_times[1] - self.first_row_time) * self.azimuth_frequency
+            row = (burst_times[1] - first_row_time) * azimuth_frequency
             assert abs(int(round(row)) - row) < 1e-3, row
             row = int(round(row))
             col = burst_roi_tiff.col + self._swath_col_orig_in_acquisition[swath]
@@ -77,13 +81,13 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
 
         # check some of the roundings performed above
         if True:
-            a = (slant_range_time_iw1 - self.first_col_time) * self.range_frequency
+            a = (slant_range_time_iw1 - first_col_time) * range_frequency
             assert abs(a - round(a)) < 1e-7
             if slant_range_time_iw2:
-                a = (slant_range_time_iw2 - self.first_col_time) * self.range_frequency
+                a = (slant_range_time_iw2 - first_col_time) * range_frequency
                 assert abs(a - round(a)) < 1e-7
             if slant_range_time_iw3:
-                a = (slant_range_time_iw3 - self.first_col_time) * self.range_frequency
+                a = (slant_range_time_iw3 - first_col_time) * range_frequency
                 assert abs(a - round(a)) < 1e-5, abs(a - round(a))
             a = (last_next_row_time - first_row_time) * azimuth_frequency
             assert abs(int(round(a)) - a) < 5e-3, self.h
@@ -95,7 +99,7 @@ class _Sentinel1AcquisitionCutter(coordinates.SLCCoordinateMixin):
     def to_row_col_in_burst(self, azt, rng, bsid):
         col_orig, row_orig = self._burst_orig_in_mosaic(bsid)
 
-        row, col = self.to_row_col(azt, rng)
+        row, col = self.coordinate.to_row_col(azt, rng)
         row -= row_orig
         col -= col_orig
         return row, col
@@ -162,7 +166,7 @@ class PrimarySentinel1AcquisitionCutter(_Sentinel1AcquisitionCutter):
                     next_bsid = bsids[i + 1]
                     current_burst_end = self._bursts_times_per_bsid[bsid][2]
                     next_burst_start = self._bursts_times_per_bsid[next_bsid][1]
-                    ovlp = int(round((current_burst_end - next_burst_start) * self.azimuth_frequency))
+                    ovlp = int(round((current_burst_end - next_burst_start) * self.coordinate.azimuth_frequency))
 
                 # compute the inner roi of the burst (this cuts out overlapped regions)
                 remove_lines_at_top = prev_ovlp // 2

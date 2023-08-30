@@ -1,6 +1,8 @@
+from typing import Sequence
 import numpy as np
 import pyproj
 from eos.sar import poly
+from eos.sar.model import SensorModel
 
 
 def compute_cosi_rng(points, sat):
@@ -131,8 +133,11 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
     return col, row
 
 
-def get_geom_config(primary_model, secondary_models, grid_size_col=20,
-                    grid_size_row=20, train=True):
+def get_geom_config(primary_model: SensorModel,
+                    secondary_models: Sequence[SensorModel],
+                    grid_size_col: int = 20,
+                    grid_size_row: int = 20,
+                    train: bool = True):
     """Get the geometric configuration at a meshgrid train/test set.
 
 
@@ -218,7 +223,11 @@ class GeometryPredictor:
     Used to predict the geometry (baselines, incidence angles)
     '''
 
-    def __init__(self, primary_model, secondary_models, grid_size=20, degree=7):
+    def __init__(self,
+                 primary_model: SensorModel,
+                 secondary_models: Sequence[SensorModel],
+                 grid_size: int = 20,
+                 degree: int = 7):
         """
 
 

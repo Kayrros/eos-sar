@@ -1,14 +1,19 @@
 """Sentinel1 models for projection/localization."""
 from __future__ import annotations
+import abc
+from typing import Optional, Union
+from typing_extensions import override
 
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 import pyproj
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.sar import model, range_doppler, coordinates, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 from eos.products import sentinel1
-import eos.dem
+
+Arrayf32 = NDArray[np.float32]
 
 
 def grd_model_from_meta(meta: Sentinel1GRDMetadata,
@@ -29,16 +34,18 @@ def grd_model_from_meta(meta: Sentinel1GRDMetadata,
 
     """
     srgr = sentinel1.srgr.Sentinel1SRGRConverter(meta.srgr)
+    coordinate = coordinates.GRDCoordinate(first_row_time=meta.image_start,
+                                           azimuth_time_interval=meta.azimuth_time_interval,
+                                           range_pixel_spacing=meta.range_pixel_spacing,
+                                           srgr=srgr)
     proj_model = Sentinel1GRDModel(
         meta.image_start,
         meta.approx_geom,
-        meta.range_pixel_spacing,
-        meta.azimuth_time_interval,
         meta.width,
         meta.height,
         meta.wave_length,
+        coordinate,
         orbit,
-        srgr,
         coord_corrector,
     )
     return proj_model
@@ -75,11 +82,12 @@ def burst_model_from_burst_meta(burst_meta: Sentinel1BurstMetadata,
                                **kwargs)
 
 
-class Sentinel1BaseModel(model.SensorModel):
-    """Enables operations like projection and localization."""
+class Sentinel1BaseModel(model.SensorModel, abc.ABC):
+    """Enables operations like projection and localization.
+    Subclasses still have to implement to_azt_rng and to_row_col (required by SensorModel). """
 
     def __init__(self,
-                 first_row_time,
+                 azt_init,
                  approx_geom,
                  width,
                  height,
@@ -93,8 +101,8 @@ class Sentinel1BaseModel(model.SensorModel):
 
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
+        azt_init: float
+            Azimuth time of the first line in the image, used for initialization of the projection
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
         width: int
@@ -132,49 +140,23 @@ class Sentinel1BaseModel(model.SensorModel):
         self.max_iterations = max_iterations
         # setting the tolerance
         self.localization_tolerance = tolerance
-        self.projection_tolerance = tolerance \
-            / np.linalg.norm(orbit.sv[0].velocity)
-
-        # set for the CoordinateMixin
-        self.first_row_time = first_row_time
+        self.projection_tolerance = float(tolerance / np.linalg.norm(orbit.sv[0].velocity))
 
         # set some params necessary for processing
-        self.azt_init = first_row_time
+        self.azt_init = azt_init
         self.approx_geom = approx_geom
 
         self.coord_corrector = coord_corrector
 
-    def projection(self, x, y, alt, crs='epsg:4326', vert_crs=None, azt_init=None, as_azt_rng=False):
-        """Projects a 3D point into the image coordinates.
-
-        Parameters
-        ----------
-        x, y : ndarray or scalar
-            Coordinates in the crs defined by crs parameter.
-        alt: ndarray or scalar
-            Altitude defined by vert_crs if provided or EARTH_WGS84 ellipsoid.
-        crs : string, optional
-            CRS in which the point is given
-                    Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-        vert_crs: string, optional
-            Vertical crs
-        azt_init: ndarray or scalar, optional
-            Initial azimuth time guess of the points. If not given, the first
-            row time will be used. The default is None.
-        as_azt_rng: bool, optional
-            Returns azimuth/range instead of rows/cols. The incidence angle is unchanged.
-            Defaults to False.
-
-        Returns
-        -------
-        rows : ndarray or scalar
-            Row coordinate in image referenced to the first line.
-        cols : ndarray or scalar
-            Column coordinate in image referenced to the first column.
-        i : ndarray or scalar
-            Incidence angle.
-
-        """
+    @override
+    def projection(self,
+                   x: ArrayLike,
+                   y: ArrayLike,
+                   alt: ArrayLike,
+                   crs: Union[str, pyproj.CRS] = 'epsg:4326',
+                   vert_crs: Optional[Union[str, pyproj.CRS]] = None,
+                   azt_init: Optional[ArrayLike] = None,
+                   as_azt_rng: bool = False) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
         alt = np.atleast_1d(alt)
@@ -221,41 +203,16 @@ class Sentinel1BaseModel(model.SensorModel):
 
         return row, col, i
 
-    def localization(self, row, col, alt, crs='epsg:4326', vert_crs=None,
-                     x_init=None, y_init=None, z_init=None):
-        """Localize a point in the image at a certain altitude.
-
-        Parameters
-        ----------
-        row : ndarray or scalar
-            row coordinate in image referenced to the first line.
-        col : ndarray or scalar
-            column coordinate in image referenced to the first column.
-        alt : ndarray or scalar
-            Altitude above the EARTH_WGS84 ellipsoid.
-        crs : string, optional
-            CRS in which the point is returned
-                    Defaults to 'epsg:4326' (i.e. WGS 84 - 'lonlat').
-        vert_crs: string, optional
-            Vertical crs in which the point is returned
-        x_init: ndarray or scalar, optional
-            Initial guess of the x component. The default is None.
-        y_init: ndarray or scalar, optional
-            Initial guess of the y component. The default is None.
-        z_init: ndarray or scalar, optional
-            Initial guess of the z component. The default is None.
-
-        Returns
-        -------
-        x, y, z : ndarray or scalar
-            Coordinates of the point in the crs
-
-        Notes
-        -----
-        If no initial guess for the 3D point is given, the initial point for
-        the iterative localization is taken at the centroid of the approx
-        geometry of the model, with altitudes given by the alt array.
-        """
+    @override
+    def localization(self,
+                     row: ArrayLike,
+                     col: ArrayLike,
+                     alt: ArrayLike,
+                     crs: Union[str, pyproj.CRS] = 'epsg:4326',
+                     vert_crs: Optional[Union[str, pyproj.CRS]] = None,
+                     x_init: Optional[ArrayLike] = None,
+                     y_init: Optional[ArrayLike] = None,
+                     z_init: Optional[ArrayLike] = None) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)
         col = np.atleast_1d(col)
@@ -326,33 +283,22 @@ class Sentinel1BaseModel(model.SensorModel):
         return x, y, z
 
 
-class Sentinel1SLCBaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
+class Sentinel1SLCBaseModel(Sentinel1BaseModel):
     def __init__(self,
-                 first_row_time,
-                 first_col_time,
                  approx_geom,
-                 range_frequency,
-                 azimuth_frequency,
                  width,
                  height,
                  wavelength,
-                 orbit,
-                 coord_corrector,
+                 coordinate: coordinates.SLCCoordinate,
+                 orbit: Orbit,
+                 coord_corrector: Corrector,
                  max_iterations=20,
                  tolerance=0.001):
         """
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
-        first_col_time: float
-            Two way slant range time of the first column in the image
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
-        range_frequency : float
-            Two way range time sampling frequenc
-        azimuth_frequency : float
-            Azimuth time sampling frequency
         width: int
             width of the image
         height: int
@@ -375,7 +321,8 @@ class Sentinel1SLCBaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
             using the speed. The default is 0.001.
         ...
         """
-        super().__init__(first_row_time,
+        azt_init = coordinate.first_row_time
+        super().__init__(azt_init,
                          approx_geom,
                          width,
                          height,
@@ -385,9 +332,15 @@ class Sentinel1SLCBaseModel(coordinates.SLCCoordinateMixin, Sentinel1BaseModel):
                          max_iterations,
                          tolerance)
 
-        self.first_col_time = first_col_time
-        self.range_frequency = range_frequency
-        self.azimuth_frequency = azimuth_frequency
+        self.coordinate = coordinate
+
+    @override
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_azt_rng(row, col)
+
+    @override
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_row_col(azt, rng)
 
 
 class Sentinel1BurstModel(Sentinel1SLCBaseModel):
@@ -448,18 +401,19 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
 
         """
 
-        # set these for the SLCCoordinateMixin
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
 
-        super().__init__(first_row_time,
-                         first_col_time,
-                         approx_geom,
-                         range_frequency,
-                         azimuth_frequency,
+        coordinate = coordinates.SLCCoordinate(first_row_time=first_row_time,
+                                               first_col_time=first_col_time,
+                                               azimuth_frequency=azimuth_frequency,
+                                               range_frequency=range_frequency)
+
+        super().__init__(approx_geom,
                          burst_roi[2],
                          burst_roi[3],
                          wavelength,
+                         coordinate,
                          orbit,
                          coord_corrector,
                          max_iterations,
@@ -526,7 +480,6 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         None.
 
         """
-        # set these for the SLCCoordinateMixin
         first_row_time = bursts_times[0][1]  # start valid
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
@@ -540,15 +493,18 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         w = (col_max - self.col_min + 1)
         h = int(np.round((bursts_times[-1][2] - first_row_time)
                          * azimuth_frequency))
+
+        coordinate = coordinates.SLCCoordinate(first_row_time=first_row_time,
+                                               first_col_time=first_col_time,
+                                               azimuth_frequency=azimuth_frequency,
+                                               range_frequency=range_frequency)
+
         # call the base class constructor
-        super().__init__(first_row_time,
-                         first_col_time,
-                         approx_geom,
-                         range_frequency,
-                         azimuth_frequency,
+        super().__init__(approx_geom,
                          w,
                          h,
                          wavelength,
+                         coordinate,
                          orbit,
                          Corrector(),
                          max_iterations,
@@ -599,12 +555,13 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
 
         self.overlaps = []
         self.osids = set()
+        az_freq = self.coordinate.azimuth_frequency
         for i in range(n_bursts - 1):
             # ith overlap between i and i+1 burst
             current_burst_end = self.bursts_times[i][2]
             next_burst_start = self.bursts_times[i + 1][1]
             self.overlaps.append(int(np.round((current_burst_end -
-                                               next_burst_start) * self.azimuth_frequency)))
+                                               next_burst_start) * az_freq)))
 
             bsint = sentinel1.overlap.Bsint(self.bsids[i:i + 2])
             self.osids.update(bsint.osids())
@@ -792,14 +749,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
-                 first_row_time,
-                 first_col_time,
                  approx_geom,
-                 range_frequency,
-                 azimuth_frequency,
                  width,
                  height,
                  wavelength,
+                 coordinate: coordinates.SLCCoordinate,
                  orbit: Orbit,
                  max_iterations=20,
                  tolerance=0.001):
@@ -816,12 +770,13 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
             Two way range time sampling frequency .
         azimuth_frequency : float
             Azimuth time sampling frequency.
-        wavelength: float
-            wavelength in m
         width: int
             width of the image
         height: int
             height of the image
+        wavelength: float
+            wavelength in m
+        coordinate: SLCCoordinate
         orbit: Orbit
                 Orbit instance
         max_iterations : int, optional
@@ -836,14 +791,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
             using the speed. The default is 0.001.
 
         """
-        super().__init__(first_row_time,
-                         first_col_time,
-                         approx_geom,
-                         range_frequency,
-                         azimuth_frequency,
+        super().__init__(approx_geom,
                          width,
                          height,
                          wavelength,
+                         coordinate,
                          orbit,
                          Corrector(),
                          max_iterations,
@@ -851,13 +803,10 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
 
     def to_dict(self) -> dict:
         metadata = dict(
-            range_frequency=self.range_frequency,
-            azimuth_frequency=self.azimuth_frequency,
-            wavelength=self.wavelength,
-            first_col_time=self.first_col_time,
-            first_row_time=self.first_row_time,
             width=self.w,
             height=self.h,
+            wavelength=self.wavelength,
+            coordinate=self.coordinate.__dict__,
             approx_geom=self.approx_geom,
             orbit=self.orbit.to_dict(),
             max_iterations=self.max_iterations,
@@ -870,25 +819,30 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         # do a copy since it gets modified
         dict = dict.copy()
         dict['orbit'] = Orbit.from_dict(dict['orbit'])
+        dict['coordinate'] = coordinates.SLCCoordinate(**dict['coordinate'])
         return Sentinel1MosaicModel(**dict)
 
     def to_cropped_mosaic(self, roi: roi.Roi):
-        first_col_time = self.first_col_time + roi.col / self.range_frequency
-        first_row_time = self.first_row_time + roi.row / self.azimuth_frequency
+        first_col_time = self.coordinate.first_col_time + roi.col / self.coordinate.range_frequency
+        first_row_time = self.coordinate.first_row_time + roi.row / self.coordinate.azimuth_frequency
 
         # NOTE: in order not to require a DEM here, compute a very approximate geometry
         # currently the approx_geom is not used for precise computation anyway.
         approx_geom = self.get_coarse_approx_geom(roi, margin=100, alt_min=-1000, alt_max=9000)
 
+        coordinate = coordinates.SLCCoordinate(
+            first_row_time=first_row_time,
+            first_col_time=first_col_time,
+            azimuth_frequency=self.coordinate.azimuth_frequency,
+            range_frequency=self.coordinate.range_frequency,
+        )
+
         model = Sentinel1MosaicModel(
-            first_row_time,
-            first_col_time,
             approx_geom,
-            self.range_frequency,
-            self.azimuth_frequency,
             roi.w,
             roi.h,
             self.wavelength,
+            coordinate,
             self.orbit,
             max_iterations=self.max_iterations,
             tolerance=self.localization_tolerance,
@@ -946,19 +900,17 @@ def swath_model_from_bursts_meta(bursts_metadata: list[Sentinel1BurstMetadata],
                                **kwargs)
 
 
-class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
+class Sentinel1GRDModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
-                 first_row_time,
+                 azt_init,
                  approx_geom,
-                 range_pixel_spacing,
-                 azimuth_time_interval,
                  width,
                  height,
                  wavelength,
+                 coordinate: coordinates.GRDCoordinate,
                  orbit,
-                 srgr,
                  corrector,
                  max_iterations=20,
                  tolerance=0.001):
@@ -967,22 +919,19 @@ class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
 
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
+        azt_init: float
+            Azimuth time of the first line in the image, used for initialization of the projection
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
-        range_pixel_spacing: float
-        azimuth_time_interval: float
         width: int
             width of the image
         height: int
             height of the image
         wavelength: float
             wavelength in m
+        coordinate: GRDCoordinate
         orbit: Orbit
             Orbit instance
-        srgr: eos.sar.srgr.SRGRConverter
-            SRGR converter for the GRDCoordinateMixin
         corrector: eos.sar.projection_correction.Corrector
             Corrector object containing a list of ImageCorrection in this case
         max_iterations : int, optional
@@ -997,7 +946,7 @@ class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
             using the speed. The default is 0.001.
 
         """
-        super().__init__(first_row_time,
+        super().__init__(azt_init,
                          approx_geom,
                          width,
                          height,
@@ -1006,10 +955,15 @@ class Sentinel1GRDModel(coordinates.GRDCoordinateMixin, Sentinel1BaseModel):
                          corrector,
                          max_iterations,
                          tolerance)
+        self.coordinate = coordinate
 
-        self.srgr = srgr
-        self.azimuth_time_interval = azimuth_time_interval
-        self.range_pixel_spacing = range_pixel_spacing
+    @override
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_azt_rng(row, col)
+
+    @override
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        return self.coordinate.to_row_col(azt, rng)
 
 
 def secondary_project_and_correct(proj_model, x, y, alt, crs, bsids,
