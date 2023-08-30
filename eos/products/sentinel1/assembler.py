@@ -12,6 +12,7 @@ from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel, Sentinel1GRDModel, Sentinel1MosaicModel, Sentinel1SwathModel
+from eos.sar.io import ImageReader
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, ImageCorrection
 from eos.sar.roi import Roi
@@ -468,7 +469,7 @@ class Sentinel1GRDAssembler:
     def get_proj_model(self, coord_corrector: Corrector = Corrector()) -> Sentinel1GRDModel:
         return sentinel1.proj_model.grd_model_from_meta(self._meta, self.orbit, coord_corrector)
 
-    def crop(self, roi: Roi, readers: dict[str, object]):
+    def crop(self, roi: Roi, readers: dict[str, ImageReader]):
         def gen():
             for pid, reader in readers.items():
                 proi = self._rois[pid]

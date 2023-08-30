@@ -1,6 +1,9 @@
+from typing import Any, Optional, Sequence, Union
 import numpy as np
+from numpy.typing import NDArray
 import xmltodict
 import datetime
+from eos.sar.io import ImageReader, Window
 
 from eos.sar.roi import Roi
 from . import _calibration as _cal  # type: ignore
@@ -214,7 +217,9 @@ class Sentinel1Calibrator:
         Expect some small differences between eos and SNAP because of this. Any other difference should be reported!
     """
 
-    def __init__(self, calibration_xml_content, noise_xml_content=None):
+    def __init__(self,
+                 calibration_xml_content: str,
+                 noise_xml_content: Optional[str] = None):
         self._date = _get_product_date(calibration_xml_content)
         self._load_calibration(calibration_xml_content)
         if noise_xml_content:
@@ -324,17 +329,20 @@ class Sentinel1Calibrator:
         return range_noise
 
 
-class CalibrationReader:
+class CalibrationReader(ImageReader):
     """Class to calibrate after reading the data"""
 
-    def __init__(self, reader, calibrator: Sentinel1Calibrator,
-                 method: str, dont_clip_noise=False):
+    def __init__(self,
+                 reader: ImageReader,
+                 calibrator: Sentinel1Calibrator,
+                 method: str,
+                 dont_clip_noise: bool = False):
         """
         Constructor.
 
         Parameters
         ----------
-        reader : any reader object (has .read(index, window))
+        reader : any ImageReader object (has .read(index, window))
             Reader to the tiff of the product.
         calibrator : Sentinel1Calibrator
             Calibrator on the same product (same swath/polarization).
@@ -354,13 +362,16 @@ class CalibrationReader:
         self.method = method
         self.dont_clip_noise = dont_clip_noise
 
-    def read(self, index, window, **kwargs):
+    def read(self,
+             indexes: Optional[Union[int, Sequence[int]]],
+             window: Window,
+             **kwargs: Any) -> NDArray[Any]:
         """
         Read and calibrate the data.
 
         Parameters
         ----------
-        index : int
+        indexes : int or list of int
             Band index.
         window : tuple
             ((row, row+h), (col, col+w)).
@@ -371,7 +382,7 @@ class CalibrationReader:
             Array read and calibrated.
 
         """
-        array = self.reader.read(index, window=window, **kwargs)
+        array = self.reader.read(indexes, window=window, **kwargs)
 
         (y, yh), (x, xw) = window
         h = yh - y

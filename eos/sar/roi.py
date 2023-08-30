@@ -13,7 +13,7 @@ class Roi:
     w: int
     h: int
 
-    def __init__(self, col, row, w, h):
+    def __init__(self, col: int, row: int, w: int, h: int):
         self.set_from_roi(col, row, w, h)
 
     def __repr__(self) -> str:

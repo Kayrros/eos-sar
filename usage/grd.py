@@ -1,3 +1,4 @@
+from typing import Optional
 import numpy as np
 import rasterio
 import rasterio.control
@@ -12,7 +13,7 @@ from eos.sar.roi import Roi
 client = phoenix.catalog.Client()
 
 
-def _get_gcps(model: SensorModel, roi: Roi, dem: eos.dem.DEM):
+def _get_gcps(model: SensorModel, roi: Roi, dem: eos.dem.DEM) -> list[rasterio.control.GroundControlPoint]:
     h, w = roi.get_shape()
     ox, oy = roi.get_origin()
     gcps = []
@@ -27,15 +28,15 @@ def _get_gcps(model: SensorModel, roi: Roi, dem: eos.dem.DEM):
 
 
 def main(
-    output='example_grd.tif',
-    product_id='S1A_IW_GRDH_1SDV_20220621T055930_20220621T055955_043757_053958_F640',
-    pol='vv',
-    crop_size=500,
-    calibration=None,
-    do_rtc=False,
-    do_ortho=False,
-    rtc_after_ortho=False,
-):
+    output: str = 'example_grd.tif',
+    product_id: str = 'S1A_IW_GRDH_1SDV_20220621T055930_20220621T055955_043757_053958_F640',
+    pol: str = 'vv',
+    crop_size: int = 500,
+    calibration: Optional[str] = None,
+    do_rtc: bool = False,
+    do_ortho: bool = False,
+    rtc_after_ortho: bool = False,
+) -> None:
     product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
     dem_source = eos.dem.get_any_source()
 
