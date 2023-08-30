@@ -18,7 +18,7 @@ test:
     - pip install pytest-parallel
     - pip install py  # see https://github.com/browsertron/pytest-parallel/issues/118
   script:
-    - pip install multidem 'kayrros-phoenix[source-s3]'
+    - pip install multidem 'kayrros-phoenix[source-s3]' dem-stitcher srtm4
     - pytest . --workers auto
 
 checkstyle:
@@ -31,9 +31,10 @@ checkstyle:
 mypy:
   stage: test
   before_script:
-    - pip install mypy~=1.4.0 numpy
+    - pip install mypy~=1.4.0 cython numpy
+    - pip install -e ".[test]"
   script:
-    - mypy --install-types --non-interactive --ignore-missing-imports --check-untyped-defs eos/ tests/ usage/
+    - mypy --non-interactive eos/ tests/ usage/
 
 fakedeploy:
   stage: test

@@ -2,6 +2,7 @@ import numpy as np
 import os
 import eos.products.sentinel1 as s1
 import eos.sar
+import eos.dem
 from eos.sar.roi import Roi
 
 
@@ -42,6 +43,9 @@ def test_geom_phase_prediction():
 
     primary_swath_roi = Roi(10000, 785, 50, 100)
 
+    dem_source = eos.dem.get_any_source()
+    dem = primary_swath_model.fetch_dem(dem_source, primary_swath_roi)
+
     topo = eos.sar.geom_phase.TopoCorrection(primary_swath_model,
                                              [secondary_swath_model],
                                              grid_size=50, degree=7,
@@ -53,12 +57,10 @@ def test_geom_phase_prediction():
 
     margin = 10
     approx_geom, alts, mask = primary_swath_model.get_approx_geom(primary_swath_roi,
+                                                                  dem=dem,
                                                                   margin=margin)
-    # get dem points
-    x, y, raster, transform, crs = eos.sar.regist.dem_points(approx_geom)
     # Dem projection in radar coordinates
-    heights = eos.sar.dem_to_radar.dem_radarcoding(raster, transform,
-                                                   primary_swath_model,
+    heights = eos.sar.dem_to_radar.dem_radarcoding(dem, primary_swath_model,
                                                    roi=primary_swath_roi,
                                                    approx_geometry=approx_geom,
                                                    margin=margin)

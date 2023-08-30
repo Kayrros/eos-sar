@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Optional, Sequence, Union
+from typing import Any, Callable, Iterable, Optional, Sequence
 import numpy as np
 import shapely.geometry
 
+import eos.dem
 from eos.products import sentinel1
 from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter, SecondarySentinel1AcquisitionCutter
 from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
@@ -277,7 +278,7 @@ class Sentinel1AssemblyCropper:
         self.roi = roi
         self._cropper_fn = None
 
-    def _prepare(self, dem: Optional[DEMSource]) -> None:
+    def _prepare(self, dem_source: DEMSource) -> None:
         mosaic_model = self.assembler.get_mosaic_model()
         primary_cutter = self.assembler.get_primary_cutter()
 
@@ -286,6 +287,9 @@ class Sentinel1AssemblyCropper:
         # write_rois are relative to the destination mosaic coordinates system
         all_bsids, within_burst_rois, write_rois = primary_cutter.get_debursting_rois(self.roi)
         out_shape = self.roi.get_shape()
+
+        # fetch the dem over the ROI
+        dem = mosaic_model.fetch_dem(dem_source, self.roi)
 
         # get registration dem pts
         x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(
@@ -363,13 +367,15 @@ class Sentinel1AssemblyCropper:
              products: Sequence[Sentinel1SLCProductInfo],
              *,
              pol: str,
-             orbit_provider=None,
+             orbit_provider: Optional[SLCOrbitProvider] = None,
              get_complex: bool,
-             dem: Optional[DEMSource] = None,
+             dem_source: Optional[DEMSource] = None,
              calibration: Optional[str] = None,
              reramp: bool = True):
         if self._cropper_fn is None:
-            self._prepare(dem)
+            if dem_source is None:
+                dem_source = eos.dem.get_any_source()
+            self._prepare(dem_source)
 
         assert self._cropper_fn
         array = self._cropper_fn(products, pol, orbit_provider, get_complex=get_complex,

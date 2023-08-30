@@ -5,3 +5,9 @@ build-backend = "setuptools.build_meta"
 [tool.autopep8]
 in-place = true
 recursive = true
+
+[tool.mypy]
+install_types = true
+ignore_missing_imports = true
+check_untyped_defs = true
+python_version = "3.9"
