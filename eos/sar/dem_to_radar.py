@@ -3,6 +3,7 @@ from shapely.geometry import Polygon, MultiPoint
 from scipy.interpolate import LinearNDInterpolator
 import eos.sar
 import eos.dem
+from eos.sar.model import SensorModel
 
 # TODO add support for dem crs
 
@@ -49,9 +50,14 @@ def poly_vs_dem_intersect(approx_geometry, x, y, raster):
     return x, y, raster
 
 
-def get_radar_dem_interpolator(model, x, y, raster,
-                               row_interval, col_interval,
-                               margin=10, get_xy=False):
+def get_radar_dem_interpolator(model: SensorModel,
+                               x,
+                               y,
+                               raster,
+                               row_interval: tuple[int, int],
+                               col_interval: tuple[int, int],
+                               margin: int = 10,
+                               get_xy: bool = False) -> LinearNDInterpolator:
     """
     Construct a height (and optionally x, y dem coordinates) interpolator in radar coordinates
 
@@ -160,7 +166,7 @@ def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry=None,
     return interpolator(rows, cols)
 
 
-def dem_radarcoding(dem: eos.dem.DEM, model, roi=None, approx_geometry=None,
+def dem_radarcoding(dem: eos.dem.DEM, model: SensorModel, roi=None, approx_geometry=None,
                     margin=10, get_xy=False):
     """
     Project a dem in radar coordinates and compute a height value for

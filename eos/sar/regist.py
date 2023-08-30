@@ -162,7 +162,8 @@ def get_registration_dem_pts(primary_model: SensorModel,
     return x_sampled, y_sampled, raster_sampled, crs
 
 
-def orbital_registration(row_primary, col_primary, secondary_model,
+def orbital_registration(row_primary, col_primary,
+                         secondary_model: SensorModel,
                          x, y, raster, crs):
     """Compute registration matrix between primary and secondary model.
 
