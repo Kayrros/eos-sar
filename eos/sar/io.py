@@ -1,11 +1,34 @@
 import glob
+from typing import Any, Optional, Sequence, Union
+from typing_extensions import Protocol
+from numpy.typing import NDArray
 import rasterio
 import rasterio.session
 from urllib.parse import urlparse
 import numpy as np
 
+from eos.sar.roi import Roi
 
-def open_image(path, requester_pays=False):
+Window = tuple[tuple[int, int], tuple[int, int]]
+
+
+class ImageReader(Protocol):
+
+    def read(self,
+             indexes: Optional[Union[int, Sequence[int]]],
+             window: Window,  # the window argument is not optional in eos.sar.io since we want to work with crop first
+             **kwargs: Any) -> NDArray[Any]:
+        """ see https://rasterio.readthedocs.io/en/stable/api/rasterio.io.html#rasterio.io.DatasetReader.read """
+        ...
+
+
+class ImageOpener(Protocol):
+
+    def __call__(self, path: str) -> ImageReader:
+        ...
+
+
+def open_image(path: str, requester_pays: bool = False) -> ImageReader:
     """
     Open a remote or local image.
 
@@ -33,10 +56,10 @@ def open_image(path, requester_pays=False):
     with env:
         image_reader = rasterio.open(path)
 
-    return image_reader
+    return image_reader  # type: ignore
 
 
-def open_image_osio(uri, **reader_options):
+def open_image_osio(uri: str, **reader_options: Any) -> ImageReader:
     """
     Open an image using OSIO.
 
@@ -58,10 +81,11 @@ def open_image_osio(uri, **reader_options):
     else:
         reader = osio.HTTPReaderAt(uri, **reader_options)
     fh = osio.Adapter(reader)
-    return rasterio.open(fh)
+    reader = rasterio.open(fh)
+    return reader  # type: ignore
 
 
-def open_image_fsspec(uri, **extra_args):
+def open_image_fsspec(uri: str, **extra_args: Any) -> ImageReader:
     """
     Open an image using fsspec.
 
@@ -79,10 +103,13 @@ def open_image_fsspec(uri, **extra_args):
     import fsspec
 
     with fsspec.open(uri, mode="rb", compression=None, **extra_args) as f:
-        return rasterio.open(f)
+        reader = rasterio.open(f)
+        return reader  # type: ignore
 
 
-def read_xml_file(xml_path, s3_client=None, requester_pays=False):
+def read_xml_file(xml_path: str,
+                  s3_client: Any = None,
+                  requester_pays: bool = False) -> str:
     """
     Read the content of a local or remote (S3) xml file.
 
@@ -114,14 +141,17 @@ def read_xml_file(xml_path, s3_client=None, requester_pays=False):
         request_payer = 'requester' if requester_pays else ''
         f = s3_client.get_object(Bucket=bucket, Key=key,
                                  RequestPayer=request_payer)['Body']
-        xml_content = f.read()
+        xml_content: str = f.read()
     else:
         with open(xml_path, 'r') as f:
             xml_content = f.read()
     return xml_content
 
 
-def read_window(image_reader, roi, get_complex=True, **kwargs):
+def read_window(image_reader: ImageReader,
+                roi: Roi,
+                get_complex: bool = True,
+                **kwargs: Any) -> NDArray[Union[np.float32, np.complex64]]:
     """Read window inside the tiff of a complex image.
 
     Parameters
@@ -149,22 +179,19 @@ def read_window(image_reader, roi, get_complex=True, **kwargs):
     if get_complex:
         # check if reader returned a complex image
         assert complex_flg, "Reader should return a complex type"
-        if img.dtype == np.complex64:
-            return img
-        else:
-            return img.astype(np.complex64)
+        return img.astype(np.complex64)
     else:
         if complex_flg:
             amp = np.abs(img)
         else:
             amp = img
-        if amp.dtype == np.float32:
-            return amp
-        else:
-            return amp.astype(np.float32)
+        return amp.astype(np.float32)  # type: ignore
 
 
-def read_windows(image_reader, rois, get_complex=True, **kwargs):
+def read_windows(image_reader: ImageReader,
+                 rois: Sequence[Roi],
+                 get_complex: bool = True,
+                 **kwargs: Any) -> list[NDArray[Union[np.float32, np.complex64]]]:
     """Read windows inside the tiff of a complex image.
 
     Parameters
@@ -192,7 +219,7 @@ def read_windows(image_reader, rois, get_complex=True, **kwargs):
     return arrays
 
 
-def glob_single_file(pattern):
+def glob_single_file(pattern: str) -> str:
     """
     Get the full path to a starred expression using glob, for a single file.
 

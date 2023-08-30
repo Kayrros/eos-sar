@@ -26,7 +26,7 @@ class SafeFormat:
         links = [l.replace("./", "") for l in metadata.get_file_links_from_manifest(manifest_content)]
         return cls(product_id=product_id, links=links)
 
-    def _get_file_pattern(self, swath, polarization, prefix=""):
+    def _get_file_pattern(self, swath: str, polarization: str, prefix: str = "") -> str:
         """
         Parse the name of the SAFE according to esa doc [1], then generate the
         file regex pattern.
@@ -63,7 +63,7 @@ class Sentinel1SLCProductInfo:
     def __init__(self, product_id: str):
         self.product_id = product_id
 
-    def get_image_reader(self, swath: str, pol: str):
+    def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
         raise NotImplementedError
 
     def get_xml_annotation(self, swath: str, pol: str) -> str:
@@ -87,7 +87,7 @@ class Sentinel1GRDProductInfo:
     def __init__(self, product_id: str):
         self.product_id = product_id
 
-    def get_image_reader(self, pol: str):
+    def get_image_reader(self, pol: str) -> io.ImageReader:
         raise NotImplementedError
 
     def get_xml_annotation(self, pol: str) -> str:
@@ -134,7 +134,7 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
         super().__init__(prod_id)
 
-    def get_image_reader(self, swath: str, pol: str):
+    def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
         tiff_path = self.safe_format.search(swath, pol, "measurement/")
         tiff_path = os.path.join(self.safe_path, tiff_path)
         return io.open_image(tiff_path)
@@ -170,27 +170,30 @@ else:
     else:
         class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
 
-            def __init__(self, item, index: bool = True):
+            def __init__(self, item: Any, index: bool = True):
                 super().__init__(item.id)
                 self.item = item
                 self.burstem = Burster.from_item(self.item)
                 if index:
                     self.burstem.index()
 
-            def get_image_reader(self, swath: str, pol: str):
-                return BursterSwathReader(self.burstem, swath, pol)
+            def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
+                return BursterSwathReader(self.burstem, swath, pol)  # type: ignore
 
             def get_xml_annotation(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f'{swath.upper()}_{pol.upper()}_ANNOTATION_XML'
-                return self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
+                content: str = self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
+                return content
 
             def get_xml_calibration(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f'{swath.upper()}_{pol.upper()}_CALIBRATION_XML'
-                return self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
+                content: str = self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
+                return content
 
             def get_xml_noise(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f'{swath.upper()}_{pol.upper()}_NOISE_XML'
-                return self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
+                content: str = self.burstem.download_as_bytes(xml_annotation_key).decode('utf-8')
+                return content
 
             @staticmethod
             def from_product_id(product_id: str,
@@ -201,46 +204,53 @@ else:
                     collection = phoenix.catalog.Client() \
                         .get_collection('esa-sentinel-1-csar-l1-slc') \
                         .at('asf:daac:sentinel-1')
+                assert collection is not None
                 if source:
                     collection = collection.at(source)
+                    assert collection is not None
                 item = collection.get_item(product_id)
                 return PhoenixSentinel1ProductInfo(item, index=index)
 
     class PhoenixSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
 
-        def __init__(self, item, image_opener):
+        def __init__(self, item: Any, image_opener: io.ImageOpener):
             super().__init__(item.id)
             self.item = item
             self.image_opener = image_opener
 
-        def get_image_reader(self, pol: str):
+        def get_image_reader(self, pol: str) -> io.ImageReader:
             key = pol.upper()
             uri = self.item.assets.uri(key)
             return self.image_opener(uri)
 
         def get_xml_annotation(self, pol: str) -> str:
             xml_annotation_key = f'{pol.upper()}_ANNOTATION'
-            return self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
+            content: str = self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
+            return content
 
         def get_xml_calibration(self, pol: str) -> str:
             xml_annotation_key = f'{pol.upper()}_CALIBRATION'
-            return self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
+            content: str = self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
+            return content
 
         def get_xml_noise(self, pol: str) -> str:
             xml_annotation_key = f'{pol.upper()}_NOISE'
-            return self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
+            content: str = self.item.assets.download_as_bytes(xml_annotation_key).decode('utf-8')
+            return content
 
         @staticmethod
         def from_product_id(product_id: str,
-                            image_opener=io.open_image,
+                            image_opener: io.ImageOpener = io.open_image,
                             collection: Optional[Any] = None,
                             source: Optional[str] = None) -> PhoenixSentinel1GRDProductInfo:
             if collection is None:
                 collection = phoenix.catalog.Client() \
                     .get_collection('esa-sentinel-1-csar-l1-grd') \
                     .at('aws:proxima:sentinel-s1-l1c')
+            assert collection is not None
             if source:
                 collection = collection.at(source)
+                assert collection is not None
             item = collection.get_item(product_id)
             return PhoenixSentinel1GRDProductInfo(item, image_opener)
 
@@ -257,7 +267,7 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
     safe_format: SafeFormat = dataclasses.field(init=False)
     s3_client: Any = dataclasses.field(init=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.s3_client = self.s3_session.client("s3", endpoint_url="https://s3.dataspace.copernicus.eu")
         manifest_content = io.read_xml_file(
             os.path.join(self.s3_path, "manifest.safe"),
@@ -266,12 +276,12 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
         )
         self.safe_format = SafeFormat.from_manifest(self.product_id, manifest_content)
 
-    def get_image_reader(self, swath: str, pol: str):
+    def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
         tiff_path = self.safe_format.search(swath, pol, "measurement/")
         tiff_path = os.path.join(self.s3_path, tiff_path)
         with rasterio.Env(rasterio.session.AWSSession(self.s3_session, endpoint_url="s3.dataspace.copernicus.eu"),
                           AWS_VIRTUAL_HOSTING=False):
-            return rasterio.open(tiff_path)
+            return rasterio.open(tiff_path)  # type: ignore
 
     def get_xml_annotation(self, swath: str, pol: str) -> str:
         xml_path = self.safe_format.search(swath, pol, "annotation/")

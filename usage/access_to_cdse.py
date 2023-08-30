@@ -20,4 +20,4 @@ product = CDSEUnzippedSafeSentinel1SLCProductInfo(
 )
 
 print(len(product.get_xml_noise("IW3", "VV")))
-print(product.get_image_reader("IW3", "VV").read(window=((2, 8), (10, 20))))
+print(product.get_image_reader("IW3", "VV").read(1, window=((2, 8), (10, 20))))
