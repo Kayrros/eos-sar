@@ -7,8 +7,9 @@ import pytest
 from eos.products import sentinel1
 from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 import eos.sar
+import eos.dem
 from eos.sar import range_doppler
-from eos.sar.orbit import Orbit, StateVector
+from eos.sar.orbit import Orbit
 
 
 def test_projection():
@@ -184,7 +185,8 @@ def test_projection_corner_reflectors():
     primary_cutter = asm.get_primary_cutter()
     all_bsids, _, _ = primary_cutter.get_debursting_rois(roi_all)
 
-    dem = eos.dem.get_any_source()
+    dem_source = eos.dem.get_any_source()
+    dem = mosaic_model.fetch_dem(dem_source, roi_all)
     # get registration dem pts
     x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(
         mosaic_model, roi=roi_all, dem=dem, sampling_ratio=1)
