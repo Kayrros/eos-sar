@@ -334,22 +334,6 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
 
         self.coordinate = coordinate
 
-    @property
-    def first_row_time(self) -> float:
-        return self.coordinate.first_row_time
-
-    @property
-    def first_col_time(self) -> float:
-        return self.coordinate.first_col_time
-
-    @property
-    def range_frequency(self) -> float:
-        return self.coordinate.range_frequency
-
-    @property
-    def azimuth_frequency(self) -> float:
-        return self.coordinate.azimuth_frequency
-
     @override
     def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         return self.coordinate.to_azt_rng(row, col)
@@ -571,12 +555,13 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
 
         self.overlaps = []
         self.osids = set()
+        az_freq = self.coordinate.azimuth_frequency
         for i in range(n_bursts - 1):
             # ith overlap between i and i+1 burst
             current_burst_end = self.bursts_times[i][2]
             next_burst_start = self.bursts_times[i + 1][1]
             self.overlaps.append(int(np.round((current_burst_end -
-                                               next_burst_start) * self.azimuth_frequency)))
+                                               next_burst_start) * az_freq)))
 
             bsint = sentinel1.overlap.Bsint(self.bsids[i:i + 2])
             self.osids.update(bsint.osids())
@@ -818,10 +803,6 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
 
     def to_dict(self) -> dict:
         metadata = dict(
-            range_frequency=self.range_frequency,
-            azimuth_frequency=self.azimuth_frequency,
-            first_col_time=self.first_col_time,
-            first_row_time=self.first_row_time,
             width=self.w,
             height=self.h,
             wavelength=self.wavelength,
@@ -842,8 +823,8 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         return Sentinel1MosaicModel(**dict)
 
     def to_cropped_mosaic(self, roi: roi.Roi):
-        first_col_time = self.first_col_time + roi.col / self.range_frequency
-        first_row_time = self.first_row_time + roi.row / self.azimuth_frequency
+        first_col_time = self.coordinate.first_col_time + roi.col / self.coordinate.range_frequency
+        first_row_time = self.coordinate.first_row_time + roi.row / self.coordinate.azimuth_frequency
 
         # NOTE: in order not to require a DEM here, compute a very approximate geometry
         # currently the approx_geom is not used for precise computation anyway.
@@ -923,7 +904,7 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
-                 first_row_time,
+                 azt_init,
                  approx_geom,
                  width,
                  height,
@@ -938,8 +919,8 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
 
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
+        azt_init: float
+            Azimuth time of the first line in the image, used for initialization of the projection
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
         width: int
@@ -965,7 +946,7 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
             using the speed. The default is 0.001.
 
         """
-        super().__init__(first_row_time,
+        super().__init__(azt_init,
                          approx_geom,
                          width,
                          height,

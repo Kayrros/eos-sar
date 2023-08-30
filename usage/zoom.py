@@ -190,28 +190,29 @@ def main(result_dir='.'):
     crop_roi = eos.sar.roi.Roi(248, 300, 600, 1000)
 
     zoom_factor = 2
+    azf = primary_swath_model.coordinate.azimuth_frequency
     mosaic_zoomer = s1.mosaic_zoom.MosaicZoomer(
         bsids, write_rois, crop_roi, zoom_factor=zoom_factor, previous_resamplers=primary_resamplers)
     # test step by step
     deramped = mosaic_zoomer.deramp(crop_roi.crop_array(primary_crop))
-    plot_freq_profile(deramped, axis=1, fs=primary_swath_model.azimuth_frequency, title="primary deramped", result_dir=result_dir)
+    plot_freq_profile(deramped, axis=1, fs=azf, title="primary deramped", result_dir=result_dir)
 
     zoomed = mosaic_zoomer.zoom_fourier(deramped)
-    plot_freq_profile(zoomed, axis=1, fs=primary_swath_model.azimuth_frequency * zoom_factor, title="primary zoomed", result_dir=result_dir)
+    plot_freq_profile(zoomed, axis=1, fs=azf * zoom_factor, title="primary zoomed", result_dir=result_dir)
 
     reramped = mosaic_zoomer.reramp(zoomed)
-    plot_freq_profile(reramped, axis=1, fs=primary_swath_model.azimuth_frequency * zoom_factor, title="primary reramped", result_dir=result_dir)
+    plot_freq_profile(reramped, axis=1, fs=azf * zoom_factor, title="primary reramped", result_dir=result_dir)
     # test three zooming options
     lanczos_zoom = mosaic_zoomer.resample(crop_roi.crop_array(primary_crop))
     nan_mask = np.isnan(lanczos_zoom)
     lanczos_zoom[nan_mask] = 0
-    plot_freq_profile(lanczos_zoom, axis=1, fs=primary_swath_model.azimuth_frequency * zoom_factor, title="lanczos zoomed", result_dir=result_dir)
+    plot_freq_profile(lanczos_zoom, axis=1, fs=azf * zoom_factor, title="lanczos zoomed", result_dir=result_dir)
 
     zoomed_with_fourier = mosaic_zoomer.resample_fourier(crop_roi.crop_array(primary_crop))
-    plot_freq_profile(zoomed_with_fourier, axis=1, fs=primary_swath_model.azimuth_frequency * zoom_factor, title="joint fourier zoomed", result_dir=result_dir)
+    plot_freq_profile(zoomed_with_fourier, axis=1, fs=azf * zoom_factor, title="joint fourier zoomed", result_dir=result_dir)
 
     zoomed_with_fourier_separate = mosaic_zoomer.resample_fourier(crop_roi.crop_array(primary_crop), joint_resampling=False)
-    plot_freq_profile(zoomed_with_fourier_separate, axis=1, fs=primary_swath_model.azimuth_frequency * zoom_factor, title="separate fourier zoom", result_dir=result_dir)
+    plot_freq_profile(zoomed_with_fourier_separate, axis=1, fs=azf * zoom_factor, title="separate fourier zoom", result_dir=result_dir)
 
     # Now get a secondary mosaic
     # construct secondary swath model and burst models
@@ -239,11 +240,11 @@ def main(result_dir='.'):
     # do interf after zoom and look at spectral width, check aliasing
     zoomed_secondary = secondary_zoomer.resample_fourier(crop_roi.crop_array(secondary_crop))
     # look at spectral width primary and secondary
-    plot_freq_profile(secondary_zoomer.deramp(crop_roi.crop_array(secondary_crop)), axis=1, fs=primary_swath_model.azimuth_frequency, title="secondary deramped", result_dir=result_dir)
-    plot_freq_profile(mosaic_zoomer.deramp(crop_roi.crop_array(primary_crop)), axis=1, fs=primary_swath_model.azimuth_frequency, title="primary deramped", result_dir=result_dir)
+    plot_freq_profile(secondary_zoomer.deramp(crop_roi.crop_array(secondary_crop)), axis=1, fs=azf, title="secondary deramped", result_dir=result_dir)
+    plot_freq_profile(mosaic_zoomer.deramp(crop_roi.crop_array(primary_crop)), axis=1, fs=azf, title="primary deramped", result_dir=result_dir)
     interf_zoomed = zoomed_with_fourier * np.conj(zoomed_secondary)
-    plot_freq_profile(interf_zoomed, axis=1, fs=primary_swath_model.azimuth_frequency * zoom_factor, title="zoomed interf", result_dir=result_dir)
-    plot_freq_profile(crop_roi.crop_array(primary_crop) * np.conj(crop_roi.crop_array(secondary_crop)), axis=1, fs=primary_swath_model.azimuth_frequency, title="interf not zoomed", result_dir=result_dir)
+    plot_freq_profile(interf_zoomed, axis=1, fs=azf * zoom_factor, title="zoomed interf", result_dir=result_dir)
+    plot_freq_profile(crop_roi.crop_array(primary_crop) * np.conj(crop_roi.crop_array(secondary_crop)), axis=1, fs=azf, title="interf not zoomed", result_dir=result_dir)
 
     save_array(result_dir, "primary_crop.npy", crop_roi.crop_array(primary_crop))
     save_array(result_dir, "secondary_crop.npy", crop_roi.crop_array(secondary_crop))
