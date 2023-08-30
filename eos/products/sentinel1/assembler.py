@@ -136,14 +136,11 @@ class Sentinel1Assembler:
 
         # instanciate the mosaic model
         proj_model = Sentinel1MosaicModel(
-            cutter.coordinate.first_row_time,
-            cutter.coordinate.first_col_time,
             approx_geom,
-            cutter.coordinate.range_frequency,
-            cutter.coordinate.azimuth_frequency,
             cutter.w,
             cutter.h,
             wavelength,
+            cutter.coordinate,
             self.orbit,
         )
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 import abc
 from typing import Optional, Union
+from typing_extensions import override
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -83,10 +84,10 @@ def burst_model_from_burst_meta(burst_meta: Sentinel1BurstMetadata,
 
 class Sentinel1BaseModel(model.SensorModel, abc.ABC):
     """Enables operations like projection and localization.
-    Subclasses still have to implement to_azt_rng and to_row_col. """
+    Subclasses still have to implement to_azt_rng and to_row_col (required by SensorModel). """
 
     def __init__(self,
-                 first_row_time,
+                 azt_init,
                  approx_geom,
                  width,
                  height,
@@ -100,8 +101,8 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
+        azt_init: float
+            Azimuth time of the first line in the image, used for initialization of the projection
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
         width: int
@@ -141,14 +142,13 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         self.localization_tolerance = tolerance
         self.projection_tolerance = float(tolerance / np.linalg.norm(orbit.sv[0].velocity))
 
-        self.first_row_time = first_row_time
-
         # set some params necessary for processing
-        self.azt_init = first_row_time
+        self.azt_init = azt_init
         self.approx_geom = approx_geom
 
         self.coord_corrector = coord_corrector
 
+    @override
     def projection(self,
                    x: ArrayLike,
                    y: ArrayLike,
@@ -203,6 +203,7 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         return row, col, i
 
+    @override
     def localization(self,
                      row: ArrayLike,
                      col: ArrayLike,
@@ -284,31 +285,20 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
 class Sentinel1SLCBaseModel(Sentinel1BaseModel):
     def __init__(self,
-                 first_row_time,
-                 first_col_time,
                  approx_geom,
-                 range_frequency,
-                 azimuth_frequency,
                  width,
                  height,
                  wavelength,
-                 orbit,
-                 coord_corrector,
+                 coordinate: coordinates.SLCCoordinate,
+                 orbit: Orbit,
+                 coord_corrector: Corrector,
                  max_iterations=20,
                  tolerance=0.001):
         """
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
-        first_col_time: float
-            Two way slant range time of the first column in the image
         approx_geom: list of tuples (lon, lat)
             Approximate geometry of the image (represented by 4 corners)
-        range_frequency : float
-            Two way range time sampling frequenc
-        azimuth_frequency : float
-            Azimuth time sampling frequency
         width: int
             width of the image
         height: int
@@ -331,7 +321,8 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
             using the speed. The default is 0.001.
         ...
         """
-        super().__init__(first_row_time,
+        azt_init = coordinate.first_row_time
+        super().__init__(azt_init,
                          approx_geom,
                          width,
                          height,
@@ -340,19 +331,30 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
                          coord_corrector,
                          max_iterations,
                          tolerance)
-        self.coordinate = coordinates.SLCCoordinate(first_row_time=first_row_time,
-                                                    first_col_time=first_col_time,
-                                                    azimuth_frequency=azimuth_frequency,
-                                                    range_frequency=range_frequency)
 
-        # TODO: keep or remove?
-        self.first_col_time = first_col_time
-        self.range_frequency = range_frequency
-        self.azimuth_frequency = azimuth_frequency
+        self.coordinate = coordinate
 
+    @property
+    def first_row_time(self) -> float:
+        return self.coordinate.first_row_time
+
+    @property
+    def first_col_time(self) -> float:
+        return self.coordinate.first_col_time
+
+    @property
+    def range_frequency(self) -> float:
+        return self.coordinate.range_frequency
+
+    @property
+    def azimuth_frequency(self) -> float:
+        return self.coordinate.azimuth_frequency
+
+    @override
     def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         return self.coordinate.to_azt_rng(row, col)
 
+    @override
     def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         return self.coordinate.to_row_col(azt, rng)
 
@@ -415,19 +417,19 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
 
         """
 
-        # set these for the SLCCoordinate
-        # TODO: remove?
         first_row_time = burst_times[1]  # start valid
         first_col_time = slant_range_time + burst_roi[0] / range_frequency
 
-        super().__init__(first_row_time,
-                         first_col_time,
-                         approx_geom,
-                         range_frequency,
-                         azimuth_frequency,
+        coordinate = coordinates.SLCCoordinate(first_row_time=first_row_time,
+                                               first_col_time=first_col_time,
+                                               azimuth_frequency=azimuth_frequency,
+                                               range_frequency=range_frequency)
+
+        super().__init__(approx_geom,
                          burst_roi[2],
                          burst_roi[3],
                          wavelength,
+                         coordinate,
                          orbit,
                          coord_corrector,
                          max_iterations,
@@ -494,7 +496,6 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         None.
 
         """
-        # set these for the SLCCoordinate
         first_row_time = bursts_times[0][1]  # start valid
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
@@ -508,15 +509,18 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         w = (col_max - self.col_min + 1)
         h = int(np.round((bursts_times[-1][2] - first_row_time)
                          * azimuth_frequency))
+
+        coordinate = coordinates.SLCCoordinate(first_row_time=first_row_time,
+                                               first_col_time=first_col_time,
+                                               azimuth_frequency=azimuth_frequency,
+                                               range_frequency=range_frequency)
+
         # call the base class constructor
-        super().__init__(first_row_time,
-                         first_col_time,
-                         approx_geom,
-                         range_frequency,
-                         azimuth_frequency,
+        super().__init__(approx_geom,
                          w,
                          h,
                          wavelength,
+                         coordinate,
                          orbit,
                          Corrector(),
                          max_iterations,
@@ -760,14 +764,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
-                 first_row_time,
-                 first_col_time,
                  approx_geom,
-                 range_frequency,
-                 azimuth_frequency,
                  width,
                  height,
                  wavelength,
+                 coordinate: coordinates.SLCCoordinate,
                  orbit: Orbit,
                  max_iterations=20,
                  tolerance=0.001):
@@ -784,12 +785,13 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
             Two way range time sampling frequency .
         azimuth_frequency : float
             Azimuth time sampling frequency.
-        wavelength: float
-            wavelength in m
         width: int
             width of the image
         height: int
             height of the image
+        wavelength: float
+            wavelength in m
+        coordinate: SLCCoordinate
         orbit: Orbit
                 Orbit instance
         max_iterations : int, optional
@@ -804,14 +806,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
             using the speed. The default is 0.001.
 
         """
-        super().__init__(first_row_time,
-                         first_col_time,
-                         approx_geom,
-                         range_frequency,
-                         azimuth_frequency,
+        super().__init__(approx_geom,
                          width,
                          height,
                          wavelength,
+                         coordinate,
                          orbit,
                          Corrector(),
                          max_iterations,
@@ -821,11 +820,12 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         metadata = dict(
             range_frequency=self.range_frequency,
             azimuth_frequency=self.azimuth_frequency,
-            wavelength=self.wavelength,
             first_col_time=self.first_col_time,
             first_row_time=self.first_row_time,
             width=self.w,
             height=self.h,
+            wavelength=self.wavelength,
+            coordinate=self.coordinate.__dict__,
             approx_geom=self.approx_geom,
             orbit=self.orbit.to_dict(),
             max_iterations=self.max_iterations,
@@ -838,6 +838,7 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         # do a copy since it gets modified
         dict = dict.copy()
         dict['orbit'] = Orbit.from_dict(dict['orbit'])
+        dict['coordinate'] = coordinates.SLCCoordinate(**dict['coordinate'])
         return Sentinel1MosaicModel(**dict)
 
     def to_cropped_mosaic(self, roi: roi.Roi):
@@ -848,15 +849,19 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         # currently the approx_geom is not used for precise computation anyway.
         approx_geom = self.get_coarse_approx_geom(roi, margin=100, alt_min=-1000, alt_max=9000)
 
+        coordinate = coordinates.SLCCoordinate(
+            first_row_time=first_row_time,
+            first_col_time=first_col_time,
+            azimuth_frequency=self.coordinate.azimuth_frequency,
+            range_frequency=self.coordinate.range_frequency,
+        )
+
         model = Sentinel1MosaicModel(
-            first_row_time,
-            first_col_time,
             approx_geom,
-            self.range_frequency,
-            self.azimuth_frequency,
             roi.w,
             roi.h,
             self.wavelength,
+            coordinate,
             self.orbit,
             max_iterations=self.max_iterations,
             tolerance=self.localization_tolerance,
@@ -971,9 +976,11 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
                          tolerance)
         self.coordinate = coordinate
 
+    @override
     def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         return self.coordinate.to_azt_rng(row, col)
 
+    @override
     def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         return self.coordinate.to_row_col(azt, rng)
 
