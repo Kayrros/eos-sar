@@ -1,4 +1,3 @@
-from typing import Any
 import numpy as np
 import os
 import eos.products.sentinel1 as s1
@@ -7,6 +6,7 @@ from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel
 import eos.sar
+import eos.dem
 import eos.products.sentinel1
 from eos.sar.orbit import Orbit
 import pytest
@@ -75,7 +75,9 @@ def dem(inputs):
     primary_swath_model = eos.products.sentinel1.proj_model.swath_model_from_bursts_meta(
         primary_bursts_meta, orbit)
     # get dem points
-    x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model)
+    dem_source = eos.dem.get_any_source()
+    dem = primary_swath_model.fetch_dem(dem_source)
+    x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(primary_swath_model, dem=dem)
     return x, y, alt, crs
 
 

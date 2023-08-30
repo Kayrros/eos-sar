@@ -2,6 +2,7 @@
 
 import abc
 import logging
+from typing import Optional
 
 import numpy as np
 
@@ -11,8 +12,6 @@ from eos.sar.roi import Roi as Roi
 import eos.dem
 
 logger = logging.getLogger(__name__)
-# TODO: change the functions so that they take a DemSource as parameter
-elevation = eos.dem.get_any_source().elevation
 
 
 class SensorModel(abc.ABC):
@@ -45,7 +44,7 @@ class SensorModel(abc.ABC):
 
     def localize_without_alt(self, row, col, max_iter=5, eps=1.0,
                              alt_min=-1000, alt_max=9000, num_alt=100,
-                             verbosity=False, elev=elevation):
+                             verbosity=False, *, dem: eos.dem.DEM):
         """
         Localize a pixel in the image to the 3D point without needing the
         the altitude. A set of altitude values are tested recursively.
@@ -68,10 +67,8 @@ class SensorModel(abc.ABC):
             Number of altitudes to test in each iteration. The default is 100.
         verbosity : bool, optional
             If True, print messages about the optimization. The default is False.
-        elev: function
-            Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-            lon, lat are in wgs84 crs.
-            Should be vectorized (able to handle a query of arrays).
+        dem: DEM
+            Should contain the expected lon/lat
 
         Returns
         -------
@@ -93,7 +90,7 @@ class SensorModel(abc.ABC):
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
             self, row, col, alt_min, alt_max, num_alt,
-            max_iter=max_iter, eps=eps, verbosity=verbosity, elev=elev)
+            max_iter=max_iter, eps=eps, verbosity=verbosity, dem=dem)
 
         # do a last linear interpolation
         alt_opt = alt_min - alt_diff1 * \
@@ -101,7 +98,77 @@ class SensorModel(abc.ABC):
         lon, lat, alt_opt = self.localization(row, col, alt_opt)
         return lon, lat, alt_opt, masks
 
-    def get_approx_geom(self, roi=None, margin=0, **kwargs):
+    def fetch_dem(self,
+                  dem_source: eos.dem.DEMSource,
+                  roi: Optional[Roi] = None,
+                  margin: int = 1000,
+                  alt_min: float = -1000,
+                  alt_max: float = 9000) -> eos.dem.DEM:
+        """
+        Given a eos.dem.DEMSource, returns a eos.dem.DEM of the scene (restricted to an ROI if provided).
+        The DEM will be large enough to contain the scene, for this very imprecise assumptions are used.
+        One can obtain a smaller dem (= faster cropping and less memory) by adjusting the margin and alt_min/max.
+
+        Parameters
+        ----------
+        dem_source: eos.dem.DEMSource
+        roi : eos.sar.roi.Roi, optional
+            Defines the region to localize. The default is None.
+        margin : int, optional
+            Margin in px to buffer the roi. The default is 1000.
+        alt_min : float, optional
+            Minimum altitude, assumed in near-range. The default is -1000.
+        alt_max : float, optional
+            Maximum altitude, assumed in far-range. The default is 9000.
+        """
+        geometry = self.get_coarse_approx_geom(roi, margin=margin,
+                                               alt_min=alt_min, alt_max=alt_max)
+        lons = [P[0] for P in geometry]
+        lats = [P[1] for P in geometry]
+        bounds = (min(lons), min(lats), max(lons), max(lats))
+        dem = dem_source.fetch_dem(bounds)
+        return dem
+
+    def get_coarse_approx_geom(self, roi: Optional[Roi] = None, *,
+                               margin: int,
+                               alt_min: float,
+                               alt_max: float
+                               ) -> list[tuple[float, float]]:
+        """
+        Get the very approximate geometry in epsg:4326 of a roi in an image whose
+        localization function is defined by a model. Localization is conducted
+        assuming coarse elevation bounds: alt_min in near-range, alt_max in far-range,
+        in order to have a dilated geometry encompassing all possible elevation landscapes.
+
+        Parameters
+        ----------
+        roi : eos.sar.roi.Roi, optional
+            Defines the region to localize. The default is None.
+        margin : int, optional
+            Margin in px to buffer the roi. The recommended is 1000.
+        alt_min : float, optional
+            Minimum altitude, assumed in near-range. The recommended is -1000.
+        alt_max : float, optional
+            Maximum altitude, assumed in far-range. The recommended is 9000.
+
+        Returns
+        -------
+        approx_geom: list of tuples
+            The 4 (lon, lat) corners of the very approximate geometry
+        """
+        if roi is None:
+            roi = Roi(0, 0, self.w, self.h)
+        if margin:
+            roi = roi.add_margin(margin)
+
+        rows, cols = roi.to_bounding_points()
+        alts = [alt_min, alt_max, alt_max, alt_min]
+        lons, lats, alts = self.localization(rows, cols, alts)
+
+        approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
+        return approx_geom
+
+    def get_approx_geom(self, roi=None, margin=0, *, dem: eos.dem.DEM, **kwargs):
         """
         Get the approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
@@ -113,7 +180,9 @@ class SensorModel(abc.ABC):
             Defines the region to localize. The default is None.
         margin : int, optional
             Margin in px to buffer the roi. The default is 0.
-       **kwargs: Keyword arguments for localize_without_alt function.
+        dem : eos.dem.DEM
+            DEM covering the region of interest (or the model if roi is None)
+        **kwargs: Keyword arguments for localize_without_alt function.
 
         Returns
         -------
@@ -133,7 +202,7 @@ class SensorModel(abc.ABC):
         rows, cols = roi.to_bounding_points()
 
         lons, lats, alts, masks = self.localize_without_alt(
-            rows, cols, **kwargs)
+            rows, cols, dem=dem, **kwargs)
 
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
@@ -141,7 +210,7 @@ class SensorModel(abc.ABC):
             logger.warning("get_approx_geom: some points may be invalid.")
         return approx_geom, alts, masks
 
-    def get_buffered_geom(self, roi=None, margin=0, row_sampling=50, **kwargs):
+    def get_buffered_geom(self, dem: eos.dem.DEM, roi=None, margin=0, row_sampling=50, **kwargs):
         """
         Get the approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
@@ -151,6 +220,8 @@ class SensorModel(abc.ABC):
 
         Parameters
         ----------
+        dem: eos.sar.DEM
+            DEM covering the region of interest (or the model if roi is None)
         roi : eos.sar.roi.Roi, optional
             Defines the region to localize. The default is None.
         margin : int, optional
@@ -158,7 +229,7 @@ class SensorModel(abc.ABC):
         row_sampling : int, optional
             The boundary of the roi will be sampled each row_sampling pixels for the altitude
             evaluation. Decreasing this value increases precision but slows the function.
-       **kwargs: Keyword arguments for localize_without_alt function.
+        **kwargs: Keyword arguments for localize_without_alt function.
 
         Returns
         -------
@@ -177,7 +248,7 @@ class SensorModel(abc.ABC):
 
         # deal with the left boundary
         lons_left, lats_left, alts, masks = self.localize_without_alt(
-            _rows, col * np.ones_like(_rows), **kwargs)
+            _rows, col * np.ones_like(_rows), dem=dem, **kwargs)
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -186,7 +257,7 @@ class SensorModel(abc.ABC):
 
         # deal with the right boundary
         lons_right, lats_right, alts, masks = self.localize_without_alt(
-            _rows, (col + w - 1) * np.ones_like(_rows), **kwargs)
+            _rows, (col + w - 1) * np.ones_like(_rows), dem=dem, **kwargs)
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -205,7 +276,7 @@ class SensorModel(abc.ABC):
         return buffered_geom
 
 
-def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
+def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM):
     """
     Computes the error between localized point at a certain height and the dem.
 
@@ -219,10 +290,7 @@ def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
         col in image.
     alt : ndarray
         Altitude to test vs dem.
-    elev: function
-        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-        lon, lat are in wgs84 crs.
-        Should be vectorized (able to handle a query of arrays).
+    dem: eos.dem.DEM
 
     Returns
     -------
@@ -231,11 +299,11 @@ def localized_vs_dem(sensor_model, row, col, alt, elev=elevation):
 
     """
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - elev(lon, lat)
+    return alt - dem.elevation(lon, lat)
 
 
 def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
-                    elev=elevation):
+                    *, dem: eos.dem.DEM):
     """
     Shrink a search interval by num_alt
 
@@ -253,10 +321,7 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
         upper bound of the search space.
     num_alt : int
         number of altitudes to test.
-    elev: function
-        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-        lon, lat are in wgs84 crs.
-        Should be vectorized (able to handle a query of arrays).
+    dem: eos.dem.DEM
 
     Returns
     -------
@@ -294,7 +359,7 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
                                 utils.hrepeat(rows, num_alt).ravel(),
                                 utils.hrepeat(cols, num_alt).ravel(),
                                 potential_alt.ravel(),
-                                elev)
+                                dem)
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
@@ -341,7 +406,7 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
 
 def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
                               num_alt, max_iter=10, eps=1e-1,
-                              verbosity=False, elev=elevation):
+                              verbosity=False, *, dem: eos.dem.DEM):
     """
     Iteratively shrink the search interval for the altitude of a point.
 
@@ -366,10 +431,7 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
         The default is 1e-1.
     verbosity : bool, optional
         if True, print optim messages. The default is False.
-    elev: function
-        Function elev(lon, lat) ---> alt w.r.t. ellipsoidal datum.
-        lon, lat are in wgs84 crs.
-        Should be vectorized (able to handle a query of arrays).
+    dem: eos.dem.DEM
 
     Returns
     -------
@@ -407,7 +469,7 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
             col[iterate_mask],
             alts_min[iterate_mask],
             alts_max[iterate_mask],
-            num_alt, elev)
+            num_alt, dem=dem)
         # update masks
         zero_mask[iterate_mask] = masks["zeros"]
         invalid_mask[iterate_mask] = masks["invalid"]

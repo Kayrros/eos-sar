@@ -4,6 +4,7 @@ import cv2
 import abc
 from eos.sar import utils
 import eos.dem
+from eos.sar.model import SensorModel
 
 
 def affine_transformation(src, dst):
@@ -66,15 +67,15 @@ def affine_transformation(src, dst):
     return A
 
 
-def dem_points(geometry, dem=None, outfile=None):
+def dem_points(geometry, dem: eos.dem.DEM, outfile=None):
     """Query dem points.
 
     Parameters
     ----------
     geometry : list of tuple (lon,lat)
         Geometry of the primary image, one point per corner of the image
-    dem : eos.dem.DemSource
-        DEM source (if None, then eos.dem.get_any_source is used)
+    dem : eos.dem.DEM
+        DEM covering the geometry
     outfile : string, optional
         Path to save the dem if passed as argument.
         The default is None.
@@ -92,8 +93,6 @@ def dem_points(geometry, dem=None, outfile=None):
     crs : Any crs type accepted by pyproj
         crs of the returned points.
     """
-    if dem is None:
-        dem = eos.dem.get_any_source()
     # geometry of the query
     lons = [P[0] for P in geometry]
     lats = [P[1] for P in geometry]
@@ -108,9 +107,13 @@ def dem_points(geometry, dem=None, outfile=None):
     return x, y, raster, transform, crs
 
 
-def get_registration_dem_pts(primary_model, roi=None, margin=500,
+def get_registration_dem_pts(primary_model: SensorModel,
+                             roi=None,
+                             margin=500,
                              sampling_ratio=0.01,
-                             dem=None, outfile=None):
+                             *,
+                             dem: eos.dem.DEM,
+                             outfile=None):
     """
     Get pts sampled on the dem to be used for the registration.
 
@@ -126,8 +129,8 @@ def get_registration_dem_pts(primary_model, roi=None, margin=500,
         The sampling ratio used to sample points from the dem.
         Only the sampled points will be used for the registration.
         The default is 0.01.
-    dem : eos.dem.DemSource
-        DEM source (if None, then eos.dem.get_any_source is used)
+    dem : eos.dem.DEM
+        DEM covering the region of interest (or the model if roi is None)
     outfile : string, optional
          Path to save the dem if passed as argument.
          The default is None.
@@ -146,7 +149,7 @@ def get_registration_dem_pts(primary_model, roi=None, margin=500,
     """
     assert sampling_ratio > 0 and sampling_ratio <= 1, "sampling ratio out of range"
 
-    refined_geom = primary_model.get_buffered_geom(roi, margin)
+    refined_geom = primary_model.get_buffered_geom(dem, roi, margin)
     # get dem points
     x, y, raster, _, crs = dem_points(refined_geom, dem=dem, outfile=outfile)
 

@@ -1,15 +1,18 @@
 import numpy as np
 import rasterio
+import rasterio.control
 
 import phoenix.catalog
 import eos.sar
 import eos.dem
 import eos.products.sentinel1 as sentinel1
+from eos.sar.model import SensorModel
+from eos.sar.roi import Roi
 
 client = phoenix.catalog.Client()
 
 
-def _get_gcps(model, roi):
+def _get_gcps(model: SensorModel, roi: Roi, dem: eos.dem.DEM):
     h, w = roi.get_shape()
     ox, oy = roi.get_origin()
     gcps = []
@@ -17,7 +20,7 @@ def _get_gcps(model, roi):
         cols = np.linspace(0, w, num=5).astype(np.int32)
         rows = [row_ for _ in cols]
         for row, col in zip(rows, cols):
-            x, y, z, _ = model.localize_without_alt(oy + row, ox + col)
+            x, y, z, _ = model.localize_without_alt(oy + row, ox + col, dem=dem)
             gcps.append(rasterio.control.GroundControlPoint(row, col, x, y, z))
 
     return gcps
@@ -34,6 +37,7 @@ def main(
     rtc_after_ortho=False,
 ):
     product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
+    dem_source = eos.dem.get_any_source()
 
     xml = product.get_xml_annotation(pol)
     meta = sentinel1.metadata.extract_grd_metadata(xml)
@@ -60,6 +64,7 @@ def main(
                           crop_size,
                           crop_size)
 
+    dem = proj_model.fetch_dem(dem_source, roi)
     reader = product.get_image_reader(pol)
 
     if calibration:
@@ -83,7 +88,7 @@ def main(
 
     if do_rtc:
         print('computing rtc')
-        rtc = eos.sar.rtc.RadiometricTerrainCorrector(proj_model, roi)
+        rtc = eos.sar.rtc.RadiometricTerrainCorrector(proj_model, dem, roi)
         if not rtc_after_ortho:
             raster = rtc.apply(raster)
         sim = rtc.get_simulation()
@@ -94,7 +99,7 @@ def main(
     if do_ortho:
         print('computing ortho')
         res = 10.0
-        orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(proj_model, roi, res)
+        orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(proj_model, roi, res, dem=dem)
         raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
         profile['crs'] = orthorectifier.crs
         profile['transform'] = orthorectifier.transform
@@ -110,7 +115,7 @@ def main(
 
         if 'transform' not in profile:
             print('computing gcps')
-            gcps = _get_gcps(proj_model, roi)
+            gcps = _get_gcps(proj_model, roi, dem)
             dst.gcps = (gcps, 4979)
 
 
