@@ -38,12 +38,15 @@ def grd_model_from_meta(meta: Sentinel1GRDMetadata,
                                            azimuth_time_interval=meta.azimuth_time_interval,
                                            range_pixel_spacing=meta.range_pixel_spacing,
                                            srgr=srgr)
+    # NOTE: using mean() won't respect the dateline
+    approx_centroid_lon, approx_centroid_lat = np.mean(meta.approx_geom, axis=0)
     proj_model = Sentinel1GRDModel(
         meta.image_start,
-        meta.approx_geom,
         meta.width,
         meta.height,
         meta.wave_length,
+        approx_centroid_lon,
+        approx_centroid_lat,
         coordinate,
         orbit,
         coord_corrector,
@@ -70,13 +73,16 @@ def burst_model_from_burst_meta(burst_meta: Sentinel1BurstMetadata,
     Sentinel1BurstModel instance.
 
     """
+    # NOTE: using mean() won't respect the dateline
+    approx_centroid_lon, approx_centroid_lat = np.mean(burst_meta.approx_geom, axis=0)
     return Sentinel1BurstModel(burst_meta.range_frequency,
                                burst_meta.azimuth_frequency,
                                burst_meta.slant_range_time,
                                burst_meta.wave_length,
+                               approx_centroid_lon,
+                               approx_centroid_lat,
                                burst_meta.burst_times,
                                burst_meta.burst_roi,
-                               burst_meta.approx_geom,
                                orbit,
                                coord_corrector=coord_corrector,
                                **kwargs)
@@ -88,10 +94,11 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
     def __init__(self,
                  azt_init,
-                 approx_geom,
                  width,
                  height,
                  wavelength,
+                 approx_centroid_lon: float,
+                 approx_centroid_lat: float,
                  orbit: Orbit,
                  coord_corrector: Corrector,
                  max_iterations=20,
@@ -103,14 +110,18 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         ----------
         azt_init: float
             Azimuth time of the first line in the image, used for initialization of the projection
-        approx_geom: list of tuples (lon, lat)
-            Approximate geometry of the image (represented by 4 corners)
         width: int
             width of the image
         height: int
             height of the image
         wavelength: float
             wavelength in m
+        approx_centroid_lon: float
+            approximate longitude position of the center of the sensor model
+            (only used as initialization for the localization function)
+        approx_centroid_lat: float
+            approximate latitude position of the center of the sensor model
+            (only used as initialization for the localization function)
         orbit: Orbit
             Orbit instance
         coord_corrector: eos.sar.projection_correction.Corrector
@@ -134,6 +145,8 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         self.w = width
         self.h = height
         self.wavelength = wavelength  # for TopoCorrection
+        self.approx_centroid_lon = approx_centroid_lon
+        self.approx_centroid_lat = approx_centroid_lat
 
         self.orbit = orbit
         # stopping criteria
@@ -144,8 +157,6 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         # set some params necessary for processing
         self.azt_init = azt_init
-        self.approx_geom = approx_geom
-
         self.coord_corrector = coord_corrector
 
     @override
@@ -241,11 +252,8 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
             to_gxyz = pyproj.Transformer.from_crs(
                 'epsg:4326', 'epsg:4978', always_xy=True)
 
-            # point at swath centroid, 0 altitude as init
-            lon_c, lat_c = np.mean(self.approx_geom, axis=0)
-
-            x_init = lon_c * np.ones_like(alt)
-            y_init = lat_c * np.ones_like(alt)
+            x_init = self.approx_centroid_lon * np.ones_like(alt)
+            y_init = self.approx_centroid_lat * np.ones_like(alt)
             z_init = alt
 
         gx_init, gy_init, gz_init = to_gxyz.transform(
@@ -285,10 +293,11 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
 class Sentinel1SLCBaseModel(Sentinel1BaseModel):
     def __init__(self,
-                 approx_geom,
                  width,
                  height,
                  wavelength,
+                 approx_centroid_lon,
+                 approx_centroid_lat,
                  coordinate: coordinates.SLCCoordinate,
                  orbit: Orbit,
                  coord_corrector: Corrector,
@@ -297,14 +306,18 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
         """
         Parameters
         ----------
-        approx_geom: list of tuples (lon, lat)
-            Approximate geometry of the image (represented by 4 corners)
         width: int
             width of the image
         height: int
             height of the image
         wavelength: float
             wavelength in m
+        approx_centroid_lon: float
+            approximate longitude position of the center of the sensor model
+            (only used as initialization for the localization function)
+        approx_centroid_lat: float
+            approximate latitude position of the center of the sensor model
+            (only used as initialization for the localization function)
         orbit: Orbit
             Orbit instance
         coord_corrector: eos.sar.projection_correction.Corrector
@@ -323,10 +336,11 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
         """
         azt_init = coordinate.first_row_time
         super().__init__(azt_init,
-                         approx_geom,
                          width,
                          height,
                          wavelength,
+                         approx_centroid_lon,
+                         approx_centroid_lat,
                          orbit,
                          coord_corrector,
                          max_iterations,
@@ -351,9 +365,10 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
                  azimuth_frequency,
                  slant_range_time,
                  wavelength,
+                 approx_centroid_lon,
+                 approx_centroid_lat,
                  burst_times,
                  burst_roi,
-                 approx_geom,
                  orbit: Orbit,
                  coord_corrector=Corrector(),
                  max_iterations=20,
@@ -371,15 +386,18 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
             Two way time to the first column in the sentinel1 raster.
         wavelength: float
             wavelength in m
+        approx_centroid_lon: float
+            approximate longitude position of the center of the sensor model
+            (only used as initialization for the localization function)
+        approx_centroid_lat: float
+            approximate latitude position of the center of the sensor model
+            (only used as initialization for the localization function)
         burst_times : (3,) ndarray/tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
             start/end_valid denote the azimuth time of the
             first/last valid line in the burst.
         burst_roi : (4,) ndarray/tuple (x, y, w, h)
             Coordinates of the burst in the sentinel-1 raster file.
-        approx_geom : List of tuples
-            Each tuple element is a (lon, lat) corner of the approx geom
-            of the burst
         orbit: Orbit
             Orbit instance
         coord_corrector: eos.sar.projection_correction.Corrector
@@ -409,10 +427,11 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
                                                azimuth_frequency=azimuth_frequency,
                                                range_frequency=range_frequency)
 
-        super().__init__(approx_geom,
-                         burst_roi[2],
+        super().__init__(burst_roi[2],
                          burst_roi[3],
                          wavelength,
+                         approx_centroid_lon,
+                         approx_centroid_lat,
                          coordinate,
                          orbit,
                          coord_corrector,
@@ -431,9 +450,10 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
                  azimuth_frequency,
                  slant_range_time,
                  wavelength,
+                 approx_centroid_lon,
+                 approx_centroid_lat,
                  bursts_times,
                  bursts_rois,
-                 bursts_approx_geom,
                  bsids,
                  orbit: Orbit,
                  max_iterations=20,
@@ -451,15 +471,18 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
             Two way time to the first column in the sentinel1 raster.
         wavelength: float
             wavelength in m
+        approx_centroid_lon: float
+            approximate longitude position of the center of the sensor model
+            (only used as initialization for the localization function)
+        approx_centroid_lat: float
+            approximate latitude position of the center of the sensor model
+            (only used as initialization for the localization function)
         bursts_times : list of (3,) tuple (start_time, start_valid, end_valid)
             start_time is the azimuth time of the first line in the burst
             start/end_valid denote the azimuth time of the
             first/last valid line in the burst.
         bursts_rois : list of (4,) tuple (x, y, w, h)
             Coordinates of the burst in the sentinel-1 raster file.
-        bursts_approx_geom : List of list of tuples
-            Each element is a list of tuples (lon, lat) corners of the approx geom
-            of the burst
         bsids: list of str
             BSID of each burst of the model
         orbit: Orbit
@@ -484,8 +507,6 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
 
         self.col_min = min(roi_[0] for roi_ in bursts_rois)
         first_col_time = slant_range_time + self.col_min / range_frequency
-        # swath polygon
-        approx_geom = bursts_approx_geom[0][:2] + bursts_approx_geom[-1][2:]
 
         # setting image size
         self.row_min = bursts_rois[0][1]
@@ -500,10 +521,11 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
                                                range_frequency=range_frequency)
 
         # call the base class constructor
-        super().__init__(approx_geom,
-                         w,
+        super().__init__(w,
                          h,
                          wavelength,
+                         approx_centroid_lon,
+                         approx_centroid_lat,
                          coordinate,
                          orbit,
                          Corrector(),
@@ -749,10 +771,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at a mosaic."""
 
     def __init__(self,
-                 approx_geom,
                  width,
                  height,
                  wavelength,
+                 approx_centroid_lon,
+                 approx_centroid_lat,
                  coordinate: coordinates.SLCCoordinate,
                  orbit: Orbit,
                  max_iterations=20,
@@ -762,20 +785,18 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
 
         Parameters
         ----------
-        first_row_time: float
-            Azimuth time of the first line in the image
-        first_col_time: float
-            Two way slant range time of the first column in the image
-        range_frequency : float
-            Two way range time sampling frequency .
-        azimuth_frequency : float
-            Azimuth time sampling frequency.
         width: int
             width of the image
         height: int
             height of the image
         wavelength: float
             wavelength in m
+        approx_centroid_lon: float
+            approximate longitude position of the center of the sensor model
+            (only used as initialization for the localization function)
+        approx_centroid_lat: float
+            approximate latitude position of the center of the sensor model
+            (only used as initialization for the localization function)
         coordinate: SLCCoordinate
         orbit: Orbit
                 Orbit instance
@@ -791,10 +812,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
             using the speed. The default is 0.001.
 
         """
-        super().__init__(approx_geom,
-                         width,
+        super().__init__(width,
                          height,
                          wavelength,
+                         approx_centroid_lon,
+                         approx_centroid_lat,
                          coordinate,
                          orbit,
                          Corrector(),
@@ -806,8 +828,9 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
             width=self.w,
             height=self.h,
             wavelength=self.wavelength,
+            approx_centroid_lon=self.approx_centroid_lon,
+            approx_centroid_lat=self.approx_centroid_lat,
             coordinate=self.coordinate.__dict__,
-            approx_geom=self.approx_geom,
             orbit=self.orbit.to_dict(),
             max_iterations=self.max_iterations,
             tolerance=self.localization_tolerance,
@@ -826,9 +849,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         first_col_time = self.coordinate.first_col_time + roi.col / self.coordinate.range_frequency
         first_row_time = self.coordinate.first_row_time + roi.row / self.coordinate.azimuth_frequency
 
-        # NOTE: in order not to require a DEM here, compute a very approximate geometry
-        # currently the approx_geom is not used for precise computation anyway.
-        approx_geom = self.get_coarse_approx_geom(roi, margin=100, alt_min=-1000, alt_max=9000)
+        # estimate the lon/lat center of the crop
+        # it is only an approximation, so we can use alt=0.0
+        center_x = roi.col + roi.w // 2
+        center_y = roi.row + roi.h // 2
+        approx_centroid_lon, approx_centroid_lat, _ = self.localization(center_y, center_x, 0.0)
 
         coordinate = coordinates.SLCCoordinate(
             first_row_time=first_row_time,
@@ -838,10 +863,11 @@ class Sentinel1MosaicModel(Sentinel1SLCBaseModel):
         )
 
         model = Sentinel1MosaicModel(
-            approx_geom,
             roi.w,
             roi.h,
             self.wavelength,
+            approx_centroid_lon,
+            approx_centroid_lat,
             coordinate,
             self.orbit,
             max_iterations=self.max_iterations,
@@ -875,7 +901,9 @@ def swath_model_from_bursts_meta(bursts_metadata: list[Sentinel1BurstMetadata],
     # TODO: aggregate state_vectors as well
     bursts_times = [b.burst_times for b in bursts_metadata]
     bursts_rois = [b.burst_roi for b in bursts_metadata]
-    bursts_approx_geom = [b.approx_geom for b in bursts_metadata]
+    approx_geom = bursts_metadata[0].approx_geom[:2] + bursts_metadata[-1].approx_geom[2:]
+    # NOTE: using mean() won't respect the dateline
+    approx_centroid_lon, approx_centroid_lat = np.mean(approx_geom, axis=0)
     bsids = [b.bsid for b in bursts_metadata]
 
     def alleq(prop):
@@ -892,9 +920,10 @@ def swath_model_from_bursts_meta(bursts_metadata: list[Sentinel1BurstMetadata],
                                bursts_metadata[0].azimuth_frequency,
                                bursts_metadata[0].slant_range_time,
                                bursts_metadata[0].wave_length,
+                               approx_centroid_lon,
+                               approx_centroid_lat,
                                bursts_times,
                                bursts_rois,
-                               bursts_approx_geom,
                                bsids,
                                orbit,
                                **kwargs)
@@ -905,10 +934,11 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
 
     def __init__(self,
                  azt_init,
-                 approx_geom,
                  width,
                  height,
                  wavelength,
+                 approx_centroid_lon,
+                 approx_centroid_lat,
                  coordinate: coordinates.GRDCoordinate,
                  orbit,
                  corrector,
@@ -921,14 +951,18 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
         ----------
         azt_init: float
             Azimuth time of the first line in the image, used for initialization of the projection
-        approx_geom: list of tuples (lon, lat)
-            Approximate geometry of the image (represented by 4 corners)
         width: int
             width of the image
         height: int
             height of the image
         wavelength: float
             wavelength in m
+        approx_centroid_lon: float
+            approximate longitude position of the center of the sensor model
+            (only used as initialization for the localization function)
+        approx_centroid_lat: float
+            approximate latitude position of the center of the sensor model
+            (only used as initialization for the localization function)
         coordinate: GRDCoordinate
         orbit: Orbit
             Orbit instance
@@ -947,10 +981,11 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
 
         """
         super().__init__(azt_init,
-                         approx_geom,
                          width,
                          height,
                          wavelength,
+                         approx_centroid_lon,
+                         approx_centroid_lat,
                          orbit,
                          corrector,
                          max_iterations,

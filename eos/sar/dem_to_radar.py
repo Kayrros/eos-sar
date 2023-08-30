@@ -110,7 +110,7 @@ def get_radar_dem_interpolator(model: SensorModel,
     return interpolator
 
 
-def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry=None,
+def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry,
                   margin=10, get_xy=False):
     """
     Compute the height (and lon, lat optionally) at a set of locations in a radar image.
@@ -131,8 +131,6 @@ def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry=None,
         cols where we want the height.
     approx_geometry : list of (lon, lat) tuples, optional
         Points in the list define the geometry of the aoi.
-        If none, the geometry of the model is taken (slower run).
-        The default is None.
     margin : int
         Margin in px to add to the row and colmun interval.
         Projected dem points within the intervals + margin will be considered
@@ -147,9 +145,6 @@ def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry=None,
         Heights (and x, y optionally) at the rows, cols locations.
 
     """
-    if approx_geometry is None:
-        approx_geometry = model.approx_geom
-
     # restrict the dem points to the approx_geometry
     x, y, raster = poly_vs_dem_intersect(
         approx_geometry, x, y, raster)
@@ -184,7 +179,7 @@ def dem_radarcoding(dem: eos.dem.DEM, model: SensorModel, roi=None, approx_geome
         The default is None.
     approx_geometry : list of (lon, lat) tuples, optional
          Points in the list define the geometry of the roi.
-         If none, the model will be used to determine the roi geometry.
+         If none, the model will be used to determine the roi geometry (get_buffered_geom).
          The default is None.
     margin: int
         The margin to buffer our roi during the approximate geometry estimation,

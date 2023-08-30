@@ -126,21 +126,23 @@ class Sentinel1Assembler:
         # get the cutter to get the origin and (width, height) of the mosaic
         cutter = self.get_secondary_cutter()
 
-        # compute the approx_geom of the swaths
         bursts = [b for meta_per_bsid in self.meta_per_bsid_per_swath.values()
                   for b in meta_per_bsid.values()]
+        wavelength = bursts[0].wave_length
+
         geoms = [b.approx_geom for b in bursts]
         multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
         approx_geom = list(multipolygon.convex_hull.exterior.coords)
-
-        wavelength = bursts[0].wave_length
+        # NOTE: using mean() won't respect the dateline
+        approx_centroid_lon, approx_centroid_lat = np.mean(approx_geom, axis=0)
 
         # instanciate the mosaic model
         proj_model = Sentinel1MosaicModel(
-            approx_geom,
             cutter.w,
             cutter.h,
             wavelength,
+            approx_centroid_lon,
+            approx_centroid_lat,
             cutter.coordinate,
             self.orbit,
         )
