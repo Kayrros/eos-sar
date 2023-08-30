@@ -108,6 +108,7 @@ class DEM:
     array: NDArray[np.float32]
     """ raster containing heights in meters relative to the ellipsoid """
     transform: affine.Affine
+    """ the transform associated with the raster, expressed in the "pixel is area" convention (GDAL default) """
     crs: str = "EPSG:4326"
     """ always "EPSG:4326" """
 
@@ -136,7 +137,7 @@ class DEM:
         assert len(lons_arr) == len(lats_arr), "arguments must have same length"
 
         geo_coords = np.array([lons_arr, lats_arr])
-        # TODO: not sure about the -0.5
+        # the transform's convention is pixel is area so we shift half a pixel
         img_coords = np.around(~self.transform * geo_coords, 6) - 0.5
         assert (img_coords >= 0).all()
         maxx = img_coords[0].max()
@@ -167,6 +168,9 @@ class DEM:
     def crop(self, bounds: Bounds) -> tuple[NDArray[np.float32], affine.Affine, str]:
         """
         Return a crop of the DEM on the given `bounds`, as an array, transform, crs.
+
+        Note:
+            The bounds should be well inside the dem. Near the border, the behaviour is not exactly well defind for now.
 
         Args:
             bounds (4-tuple): tuple of floats lon_min, lat_min, lon_max, lat_max
@@ -230,6 +234,9 @@ class DEMSource(abc.ABC):
     def fetch_dem(self, bounds: Bounds) -> DEM:
         """
         Return a DEM instance on the given `bounds`.
+
+        Note:
+            Depending on the actual DEMSource, there is currently no guarantees that the bounds are exactly contained in the resulting DEM.
 
         Args:
             bounds (4-tuple): tuple of floats lon_min, lat_min, lon_max, lat_max
