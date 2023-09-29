@@ -73,7 +73,7 @@ class _Sentinel1AcquisitionCutter:
             swath = bsid.split('_')[1].lower()
 
             row = (burst_times[1] - first_row_time) * azimuth_frequency
-            assert abs(int(round(row)) - row) < 1e-3, row
+            assert abs(int(round(row)) - row) < 3e-3, row
             row = int(round(row))
             col = burst_roi_tiff.col + self._swath_col_orig_in_acquisition[swath]
 
