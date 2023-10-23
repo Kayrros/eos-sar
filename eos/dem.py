@@ -330,7 +330,7 @@ class DEMStitcherSource(DEMSource):
     """ see https://github.com/ACCESS-Cloud-Based-InSAR/dem-stitcher#dems-supported """
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
-        array, profile = dem_stitcher.stitch_dem(list(bounds), "glo_30")
+        array, profile = dem_stitcher.stitch_dem(list(bounds), "glo_30", merge_nodata_value=0)
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
