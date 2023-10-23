@@ -9,7 +9,7 @@ To install the package in editable mode, you can run:
 
 	pip install -e .
 
-Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. Therefore, make sure that you either install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4), which is an open source alternative providing acess to SRTM90 data.
+Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. The recommended source is `eos.dem.DEMStitcherSource` (with `pip install dem-stitcher`) that uses GLO30 and GLO90. You can also install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4) as SRTM sources.
 
 If you wish to install srtm4, make sure to install with the "crop" extra dependencies: 
 
@@ -17,9 +17,9 @@ If you wish to install srtm4, make sure to install with the "crop" extra depende
 
  If you wish to use another dem source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a dem.
 
-Automatic download of Sentinel-1 SLC data is not provided in this package. You can use [ASF](https://search.asf.alaska.edu/#/) to find and download the data.
+Automatic download of Sentinel-1 SLC data is not provided in this package yet. You can use [ASF](https://search.asf.alaska.edu/#/) to find and download the data.
 
-As for the precise or restituted orbit files, automatic querying and download for a product is not provided in this package. Another Kayrros package for handling orbit files may be made public.
+As for the precise or restituted orbit files, automatic querying and download for a product is not provided in this package yet.
 
 ### Usage
 
