@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Literal
 
+import requests
 import shapely
 from typing_extensions import override
 
@@ -107,76 +108,32 @@ else:
 
             return [it.id for it in items.values()]
 
-    if __name__ == "__main__":
-        client = phx.Client()
-        collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
-            "asf:daac:sentinel-1"
-        )
-        catalog = Sentinel1Catalog(
-            backend=PhoenixSentinel1CatalogBackend(collection_source=collection)
-        )
 
-        import shapely.geometry
+@dataclass(frozen=True)
+class CDSESentinel1CatalogBackend(Sentinel1CatalogBackend):
+    @override
+    def search_slc(self, query: Sentinel1CatalogQuery) -> list[str]:
+        limit = 1000
+        # TODO: we might want to look at neighbouring orbits
+        # because of its loose definition around the equator
+        items = requests.get(
+            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq 'SENTINEL-1' and ContentDate/Start gt {query.start_date.isoformat()} and ContentDate/Start lt {query.end_date.isoformat()} and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'operationalMode' and att/OData.CSC.StringAttribute/Value eq 'IW') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'processingLevel' and att/OData.CSC.StringAttribute/Value eq 'LEVEL1') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'origin' and att/OData.CSC.StringAttribute/Value eq 'ESA') and Attributes/OData.CSC.IntegerAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq '{query.relative_orbit_number}')&$expand=Attributes&$orderby=ContentDate/Start asc&$top={limit}"
+        ).json()
 
-        geometry = shapely.geometry.Point(-68.374028, -23.563574)
-        query = Sentinel1CatalogQuery(
-            geometry=geometry,
-            relative_orbit_number=149,
-            start_date=datetime.datetime(2019, 1, 1),
-            end_date=datetime.datetime(2019, 4, 1),
-            polarization=["SV", "DV"],
-        )
-        results = catalog.search_slc(query)
+        try:
+            items = items["value"]
+        except KeyError as e:
+            raise Exception("OData parsing error?") from e
 
-        import pprint
+        assert (
+            len(items) < limit
+        ), "maximum odata 'number of results' reached, please ask for the implementation of pagination"
 
-        pprint.pprint(results)
-
-        # Sentinel1CatalogResult(product_ids_per_date={
-        # '20190104': ['S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885'],
-        # '20190110': ['S1A_IW_SLC__1SDV_20190110T230559_20190110T230627_025421_02D0E7_5EFE'],
-        # '20190122': ['S1A_IW_SLC__1SDV_20190122T230559_20190122T230627_025596_02D74D_0EBA'],
-        # '20190128': ['S1B_IW_SLC__1SDV_20190128T230512_20190128T230539_014700_01B682_D729'],
-        # '20190203': ['S1A_IW_SLC__1SDV_20190203T230558_20190203T230626_025771_02DDA8_85BB'],
-        # '20190209': ['S1B_IW_SLC__1SDV_20190209T230512_20190209T230539_014875_01BC41_A036'],
-        # '20190215': ['S1A_IW_SLC__1SDV_20190215T230558_20190215T230622_025946_02E3DC_44B8'],
-        # '20190221': ['S1B_IW_SLC__1SDV_20190221T230512_20190221T230539_015050_01C1FA_C1EF'],
-        # '20190227': ['S1A_IW_SLC__1SDV_20190227T230558_20190227T230626_026121_02EA15_19A2'],
-        # '20190305': ['S1B_IW_SLC__1SDV_20190305T230512_20190305T230539_015225_01C7C5_EF14'],
-        # '20190311': ['S1A_IW_SLC__1SDV_20190311T230558_20190311T230626_026296_02F06F_A19C'],
-        # '20190317': ['S1B_IW_SLC__1SDV_20190317T230512_20190317T230539_015400_01CD6B_8DB9'],
-        # '20190323': ['S1A_IW_SLC__1SDV_20190323T230558_20190323T230626_026471_02F6E6_C653'],
-        # '20190329': ['S1B_IW_SLC__1SDV_20190329T230512_20190329T230539_015575_01D324_27D9']})
-
-try:
-    from pystac_client import Client
-except ImportError:
-    logger.warning(
-        "pystac_client backend for eos.products.sentinel1.catalog not available."
-    )
-else:
-
-    @dataclass(frozen=True)
-    class CDSESentinel1CatalogBackend(Sentinel1CatalogBackend):
-        @override
-        def search_slc(self, query: Sentinel1CatalogQuery) -> list[str]:
-            raise NotImplementedError
-
-    if __name__ == "__main__":
-        catalog = Sentinel1Catalog(backend=CDSESentinel1CatalogBackend())
-
-        import shapely.geometry
-
-        geometry = shapely.geometry.Point(-68.374028, -23.563574)
-        query = Sentinel1CatalogQuery(
-            geometry=geometry,
-            relative_orbit_number=149,
-            start_date=datetime.datetime(2019, 1, 1),
-            end_date=datetime.datetime(2019, 4, 1),
-            polarization=["SV", "DV"],
-        )
-        results = catalog.search_slc(query)
-
-        import pprint
-
-        pprint.pprint(results)
+        pids = [
+            item["Name"].replace(".SAFE", "")
+            for item in items
+            if item["EvictionDate"] == ""
+            and item["Online"]
+            and any(f"_1S{pol}_" in item["Name"] for pol in query.polarization)
+        ]
+        return pids
