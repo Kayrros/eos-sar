@@ -109,7 +109,7 @@ def dem_points(geometry, dem: eos.dem.DEM, outfile=None):
 
 def get_registration_dem_pts(primary_model: SensorModel,
                              roi=None,
-                             margin=500,
+                             margin=0,
                              sampling_ratio=0.01,
                              *,
                              dem: eos.dem.DEM,
@@ -124,7 +124,7 @@ def get_registration_dem_pts(primary_model: SensorModel,
     roi : eos.sar.roi.Roi, optional
         Defines the region of study. The default is None (the whole image is considered).
     margin : int, optional
-        Margin in px to buffer the roi. The default is 500.
+        Margin in px to buffer the roi. The default is 0.
     sampling_ratio : float, optional
         The sampling ratio used to sample points from the dem.
         Only the sampled points will be used for the registration.

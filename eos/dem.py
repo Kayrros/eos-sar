@@ -103,6 +103,10 @@ def _bilinear_interp(array, x, y):
     return np.around(h_interp, 5)
 
 
+class OutOfBoundsException(IndexError):
+    pass
+
+
 @dataclass(frozen=True)
 class DEM:
     array: NDArray[np.float32]
@@ -115,6 +119,16 @@ class DEM:
     def __post_init__(self):
         # make the array read-only, just in case
         self.array.setflags(write=False)
+
+    def _assert_in_raster(self, xmin: float, xmax: float, ymin: float, ymax: float):
+        if xmin < 0:
+            raise OutOfBoundsException(f"x coord min {xmin} negative, out of raster bounds")
+        if xmax > self.array.shape[1] - 1:
+            raise OutOfBoundsException(f"x coord max {xmax}, out of raster bounds, shape: {self.array.shape}")
+        if ymin < 0:
+            raise OutOfBoundsException(f"y coord min {ymin} negative, out of raster bounds")
+        if ymax > self.array.shape[0] - 1:
+            raise OutOfBoundsException(f"y coord max {ymax}, out of raster bounds, shape: {self.array.shape}")
 
     def elevation(self,
                   lons: ArrayLike,
@@ -129,6 +143,10 @@ class DEM:
                 else if 'nearest' returns the nearest neighbor value
         Returns:
             alts: height (or list/array of heights) in meters above the ellipsoid
+
+        Raises:
+            OutOfBoundsException if the DEM is not sufficiently big to allow
+            querying for points
         """
         is_input_iterable = isinstance(lons, Iterable)
 
@@ -139,11 +157,12 @@ class DEM:
         geo_coords = np.array([lons_arr, lats_arr])
         # the transform's convention is pixel is area so we shift half a pixel
         img_coords = np.around(~self.transform * geo_coords, 6) - 0.5
-        assert (img_coords >= 0).all()
-        maxx = img_coords[0].max()
-        maxy = img_coords[1].max()
-        assert (maxx + 1 < self.array.shape[1]).all(), f"x coord max {maxx}, shape: {self.array.shape}"  # +1 because we need data for interpolation
-        assert (maxy + 1 < self.array.shape[0]).all(), f"y coord max {maxy}, shape: {self.array.shape}"
+
+        xmin = img_coords[0].min()
+        xmax = img_coords[0].max()
+        ymin = img_coords[1].min()
+        ymax = img_coords[1].max()
+        self._assert_in_raster(xmin, xmax, ymin, ymax)
 
         if interpolation == "nearest":
             alts = np.array([self.array[int(round(y)), int(round(x))] for x, y in zip(*img_coords)])
@@ -179,6 +198,9 @@ class DEM:
             np.ndarray: raster DEM crop array
             affine.Affine: transform
             rasterio.crs.CRS: CRS
+
+        Raises:
+            OutOfBoundsException if the DEM is not big enough to crop at specified bounds.
         """
 
         xmin, ymin = np.array(~self.transform * np.array((bounds[0], bounds[3])))
@@ -189,8 +211,7 @@ class DEM:
         xmax = int(np.floor(xmax))
         ymax = int(np.floor(ymax))
 
-        if xmin < 0 or ymin < 0 or xmax >= self.array.shape[1] or ymax >= self.array.shape[0]:
-            raise ValueError("out of bounds")
+        self._assert_in_raster(xmin, xmax, ymin, ymax)
 
         array = self.array[ymin:ymax + 1, xmin:xmax + 1]
         resx = self.transform.a
@@ -209,6 +230,9 @@ class DEM:
 
         Returns:
             DEM: subset
+
+        Raises:
+            OutOfBoundsException if the DEM is not big enough to subset at specified bounds.
         """
         array, transform, _ = self.crop(bounds)
         if copy:

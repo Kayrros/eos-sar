@@ -1,13 +1,19 @@
 """Projection comparison with s1m (master branch). For this test, you need to\
 have s1m installed on your system."""
 
-
+import pytest
 import numpy as np
-import s1m
 from eos.products import sentinel1
-from eos.sar.orbit import Orbit, StateVector
+from eos.sar.orbit import Orbit
+
+try:
+    import s1m
+    has_s1m = True
+except ModuleNotFoundError:
+    has_s1m = False
 
 
+@pytest.mark.skipif(not has_s1m, reason="s1m not installed")
 def test_projection_vs_s1m():
     xml_path =\
         './tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
