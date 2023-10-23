@@ -162,7 +162,9 @@ class SensorModel(abc.ABC):
             mask["invalid"] indicates the points for which no solution was found,
             probably because the actual altitude is outside the given range.
 
-
+        Raises:
+            eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
+            querying for points at various altitudes along the line of sight.
         """
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
@@ -270,6 +272,11 @@ class SensorModel(abc.ABC):
         masks : dict
                 keys: "zeros", "converged", "invalid"
                 as returned by localize_without_alt
+
+        Raises
+        ------
+            eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
+            querying for points at various altitudes along the line of sight.
         """
         if roi is None:
             roi = Roi(0, 0, self.w, self.h)
@@ -312,6 +319,11 @@ class SensorModel(abc.ABC):
         -------
         buffered_geom: list of tuples
             The 4 (lon, lat) corners of the geometry
+
+        Raises
+        ------
+            eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
+            querying for points at various altitudes along the line of sight.
         """
         if roi is None:
             roi = Roi(0, 0, self.w, self.h)
@@ -374,6 +386,10 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
     ndarray
         alt - dem at localized point Loc(row, col, alt) .
 
+    Raises
+    ------
+        eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
+        querying for points at various altitudes along the line of sight.
     """
     lon, lat, _ = sensor_model.localization(row, col, alt)
     return alt - dem.elevation(lon, lat)
@@ -416,6 +432,10 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
         masks["invalid"] indicates points where the true solution lies outside
         of the search space.
 
+    Raises
+    ------
+        eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
+        querying for points at various altitudes along the line of sight.
     """
     # TODO to make this call faster, localization seems to have a bottelneck
     # related to the pyproj transformer
@@ -527,6 +547,10 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
         mask["invalid"] indicates the points for which no solution was found,
         probably because the actual altitude is outside the given range.
 
+    Raises
+    ------
+        eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
+        querying for points at various altitudes along the line of sight.
     """
     row = np.atleast_1d(row)
     col = np.atleast_1d(col)

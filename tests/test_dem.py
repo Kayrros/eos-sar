@@ -1,4 +1,5 @@
 import time
+import pytest
 
 import numpy as np
 
@@ -96,6 +97,15 @@ def test_dem_subset_and_crop():
     assert c1 == c2
 
 
+def test_dem_crop_outofbounds():
+    bounds1 = (3, 44, 3.1, 45)
+    bounds2 = (2.95, 44, 3.1, 45)
+
+    dem = eos.dem.SRTM4Source().fetch_dem(bounds1)
+    with pytest.raises(eos.dem.OutOfBoundsException):
+        dem.subset(bounds2)
+
+
 def test_dem_elevation():
     import srtm4
 
@@ -109,3 +119,22 @@ def test_dem_elevation():
     alt2 = dem.elevation(lon, lat, "nearest")
 
     assert abs(alt - alt2) < 0.1
+
+
+def test_dem_elevation_outofbounds():
+    lon = 31.1
+    lat = 31.5
+
+    dem = eos.dem.SRTM4Source().fetch_dem(
+        (lon - 0.5, int(lat - 0.5), lon + 0.5, lat + 0.5)
+    )
+    dem.elevation(lon, lat)
+
+    with pytest.raises(eos.dem.OutOfBoundsException):
+        dem.elevation(lon - 0.6, lat)
+    with pytest.raises(eos.dem.OutOfBoundsException):
+        dem.elevation(lon + 0.6, lat)
+    with pytest.raises(eos.dem.OutOfBoundsException):
+        dem.elevation(lon, lat - 0.6)
+    with pytest.raises(eos.dem.OutOfBoundsException):
+        dem.elevation(lon, lat + 0.6)
