@@ -1,9 +1,10 @@
-import rasterio
+from typing import Optional
 import tifffile
 
 import eos.products.sentinel1
 import eos.sar
 import eos.dem
+from eos.sar.orbit import StateVector
 
 from teosar.overlap_utils import OverlapResampler, OverlapRoiInfo
 from teosar import utils
@@ -21,10 +22,10 @@ class Pipeline:
         self.log = {}
 
     @conditional_profiler(PROF)
-    def get_inputs(self, product_provider, orbit_provider, polarization):
+    def get_inputs(self, product_provider, statevectors: Optional[list[StateVector]], polarization):
         print(f"{self.date} Getting inputs")
         self.products, self.asm = inout.get_inputs_for_date(
-            self.product_ids, "all", product_provider, orbit_provider, polarization
+            self.product_ids, "all", product_provider, statevectors, polarization
         )
         self.log["asm"] = self.asm.to_dict()
 
@@ -133,7 +134,7 @@ class PrimaryPipeline(Pipeline):
     def execute(
         self,
         product_provider,
-        orbit_provider,
+        statevectors: Optional[list[StateVector]],
         polarization,
         roi_provider: utils.RoiProvider,
         dem_sampling_ratio,
@@ -144,7 +145,7 @@ class PrimaryPipeline(Pipeline):
         calibrate,
         get_complex,
     ):
-        self.get_inputs(product_provider, orbit_provider, polarization)
+        self.get_inputs(product_provider, statevectors, polarization)
         self.roi_info(roi_provider)
         self.download_dem()
         self.register(dem_sampling_ratio, bistatic, apd, intra_pulse, alt_fm_mismatch)
@@ -209,7 +210,7 @@ class SecondaryPipeline(Pipeline):
     def execute(
         self,
         product_provider,
-        orbit_provider,
+        statevectors: Optional[list[StateVector]],
         polarization,
         registrator,
         deburster,
@@ -219,7 +220,7 @@ class SecondaryPipeline(Pipeline):
         roi,
         heights,
     ):
-        self.get_inputs(product_provider, orbit_provider, polarization)
+        self.get_inputs(product_provider, statevectors, polarization)
         self.register(registrator)
         self.deburst(deburster, polarization, calibrate, get_complex)
         self.simulate_phase(primary_proj_model, roi, heights)
@@ -396,7 +397,7 @@ class OvlPrimaryPipeline(Pipeline):
     def execute(
         self,
         product_provider,
-        orbit_provider,
+        statevectors: Optional[list[StateVector]],
         dem_sampling_ratio,
         bistatic,
         apd,
@@ -409,7 +410,7 @@ class OvlPrimaryPipeline(Pipeline):
         swaths=("iw1", "iw2", "iw3"),
         osids_of_interest=None,
     ):
-        self.get_inputs(product_provider, orbit_provider, polarization)
+        self.get_inputs(product_provider, statevectors, polarization)
         self.set_all_osids(swaths)
         self.set_osids_of_interest(osids_of_interest)
         self.download_dem()
@@ -566,7 +567,7 @@ class OvlSecondaryPipeline(Pipeline):
     def execute(
         self,
         product_provider,
-        orbit_provider,
+        statevectors: Optional[list[StateVector]],
         registrator_per_swath,
         overlap_resamplers_per_swath,
         polarization,
@@ -578,7 +579,7 @@ class OvlSecondaryPipeline(Pipeline):
         height_provider,
         ovl_roi_in_swath_per_bsint,
     ):
-        self.get_inputs(product_provider, orbit_provider, polarization)
+        self.get_inputs(product_provider, statevectors, polarization)
         self.set_all_osids()
         self.register(registrator_per_swath)
 

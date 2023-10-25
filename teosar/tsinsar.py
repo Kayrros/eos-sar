@@ -1,12 +1,12 @@
 from functools import partial
 import os
 import concurrent.futures
-from typing import Callable, Literal, Optional, Union
-from eos.products.sentinel1.assembler import SLCOrbitProvider
-from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from typing import Callable, Optional
+from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo
 import tqdm
 import shapely.wkt
+import phoenix.catalog
 
 import eos.products.sentinel1
 import eos.sar
@@ -24,12 +24,6 @@ from teosar import utils
 
 ProductProvider = Callable[[str], Sentinel1SLCProductInfo]
 
-OrbitTypes = Optional[Union[Literal["orbpoe", "orbres"], bool]]
-"""
-None | False: no refined state vectors
-True: automatically pick the orbit file (poe then res)
-orbpoe | orbres: force the use of a specific orbit file
-"""
 
 
 def get_bsids_for_product(
@@ -95,33 +89,6 @@ def remove_weird_products(
             good_product_ids.append(pids)
 
     return good_product_ids
-
-
-def fetch_orbits(
-    pid: str, bursts: list[Sentinel1BurstMetadata], force_type: OrbitTypes
-) -> list[Sentinel1BurstMetadata]:
-    import phoenix.catalog
-
-    client = phoenix.catalog.Client()
-    sv, orig = eos.products.sentinel1.orbits.retrieve_statevectors_using_phoenix(
-        client, pid, bursts, force_type=force_type
-    )
-    return [b.with_new_state_vectors(sv, orig) for b in bursts]
-
-
-def get_orbit_provider(orbit_type: OrbitTypes) -> Optional[SLCOrbitProvider]:
-    orbit_provider = None
-
-    if orbit_type:
-        if orbit_type == True:
-            orbit_type = None
-
-        process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=10)
-
-        def orbit_provider(pid, bursts):
-            return process_pool.submit(fetch_orbits, pid, bursts, orbit_type).result()
-
-    return orbit_provider
 
 
 def get_phx_catalog() -> s1_catalog.Sentinel1Catalog:
@@ -209,6 +176,26 @@ def main(
     )
 
 
+def get_orbits(product_ids: list[list[str]], orbit_type) -> orbit_catalog.Sentinel1OrbitCatalogResult:
+    backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
+        collection_source=phoenix.catalog.Client()
+        .get_collection("esa-sentinel-1-csar-aux")
+        .at("aws:proxima:kayrros-prod-sentinel-aux")
+    )
+
+    assert orbit_type in (True, False, None, "orbpoe", "orbres")
+    orbit_quality = {
+        True: orbit_catalog.BestEffort,
+        False: [],
+        None: [],
+        "orbpoe": [orbit_catalog.OrbitFileType.PRECISE],
+        "orbres": [orbit_catalog.OrbitFileType.RESTITUTED],
+    }[orbit_type]
+    query = orbit_catalog.Sentinel1OrbitCatalogQuery(product_ids=list(sum(product_ids, [])), quality=orbit_quality)
+    orbits = orbit_catalog.search(backend, query)
+    return orbits
+
+
 def run_ts_on_prods(
     dstdir,
     roi_provider: utils.RoiProvider,
@@ -232,9 +219,8 @@ def run_ts_on_prods(
     os.makedirs(dstdir, exist_ok=True)
     directory_builder = inout.DirectoryBuilder(dstdir)
 
-    # Necessary to get the ephemerides (orbits)
-    assert orbit_type in (True, False, None, "orbpoe", "orbres")
-    orbit_provider = get_orbit_provider(orbit_type)
+    # get the ephemerides (orbits)
+    orbits = get_orbits(product_ids, orbit_type)
 
     if dem_source is None:
         dem_source = eos.dem.get_any_source()
@@ -243,7 +229,7 @@ def run_ts_on_prods(
     )
     primary_pipeline.execute(
         product_provider,
-        orbit_provider,
+        orbits.for_product_id(product_ids[primary_id][0]),
         polarization,
         roi_provider,
         dem_sampling_ratio,
@@ -275,7 +261,7 @@ def run_ts_on_prods(
         secondary_pipeline = SecondaryPipeline(product_id, directory_builder)
         secondary_pipeline.execute(
             product_provider,
-            orbit_provider,
+            orbits.for_product_id(product_id[0]),
             polarization,
             primary_pipeline.registrator,
             primary_pipeline.deburster,
@@ -334,12 +320,11 @@ def main_ovl(
             eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id
         )
     # Necessary to get the ephemerides (orbits)
-    assert orbit_type in (True, False, None, "orbpoe", "orbres")
-    orbit_provider = get_orbit_provider(orbit_type)
+    orbits = get_orbits(product_ids_per_date, orbit_type)
 
     primary_pipeline.execute(
         product_provider,
-        orbit_provider,
+        orbits.for_product_id(product_ids_per_date[primary_id][0]),
         dem_sampling_ratio,
         bistatic,
         apd,
@@ -401,7 +386,7 @@ def main_ovl(
         secondary_pipeline = OvlSecondaryPipeline(product_ids, directory_builder)
         secondary_pipeline.execute(
             product_provider,
-            orbit_provider,
+            orbits.for_product_id(product_ids[0]),
             primary_pipeline.registrator_per_swath,
             primary_pipeline.overlap_resamplers_per_swath,
             polarization,
