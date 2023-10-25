@@ -38,6 +38,7 @@ class Sentinel1CatalogBackend(abc.ABC):
         """
 
 
+# TODO: simplify by replacing the class by a single function
 @dataclass(frozen=True)
 class Sentinel1Catalog:
     backend: Sentinel1CatalogBackend
@@ -51,6 +52,8 @@ class Sentinel1Catalog:
         def pid2date(product_id: str) -> str:
             # S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885
             return product_id.split("_")[5][:8]
+
+        # TODO: add some local fs caching (if end-date < today)
 
         items = self.backend.search_slc(query)
 

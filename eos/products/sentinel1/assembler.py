@@ -13,36 +13,13 @@ from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel, Sentinel1GRDModel, Sentinel1MosaicModel, Sentinel1SwathModel
 from eos.sar.io import ImageReader
-from eos.sar.orbit import Orbit
+from eos.sar.orbit import Orbit, StateVector
 from eos.sar.projection_correction import Corrector, ImageCorrection
 from eos.sar.roi import Roi
 import eos.sar
 from eos.dem import DEMSource
 
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo, Sentinel1GRDProductInfo
-
-
-GRDOrbitProvider = Callable[[str, Sentinel1GRDMetadata], Sentinel1GRDMetadata]
-SLCOrbitProvider = Callable[[str, Sequence[Sentinel1BurstMetadata]], list[Sentinel1BurstMetadata]]
-
-
-def _get_bursts(products: Sequence[Sentinel1SLCProductInfo],
-                swath: str,
-                pol: str,
-                orbit_provider: Optional[SLCOrbitProvider]) -> list[list[Sentinel1BurstMetadata]]:
-    xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
-    bursts = [sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls]
-
-    if orbit_provider:
-        new_bursts = []
-        for p, bs in zip(products, bursts):
-            ret = orbit_provider(p.product_id, bs)
-            if ret is None or ret is bs or all(r is b for r, b in zip(ret, bs)):
-                raise RuntimeError("The orbit_provider should return the new bursts, and not update the object(s) in-place.")
-            new_bursts.append(ret)
-        bursts = new_bursts
-
-    return bursts
 
 
 def _get_image_reader(product: Sentinel1SLCProductInfo, swath: str, pol: str, calibration: Optional[str]):
@@ -71,24 +48,25 @@ class Sentinel1Assembler:
     _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = None
     _ref_per_product_id: Optional[dict[str, FullBistaticReference]] = None
 
-    def __init__(self, bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree=11):
+    def __init__(self, bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit: Orbit):
         self.bsids = bsids
         self.product_id_per_bsid = product_id_per_bsid
         self.meta_per_bsid_per_swath = meta_per_bsid_per_swath
-        self.__prepare_orbit(orbit_degree)
+        self.orbit = orbit
 
     @staticmethod
     def from_products(products: Sequence[Sentinel1SLCProductInfo],
                       pol: str,
+                      statevectors: Optional[list[StateVector]],
+                      orbit_degree: int = 11,
                       *,
-                      swaths: Sequence[str] = ['iw1', 'iw2', 'iw3'],
-                      orbit_provider: Optional[SLCOrbitProvider] = None,
-                      orbit_degree: int = 11) -> Sentinel1Assembler:
+                      swaths: Sequence[str] = ['iw1', 'iw2', 'iw3']) -> Sentinel1Assembler:
         bsids = set()
         bursts_per_swath: dict[str, list[Sentinel1BurstMetadata]] = {}
         product_id_per_bsid = {}
         for swath in swaths:
-            bursts = _get_bursts(products, swath, pol, orbit_provider)
+            xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
+            bursts = [sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls]
             bursts_per_swath[swath] = sentinel1.metadata.assemble_multiple_products_into_metas(bursts)
 
             for product, metas in zip(products, bursts):
@@ -97,14 +75,15 @@ class Sentinel1Assembler:
                     bsids.add(m.bsid)
 
         meta_per_bsid_per_swath = {swath: {m.bsid: m for m in bursts_per_swath[swath]} for swath in swaths}
-        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit_degree)
 
-    def __prepare_orbit(self, orbit_degree: int) -> None:
-        all_state_vectors = [sv
-                             for meta_per_bsid in self.meta_per_bsid_per_swath.values()
-                             for m in meta_per_bsid.values() for sv in m.state_vectors]
-        unique_state_vectors = sentinel1.metadata._unique_sv(all_state_vectors)
-        self.orbit = Orbit(sv=unique_state_vectors, degree=orbit_degree)
+        if statevectors is None:
+            all_state_vectors = [sv
+                                 for meta_per_bsid in meta_per_bsid_per_swath.values()
+                                 for m in meta_per_bsid.values() for sv in m.state_vectors]
+            statevectors = sentinel1.metadata._unique_sv(all_state_vectors)
+
+        orbit = Orbit(sv=statevectors, degree=orbit_degree)
+        return Sentinel1Assembler(bsids, product_id_per_bsid, meta_per_bsid_per_swath, orbit)
 
     def get_primary_cutter(self) -> PrimarySentinel1AcquisitionCutter:
         if self._prim_cutter is None:
@@ -253,7 +232,7 @@ class Sentinel1Assembler:
                                         for k, v in self.meta_per_bsid_per_swath.items()},
             'product_id_per_bsid': self.product_id_per_bsid,
             'bsids': list(self.bsids),
-            'orbit_degree': self.orbit.degree
+            'orbit': self.orbit.to_dict()
         }
 
     @staticmethod
@@ -262,11 +241,11 @@ class Sentinel1Assembler:
                                    for k, v in dict['meta_per_bsid_per_swath'].items()}
         product_id_per_bsid = dict['product_id_per_bsid']
         bsids = set(dict['bsids'])
-        orbit_degree = int(dict['orbit_degree'])
+        orbit = Orbit.from_dict(dict['orbit'])
         return Sentinel1Assembler(bsids,
                                   product_id_per_bsid,
                                   meta_per_bsid_per_swath,
-                                  orbit_degree)
+                                  orbit)
 
 
 class Sentinel1AssemblyCropper:
@@ -311,14 +290,15 @@ class Sentinel1AssemblyCropper:
 
         def regist(products: list[Sentinel1SLCProductInfo],
                    pol: str,
-                   orbit_provider: Optional[SLCOrbitProvider], *,
+                   statevectors: Optional[list[StateVector]],
+                   orbit_degree: int = 11,
+                   *,
                    get_complex: bool,
                    calibration: Optional[str] = None,
                    reramp: bool = True):
             # PS: here the secondary assembler contains all the swaths
             # which enables access to IW2 metadata for ex., useful for some corrections
-            secondary_asm = Sentinel1Assembler.from_products(products, pol,
-                                                             orbit_provider=orbit_provider)
+            secondary_asm = Sentinel1Assembler.from_products(products, pol, statevectors, orbit_degree)
             secondary_cutter = secondary_asm.get_secondary_cutter()
             secondary_mosaic_model = secondary_asm.get_mosaic_model()
 
@@ -367,7 +347,8 @@ class Sentinel1AssemblyCropper:
              products: Sequence[Sentinel1SLCProductInfo],
              *,
              pol: str,
-             orbit_provider: Optional[SLCOrbitProvider] = None,
+             statevectors: Optional[list[StateVector]],
+             orbit_degree: int = 11,
              get_complex: bool,
              dem_source: Optional[DEMSource] = None,
              calibration: Optional[str] = None,
@@ -378,8 +359,8 @@ class Sentinel1AssemblyCropper:
             self._prepare(dem_source)
 
         assert self._cropper_fn
-        array = self._cropper_fn(products, pol, orbit_provider, get_complex=get_complex,
-                                 calibration=calibration, reramp=reramp)
+        array = self._cropper_fn(products, pol, statevectors, orbit_degree=orbit_degree,
+                                 get_complex=get_complex, calibration=calibration, reramp=reramp)
         return array
 
     def get_proj_model(self) -> Sentinel1MosaicModel:
@@ -387,44 +368,31 @@ class Sentinel1AssemblyCropper:
         return mosaic_model.to_cropped_mosaic(self.roi)
 
 
-def _get_metas(products: Sequence[Sentinel1GRDProductInfo],
-               pol: str,
-               orbit_provider: Optional[GRDOrbitProvider]) -> list[Sentinel1GRDMetadata]:
-    xmls = [p.get_xml_annotation(pol) for p in products]
-    metas = [sentinel1.metadata.extract_grd_metadata(xml) for xml in xmls]
-
-    if orbit_provider:
-        new_metas: list[Sentinel1GRDMetadata] = []
-        for p, meta in zip(products, metas):
-            ret = orbit_provider(p.product_id, meta)
-            if ret is None or ret is meta:
-                raise RuntimeError("The orbit_provider should return the new metadata, and not update the object(s) in-place.")
-            new_metas.append(ret)
-        metas = new_metas
-
-    return metas
-
-
 class Sentinel1GRDAssembler:
 
     orbit: Orbit
 
-    def __init__(self, rois, rois_orig, meta: Sentinel1GRDMetadata, orbit_degree):
+    def __init__(self, rois, rois_orig, meta: Sentinel1GRDMetadata, orbit: Orbit):
         self._rois = rois
         self._rois_orig = rois_orig
         self._meta = meta
-        self.orbit = Orbit(meta.state_vectors, degree=orbit_degree)
+        self.orbit = orbit
 
     @staticmethod
     def from_products(products: Sequence[Sentinel1GRDProductInfo],
                       pol: str,
+                      statevectors: Optional[list[StateVector]],
                       *,
-                      orbit_provider: Optional[GRDOrbitProvider] = None,
                       orbit_degree: int = 11,
                       startend_datatake_cut: bool = True,
                       ) -> Sentinel1GRDAssembler:
         products = sorted(products, key=lambda p: p.product_id)
-        metas = _get_metas(products, pol, orbit_provider)
+        xmls = [p.get_xml_annotation(pol) for p in products]
+        metas = [sentinel1.metadata.extract_grd_metadata(xml) for xml in xmls]
+
+        if statevectors is None:
+            all_state_vectors = [sv for m in metas for sv in m.state_vectors]
+            statevectors = sentinel1.metadata._unique_sv(all_state_vectors)
 
         # make sure the products are consecutive
         assert (np.diff([m.slice_number for m in metas]) == 1).all()
@@ -466,7 +434,8 @@ class Sentinel1GRDAssembler:
             row += h
 
         meta = sentinel1.metadata.assemble_multiple_grd_products_into_meta(metas)
-        return Sentinel1GRDAssembler(rois, rois_orig, meta, orbit_degree)
+        orbit = Orbit(sv=statevectors, degree=orbit_degree)
+        return Sentinel1GRDAssembler(rois, rois_orig, meta, orbit)
 
     def get_proj_model(self, coord_corrector: Corrector = Corrector()) -> Sentinel1GRDModel:
         return sentinel1.proj_model.grd_model_from_meta(self._meta, self.orbit, coord_corrector)
