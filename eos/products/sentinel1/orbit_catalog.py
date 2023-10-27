@@ -9,6 +9,7 @@ from typing import Any, Literal, Optional
 from lxml import etree
 from typing_extensions import override
 
+import eos.cache
 from eos.sar.orbit import StateVector
 
 from .metadata import isostring_to_timestamp
@@ -134,6 +135,7 @@ def _end_of(pid: str) -> datetime.datetime:
 def search(
     backend: Sentinel1OrbitCatalogBackend,
     query: Sentinel1OrbitCatalogQuery,
+    cache: eos.cache.Cache = eos.cache.no_cache(),
 ) -> Sentinel1OrbitCatalogResult:
     if not query.quality:
         return Sentinel1OrbitCatalogResult(_statevectors_per_datatake={})
@@ -145,23 +147,26 @@ def search(
         dt = _datatake_of(pid)
         products_per_datatake.setdefault(dt, []).append(pid)
 
-    # TODO: add some local fs caching
-
     segments = []
     item_to_datatake = {}
+    statevectors_per_datatake: dict[str, list[StateVector]] = {}
     for dt, products in products_per_datatake.items():
         start = min(_start_of(pid) for pid in products) - buffer
         end = max(_end_of(pid) for pid in products) + buffer
         platform = _platform_of(products[0])
         item = QuerySegment(start=start, end=end, platform=platform)
-        segments.append(item)
-        item_to_datatake[item] = dt
+
+        if statevectors := cache.get(item, list[StateVector]):
+            statevectors_per_datatake[dt] = statevectors
+        else:
+            segments.append(item)
+            item_to_datatake[item] = dt
 
     internal_query = BackendQuery(quality=query.quality, segments=segments)
     results = backend.search(internal_query)
 
-    statevectors_per_datatake: dict[str, list[StateVector]] = {}
     for item, svs in results.statevectors_per_item.items():
+        cache.put(item, svs)
         dt = item_to_datatake[item]
         statevectors_per_datatake[dt] = svs
 
