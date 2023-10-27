@@ -166,7 +166,7 @@ def compute_pairset(
 
     pairs: set[Pair] = set()
     for i, im1 in enumerate(images):
-        for im2 in images[i + 1 :]:
+        for im2 in images[i + 1:]:
             pair = Pair(
                 im1=im1,
                 im2=im2,

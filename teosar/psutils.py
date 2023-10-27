@@ -4,8 +4,9 @@ import numpy as np
 from numpy.typing import NDArray
 import scipy
 
+
 def wrap(phi: NDArray[float]) -> NDArray[float]:
-    return (phi + np.pi)%(2 * np.pi) - np.pi
+    return (phi + np.pi) % (2 * np.pi) - np.pi
 
 
 @dataclass(frozen=True)
@@ -29,19 +30,24 @@ class Window:
         mask[self.get_slices()] = True
         return mask
 
-    def add_margin(self, margin_h, margin_w)-> Window:
+    def add_margin(self, margin_h, margin_w) -> Window:
         edge_col = self.col - margin_w
         edge_row = self.row - margin_h
         nh = 2 * margin_h + self.h
         nw = 2 * margin_w + self.w
         return Window(edge_col, edge_row, nw, nh)
 
-    def get_corners(self ,*, closed=False) -> list[list[float]]:
+    def get_corners(self, *, closed=False) -> list[list[float]]:
         col_min = self.col
         col_max = self.col + self.w - 1
         row_min = self.row
         row_max = self.row + self.h - 1
-        corners = [[col_min, row_min], [col_max, row_min], [col_max, row_max], [col_min, row_max]]
+        corners = [
+            [col_min, row_min],
+            [col_max, row_min],
+            [col_max, row_max],
+            [col_min, row_max],
+        ]
         if closed:
             # close the loop
             corners.append(corners[0])
@@ -57,9 +63,10 @@ class Window:
 
 
 def sparse_data_to_raster(sparse_data, row_ps, col_ps, parent_shape: tuple[int, int]):
-        data_full = np.full(parent_shape, np.nan, dtype=sparse_data.dtype)
-        data_full[row_ps, col_ps] = sparse_data
-        return data_full
+    data_full = np.full(parent_shape, np.nan, dtype=sparse_data.dtype)
+    data_full[row_ps, col_ps] = sparse_data
+    return data_full
+
 
 def dense_mask_to_sparse(mask):
     """
