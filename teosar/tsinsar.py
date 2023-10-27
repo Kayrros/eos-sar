@@ -135,7 +135,7 @@ def main(dstdir, geometry, orbit, startdate, enddate,
          primary_id=0,
          ncpu=16,
          last_n_prods=None,
-         roi_provider: Optional[utils.ProjectionRoiProvider] = None,
+         roi_provider: Optional[utils.RoiProvider] = None,
          dem_source: Optional[eos.dem.DEMSource] = None,
          product_provider: Optional[ProductProvider] = None,
     ):
@@ -174,7 +174,7 @@ def main(dstdir, geometry, orbit, startdate, enddate,
                            product_provider=product_provider)
 
 def run_ts_on_prods(dstdir,
-                    roi_provider: utils.ProjectionRoiProvider,
+                    roi_provider: utils.RoiProvider,
                     product_ids,
                     primary_id=0,
                     orbit_type="orbpoe",

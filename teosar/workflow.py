@@ -36,19 +36,12 @@ class PrimaryPipeline(Pipeline):
         self.dem_source = dem_source
 
     @conditional_profiler(PROF)
-    def roi_info(self, roi_provider: utils.ProjectionRoiProvider):
+    def roi_info(self, roi_provider: utils.RoiProvider):
         # Get primary proj model
         self.proj_model = self.asm.get_mosaic_model()
 
         # Get the roi
         self.roi, rows, cols = roi_provider.get_roi(self.proj_model, self.dem_source)
-
-        # fetch a dem of the area covered by the proj model
-        self.dem = self.proj_model.fetch_dem(self.dem_source, roi=self.roi)
-
-        # save the dem on the disk
-        geo_dem_path = self.dir_builder.get_geo_dem_path()
-        eos.dem.write_crop_to_file(self.dem.array, self.dem.transform, self.dem.crs, geo_dem_path)
 
         # write svg of the projected geometry in crop
         c_orig, r_orig = self.roi.get_origin()
@@ -62,6 +55,15 @@ class PrimaryPipeline(Pipeline):
         print("Roi cutting info: ", self.roi_cutting_info.get_debursting_info())
 
         self.log["roi_cutting_info"] = self.roi_cutting_info.to_dict()
+
+
+    def download_dem(self):
+        # fetch a dem of the area covered by the proj model
+        self.dem = self.proj_model.fetch_dem(self.dem_source, roi=self.roi)
+
+        # save the dem on the disk
+        geo_dem_path = self.dir_builder.get_geo_dem_path()
+        eos.dem.write_crop_to_file(self.dem.array, self.dem.transform, self.dem.crs, geo_dem_path)
 
     @conditional_profiler(PROF)
     def register(self, dem_sampling_ratio, bistatic, apd, intra_pulse, alt_fm_mismatch):
@@ -109,11 +111,12 @@ class PrimaryPipeline(Pipeline):
         tifffile.imsave(self.radar_dem_path, self.heights)
 
 
-    def execute(self, product_provider, orbit_provider, polarization, roi_provider: utils.ProjectionRoiProvider,
+    def execute(self, product_provider, orbit_provider, polarization, roi_provider: utils.RoiProvider,
                 dem_sampling_ratio, bistatic, apd, intra_pulse, alt_fm_mismatch,
                 calibrate, get_complex):
         self.get_inputs(product_provider, orbit_provider, polarization)
         self.roi_info(roi_provider)
+        self.download_dem()
         self.register(dem_sampling_ratio, bistatic, apd, intra_pulse, alt_fm_mismatch)
         self.deburst(polarization, calibrate, get_complex)
         self.radarcode_dem()

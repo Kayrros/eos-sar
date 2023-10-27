@@ -1,4 +1,5 @@
 import abc
+from typing import Optional
 from eos.dem import DEM, DEMSource
 from eos.sar.model import SensorModel
 import numpy as np
@@ -14,6 +15,8 @@ from eos.sar import goldstein_filter
 import cProfile
 import pstats
 import tempfile
+
+from eos.sar.roi import Roi
 
 def pid2date(product_id: str) -> str:
     return product_id.split("_")[5][:8]
@@ -56,12 +59,12 @@ def geometry_to_roi(geom_coords, proj_model, dem: DEM,
     nrow = int( row + (h - nh)/2 )
     return eos.sar.roi.Roi(ncol, nrow, nw, nh), rows, cols
 
-class ProjectionRoiProvider(abc.ABC):
+class RoiProvider(abc.ABC):
     @abc.abstractmethod
     def get_roi(self, proj_model, dem_source):
         ...
 
-class GeometryRoiProvider(ProjectionRoiProvider):
+class GeometryRoiProvider(RoiProvider):
     def __init__(self, geometry,
                  dem_fetch_buffer: float = 0.1,
                  min_width: int = 1024,
@@ -84,7 +87,7 @@ class GeometryRoiProvider(ProjectionRoiProvider):
                                           min_height=self.min_height)
         return roi, rows, cols
 
-class CentroidRoiProvider(ProjectionRoiProvider):
+class CentroidRoiProvider(RoiProvider):
     def __init__(self, point: tuple[float, float], w: int, h: int, dem_fetch_buffer_round_point: float = 0.1):
         self.point = point
         self.w = w
@@ -101,6 +104,25 @@ class CentroidRoiProvider(ProjectionRoiProvider):
         orig = int(col - self.w/2), int(row - self.h/2)
         roi = eos.sar.roi.Roi(*orig, self.w, self.h)
         rows, cols = roi.to_bounding_points()
+        return roi, rows, cols
+
+class PrescribedRoiProvider(RoiProvider):
+    def __init__(self, roi: Optional[Roi] = None, make_valid: bool = False):
+        self.roi = roi
+        self.make_valid = make_valid
+
+    def get_roi(self, proj_model: SensorModel, dem_source: DEMSource):
+        parent_shape = proj_model.h, proj_model.w
+        if self.roi is None:
+            roi = Roi(0, 0, parent_shape[1], parent_shape[0])
+        else:
+            if self.make_valid:
+                roi = self.roi.make_valid(parent_shape)
+            else:
+                roi = self.roi
+
+        rows, cols = roi.to_bounding_points()
+
         return roi, rows, cols
 
 def roidict_to_tupledict(roi_dict):
