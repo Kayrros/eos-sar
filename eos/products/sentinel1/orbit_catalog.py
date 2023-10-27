@@ -104,7 +104,7 @@ class Sentinel1OrbitCatalogBackend(abc.ABC):
 
 def _datatake_of(pid: str) -> str:
     idx = len("S1A_IW_SLC__1SDV_20211202T173302_20211202T173329_040833_")
-    return pid[idx : idx + 6]
+    return pid[idx: idx + 6]
 
 
 def _platform_of(pid: str) -> Literal["S1A", "S1B", "S1C", "S1D"]:
@@ -212,37 +212,84 @@ except ImportError:
     logger.warning("phoenix backend for eos.products.sentinel1.catalog not available.")
 else:
 
+    def _search_phx(
+        collection_source: Any, seg: QuerySegment, quality: list[OrbitFileType]
+    ) -> Optional[bytes]:
+        platform = f"sentinel-{seg.platform[1:].lower()}"
+
+        for qual in quality:
+            filters = [
+                phx.Field("sentinel1:begin_position") < seg.start,
+                phx.Field("sentinel1:end_position") > seg.end,
+                phx.Field("platform") == platform,
+                phx.Field("sentinel1:product_type") == qual.to_product_type(),
+            ]
+
+            items = list(collection_source.list_items(filters))
+            if not items:
+                continue
+
+            item = items[0]
+            break
+        else:
+            return None
+
+        xml = item.assets.download_as_bytes("PRODUCT")
+        return xml
+
     @dataclass(frozen=True)
     class PhoenixSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
         collection_source: Any
 
         @override
         def search(self, query: BackendQuery) -> BackendResult:
-            statevectors_per_item = {}
-            # TODO: parallel searches
-            for seg in query.segments:
-                platform = f"sentinel-{seg.platform[1:].lower()}"
+            import concurrent.futures
+            from concurrent.futures import (FIRST_COMPLETED, Future,
+                                            ProcessPoolExecutor,
+                                            ThreadPoolExecutor)
 
-                for qual in query.quality:
-                    filters = [
-                        phx.Field("sentinel1:begin_position") < seg.start,
-                        phx.Field("sentinel1:end_position") > seg.end,
-                        phx.Field("platform") == platform,
-                        phx.Field("sentinel1:product_type") == qual.to_product_type(),
-                    ]
+            statevectors_per_item: dict[QuerySegment, list[StateVector]] = {}
 
-                    items = list(self.collection_source.list_items(filters))
-                    if not items:
-                        continue
+            # first the collection search futures are pushed
+            # then, as long as there are futures in the executor:
+            #  pull the first finished future:
+            #    if it's a "collection search" future, then push the "parse_statevectors" future
+            #    if it's a "parse_statevectors" future, then add it to the result
+            # everything is inside a ProcessPoolExecutor, because downloading and parsing is hard for python
+            with ThreadPoolExecutor() as pool1, ProcessPoolExecutor() as pool2:
+                not_done: set[Future[Any]] = set()
+                futures1: dict[Future[Any], QuerySegment] = {}
+                futures2: dict[Future[Any], QuerySegment] = {}
 
-                    item = items[0]
-                    break
-                else:
-                    raise OrbitFileNotFound()
+                for seg in query.segments:
+                    future = pool1.submit(
+                        _search_phx, self.collection_source, seg, query.quality
+                    )
+                    not_done.add(future)
+                    futures1[future] = seg
 
-                xml = item.assets.download_as_bytes("PRODUCT")
-                statevectors = parse_statevectors(xml, seg.start, seg.end)
-                assert statevectors
-                statevectors_per_item[seg] = statevectors
+                while not_done:
+                    done, not_done = concurrent.futures.wait(
+                        not_done, return_when=FIRST_COMPLETED
+                    )
+
+                    for future in done:
+                        if future in futures1:
+                            xml: Optional[bytes] = future.result()
+                            if not xml:
+                                raise OrbitFileNotFound()
+
+                            seg = futures1[future]
+                            future2 = pool2.submit(
+                                parse_statevectors, xml, seg.start, seg.end
+                            )
+                            not_done.add(future2)
+                            futures2[future2] = seg
+
+                        elif future in futures2:
+                            seg = futures2[future]
+                            statevectors: list[StateVector] = future.result()  # type: ignore
+                            assert statevectors
+                            statevectors_per_item[seg] = statevectors
 
             return BackendResult(statevectors_per_item=statevectors_per_item)
