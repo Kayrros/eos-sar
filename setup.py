@@ -30,7 +30,9 @@ setuptools.setup(
     include_package_data=True,
     entry_points='',
     extras_require={
-        'test': ['pytest', 's1m']
+        'test': ['pytest', 's1m'],
+        # dependencies that teosar requires
+        'teosar': ['tqdm', 'tifffile', 'tensorflow-cpu', 'tensorflow_probability'],
     },
     classifiers=[]
 )
