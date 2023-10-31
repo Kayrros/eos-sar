@@ -15,11 +15,10 @@ test:
   before_script:
     - pip install cython numpy
     - pip install -e ".[test]"
-    - pip install pytest-parallel
-    - pip install py  # see https://github.com/browsertron/pytest-parallel/issues/118
+    - pip install pytest-xdist
   script:
     - pip install multidem 'kayrros-phoenix[source-s3]' dem-stitcher srtm4
-    - pytest . --workers auto
+    - pytest . -n auto
 
 checkstyle:
   stage: test

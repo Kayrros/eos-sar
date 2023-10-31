@@ -15,3 +15,4 @@ from eos.products.sentinel1 import srgr
 from eos.products.sentinel1 import border_noise_grd
 from eos.products.sentinel1 import mosaic_zoom
 from eos.products.sentinel1 import catalog
+from eos.products.sentinel1 import orbit_catalog

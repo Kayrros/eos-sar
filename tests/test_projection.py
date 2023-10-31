@@ -5,7 +5,9 @@ import os
 import pytest
 
 from eos.products import sentinel1
+from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.coordinate_correction import FullBistaticReference
+from eos.products.sentinel1.orbit_catalog import BestEffort, PhoenixSentinel1OrbitCatalogBackend, Sentinel1OrbitCatalogQuery
 import eos.sar
 import eos.dem
 from eos.sar import range_doppler
@@ -161,15 +163,18 @@ def test_projection_corner_reflectors():
     crop_size = 32
     zoom_factor = 32
 
-    def fetch_orbits(pid, bursts):
-        import phoenix.catalog
-        phx_client = phoenix.catalog.Client()
-        sv, orig = sentinel1.orbits.retrieve_statevectors_using_phoenix(phx_client, pid, bursts,
-                                                                        force_type="orbpoe")
-        return [b.with_new_state_vectors(sv, orig) for b in bursts]
+    import phoenix.catalog
+    query = Sentinel1OrbitCatalogQuery(product_ids=[f.rstrip(".SAFE") for f in safes],
+                                       quality=BestEffort)
+    backend = PhoenixSentinel1OrbitCatalogBackend(
+        collection_source=phoenix.catalog.Client()
+        .get_collection("esa-sentinel-1-csar-aux")
+        .at("aws:proxima:kayrros-prod-sentinel-aux")
+    )
+    statevectors = orbit_catalog.search(backend, query).single()
 
     asm = sentinel1.assembler.Sentinel1Assembler.from_products(
-        products, pol, orbit_provider=fetch_orbits, swaths=swaths)
+        products, pol, statevectors, swaths=swaths)
 
     # do a model for a mosaic that contains all CRS
     # just for the estimation of resampling matrices

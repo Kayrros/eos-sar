@@ -8,6 +8,8 @@ import requests
 import shapely
 from typing_extensions import override
 
+import eos.cache
+
 logger = logging.Logger(__name__)
 
 ProductPolarization = Literal["SV", "DV", "SH", "DH"]
@@ -38,9 +40,11 @@ class Sentinel1CatalogBackend(abc.ABC):
         """
 
 
+# TODO: simplify by replacing the class by a single function?
 @dataclass(frozen=True)
 class Sentinel1Catalog:
     backend: Sentinel1CatalogBackend
+    cache: eos.cache.Cache = eos.cache.no_cache()
 
     def search_slc(self, query: Sentinel1CatalogQuery) -> Sentinel1CatalogResult:
         def pid2datatake(product_id: str) -> str:
@@ -52,7 +56,10 @@ class Sentinel1Catalog:
             # S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885
             return product_id.split("_")[5][:8]
 
-        items = self.backend.search_slc(query)
+        if (items := self.cache.get(query, list[str])) is None:
+            items = self.backend.search_slc(query)
+            if query.end_date < datetime.datetime.now():
+                self.cache.put(query, items)
 
         by_datatake: dict[str, list[str]] = {}
         for pid in items:
@@ -123,7 +130,7 @@ class CDSESentinel1CatalogBackend(Sentinel1CatalogBackend):
         try:
             items = items["value"]
         except KeyError as e:
-            raise Exception("OData parsing error?") from e
+            raise Exception(f"OData parsing error? : {items}") from e
 
         assert (
             len(items) < limit
