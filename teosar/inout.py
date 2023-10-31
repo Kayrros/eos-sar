@@ -1,3 +1,4 @@
+from typing import Optional
 import requests.exceptions
 import json
 import os
@@ -6,10 +7,11 @@ import rasterio
 
 import eos.products.sentinel1 as s1
 from eos.sar import io
+from eos.sar.orbit import Orbit, StateVector
 from eos.sar.roi import Roi
 
 
-def get_inputs_for_date(product_ids, swath, product_provider, orbit_provider, pol):
+def get_inputs_for_date(product_ids, swath, product_provider, statevectors: Optional[list[StateVector]], pol):
     products = []
     for pid in product_ids:
         try:
@@ -19,7 +21,7 @@ def get_inputs_for_date(product_ids, swath, product_provider, orbit_provider, po
 
     swaths = ("iw1", "iw2", "iw3") if swath == "all" else (swath.lower(),)
     asm = s1.assembler.Sentinel1Assembler.from_products(
-        products, pol, orbit_provider=orbit_provider, swaths=swaths
+        products, pol, statevectors, swaths=swaths
     )
 
     return products, asm

@@ -28,7 +28,7 @@ else:
         product1 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id1)
         product2 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id2)
         products = [product1, product2]
-        asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
+        asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol, statevectors=None)
 
         roi = Roi(10000, 16000, 1000, 1000)
 
@@ -51,41 +51,6 @@ else:
 
         assert (raster_both == raster_p1 + raster_p2).all()
 
-    def test_grd_assembler_orbits():
-        pol = 'vv'
-        product_id1 = 'S1A_IW_GRDH_1SDV_20220908T170044_20220908T170109_044916_055D72_82EF'
-        product1 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id1)
-        products = [product1]
-        asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
-        assert asm._meta.state_vectors_origin == 'orbpre'
-
-        # the orbit_provider should return metadatas
-        with pytest.raises(RuntimeError):
-            def orbit_provider_wrong(pid: str, meta: Sentinel1GRDMetadata) -> None:
-                pass
-            asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
-                                                                          orbit_provider=orbit_provider_wrong)  # type: ignore
-
-        # the metadata returned should be new instances
-        with pytest.raises(RuntimeError):
-            def orbit_provider_wrong2(pid: str, meta: Sentinel1GRDMetadata) -> Sentinel1GRDMetadata:
-                return meta
-            asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
-                                                                          orbit_provider=orbit_provider_wrong2)
-
-        try:
-            import phoenix.catalog
-        except ImportError:
-            pass
-        else:
-            def orbit_provider(pid: str, meta: Sentinel1GRDMetadata) -> Sentinel1GRDMetadata:
-                phx_client = phoenix.catalog.Client()
-                statevectors, origin = retrieve_statevectors_using_phoenix(phx_client, pid, meta)
-                return meta.with_new_state_vectors(statevectors, origin)
-            asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
-                                                                          orbit_provider=orbit_provider)
-            assert asm._meta.state_vectors_origin == 'orbpoe'
-
     def test_projection_and_localization():
         # This test aims at checking that the localization and projection of the first 1000 lines of the product2
         # (S1A_IW_GRDH_1SDV_20220908T170109_20220908T170134_044916_055D72_83D3) are similar to those of the 16675 to 17675
@@ -98,7 +63,7 @@ else:
         product1 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id1)
         product2 = PhoenixSentinel1GRDProductInfo.from_product_id(product_id2)
         products = [product1, product2]
-        asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
+        asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol, statevectors=None)
 
         # get physical models
         proj_model1 = compute_proj_model(product1, pol)
@@ -151,8 +116,9 @@ else:
         # a bit below, does not go out of the image
         roi2 = Roi(3871, 85, 51, 49)
 
-        asm1 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
+        asm1 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol, statevectors=None)
         asm2 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
+                                                                       statevectors=None,
                                                                        startend_datatake_cut=False)
 
         # for the bottom ROI:
@@ -186,8 +152,8 @@ else:
         # a bit above, does not go out of the image
         roi2 = Roi(19015, 12810, 143, 124)
 
-        asm1 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol)
-        asm2 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol,
+        asm1 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol, statevectors=None)
+        asm2 = sentinel1.assembler.Sentinel1GRDAssembler.from_products(products, pol, statevectors=None,
                                                                        startend_datatake_cut=False)
 
         # for the bottom ROI:

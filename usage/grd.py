@@ -4,6 +4,7 @@ import rasterio
 import rasterio.control
 
 import phoenix.catalog
+from eos.products.sentinel1 import orbit_catalog
 import eos.sar
 import eos.dem
 import eos.products.sentinel1 as sentinel1
@@ -40,10 +41,20 @@ def main(
     product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
     dem_source = eos.dem.get_any_source()
 
+    import phoenix.catalog
+    query = orbit_catalog.Sentinel1OrbitCatalogQuery(product_ids=[product_id],
+                                                     quality=orbit_catalog.OnlyBest)
+    backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
+        collection_source=phoenix.catalog.Client()
+        .get_collection("esa-sentinel-1-csar-aux")
+        .at("aws:proxima:kayrros-prod-sentinel-aux")
+    )
+    statevectors = orbit_catalog.search(backend, query).single()
+    assert statevectors is not None
+
     xml = product.get_xml_annotation(pol)
     meta = sentinel1.metadata.extract_grd_metadata(xml)
-    sv, orig = sentinel1.orbits.retrieve_statevectors_using_phoenix(client, product_id, meta)
-    meta = meta.with_new_state_vectors(sv, orig)
+    meta = meta.with_new_state_vectors(statevectors, "")
 
     orbit = eos.sar.orbit.Orbit(meta.state_vectors)
     corr = [
@@ -77,7 +88,8 @@ def main(
     print('reading raster')
     raster = eos.sar.io.read_window(reader, roi, get_complex=False,
                                     out_dtype=np.float32, boundless=True)
-    raster[raster == 0] = np.nan
+    mask = sentinel1.border_noise_grd.compute_border_mask(raster)
+    raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)
 
     profile = dict(
         width=crop_size,
