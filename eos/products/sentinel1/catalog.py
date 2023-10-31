@@ -130,7 +130,7 @@ class CDSESentinel1CatalogBackend(Sentinel1CatalogBackend):
         try:
             items = items["value"]
         except KeyError as e:
-            raise Exception("OData parsing error?") from e
+            raise Exception(f"OData parsing error? : {items}") from e
 
         assert (
             len(items) < limit
