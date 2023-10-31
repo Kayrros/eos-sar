@@ -2,45 +2,56 @@
 This script was downloaded from ASF then adapted for this tutorial.
 """
 
-import sys
+import base64
 import csv
+import getpass
 import os
 import os.path
-import tempfile
-import shutil
 import re
-import fire
-
-
-import base64
-import time
-import getpass
-import ssl
+import shutil
 import signal
 import socket
-
+import ssl
+import sys
+import tempfile
+import time
 import xml.etree.ElementTree as ET
+
+import fire
 
 #############
 # This next block is a bunch of Python 2/3 compatability
 
 try:
     # Python 2.x Libs
-    from urllib2 import build_opener, install_opener, Request, urlopen, HTTPError
-    from urllib2 import URLError, HTTPSHandler, HTTPHandler, HTTPCookieProcessor
-
     from cookielib import MozillaCookieJar
     from StringIO import StringIO
+    from urllib2 import (
+        HTTPCookieProcessor,
+        HTTPError,
+        HTTPHandler,
+        HTTPSHandler,
+        Request,
+        URLError,
+        build_opener,
+        install_opener,
+        urlopen,
+    )
 
 except ImportError:
-
     # Python 3.x Libs
-    from urllib.request import build_opener, install_opener, Request, urlopen
-    from urllib.request import HTTPHandler, HTTPSHandler, HTTPCookieProcessor
-    from urllib.error import HTTPError, URLError
-
     from http.cookiejar import MozillaCookieJar
     from io import StringIO
+    from urllib.error import HTTPError, URLError
+    from urllib.request import (
+        HTTPCookieProcessor,
+        HTTPHandler,
+        HTTPSHandler,
+        Request,
+        build_opener,
+        install_opener,
+        urlopen,
+    )
 
 ###
 # Global variables intended for cross-thread modification
@@ -58,7 +69,7 @@ def signal_handler(sig, frame):
 
 
 class bulk_downloader:
-    def __init__(self, files, out_dir='data'):
+    def __init__(self, files, out_dir="data"):
         self.out_dir = out_dir
         if not os.path.exists(self.out_dir):
             os.makedirs(self.out_dir)
@@ -66,16 +77,24 @@ class bulk_downloader:
         self.files = files
 
         # Local stash of cookies so we don't always have to ask
-        self.cookie_jar_path = os.path.join(os.path.expanduser('~'), ".bulk_download_cookiejar.txt")
+        self.cookie_jar_path = os.path.join(
+            os.path.expanduser("~"), ".bulk_download_cookiejar.txt"
+        )
         self.cookie_jar = None
 
-        self.asf_urs4 = {'url': 'https://urs.earthdata.nasa.gov/oauth/authorize',
-                         'client': 'BO_n7nTIlMljdvU6kRRB3g',
-                         'redir': 'https://auth.asf.alaska.edu/login'}
+        self.asf_urs4 = {
+            "url": "https://urs.earthdata.nasa.gov/oauth/authorize",
+            "client": "BO_n7nTIlMljdvU6kRRB3g",
+            "redir": "https://auth.asf.alaska.edu/login",
+        }
 
         # Make sure we can write it our current directory
         if os.access(os.getcwd(), os.W_OK) is False:
-            print("WARNING: Cannot write to current path! Check permissions for {0}".format(os.getcwd()))
+            print(
+                "WARNING: Cannot write to current path! Check permissions for {0}".format(
+                    os.getcwd()
+                )
+            )
             exit(-1)
 
         # For SSL
@@ -86,35 +105,47 @@ class bulk_downloader:
             download_files = []
             input_files = []
             for arg in sys.argv[1:]:
-                if arg == '--insecure':
+                if arg == "--insecure":
                     try:
                         ctx = ssl.create_default_context()
                         ctx.check_hostname = False
                         ctx.verify_mode = ssl.CERT_NONE
-                        self.context['context'] = ctx
+                        self.context["context"] = ctx
                     except AttributeError:
                         # Python 2.6 won't complain about SSL Validation
                         pass
 
-                elif arg.endswith('.metalink') or arg.endswith('.csv'):
+                elif arg.endswith(".metalink") or arg.endswith(".csv"):
                     if os.path.isfile(arg):
                         input_files.append(arg)
-                        if arg.endswith('.metalink'):
+                        if arg.endswith(".metalink"):
                             new_files = self.process_metalink(arg)
                         else:
                             new_files = self.process_csv(arg)
                         if new_files is not None:
-                            for file_url in (new_files):
+                            for file_url in new_files:
                                 download_files.append(file_url)
                     else:
-                        print(" > I cannot find the input file you specified: {0}".format(arg))
+                        print(
+                            " > I cannot find the input file you specified: {0}".format(
+                                arg
+                            )
+                        )
 
             if len(input_files) > 0:
                 if len(download_files) > 0:
-                    print(" > Processing {0} downloads from {1} input files. ".format(len(download_files), len(input_files)))
+                    print(
+                        " > Processing {0} downloads from {1} input files. ".format(
+                            len(download_files), len(input_files)
+                        )
+                    )
                     self.files = download_files
                 else:
-                    print(" > I see you asked me to download files from {0} input files, but they had no downloads!".format(len(input_files)))
+                    print(
+                        " > I see you asked me to download files from {0} input files, but they had no downloads!".format(
+                            len(input_files)
+                        )
+                    )
                     print(" > I'm super confused and exiting.")
                     exit(-1)
 
@@ -144,7 +175,9 @@ class bulk_downloader:
                 print(" > Could not validate old cookie Jar")
 
         # We don't have a valid cookie, prompt user or creds
-        print("No existing URS cookie found, please enter Earthdata username & password:")
+        print(
+            "No existing URS cookie found, please enter Earthdata username & password:"
+        )
         print("(Credentials will not be stored, saved or logged anywhere)")
 
         # Keep trying 'till user gets the right U:P
@@ -155,21 +188,24 @@ class bulk_downloader:
 
     # Validate cookie before we begin
     def check_cookie(self):
-
         if self.cookie_jar is None:
             print(" > Cookiejar is bunk: {0}".format(self.cookie_jar))
             return False
 
         # File we know is valid, used to validate cookie
-        file_check = 'https://urs.earthdata.nasa.gov/profile'
+        file_check = "https://urs.earthdata.nasa.gov/profile"
 
         # Apply custom Redirect Hanlder
-        opener = build_opener(HTTPCookieProcessor(self.cookie_jar), HTTPHandler(), HTTPSHandler(**self.context))
+        opener = build_opener(
+            HTTPCookieProcessor(self.cookie_jar),
+            HTTPHandler(),
+            HTTPSHandler(**self.context),
+        )
         install_opener(opener)
 
         # Attempt a HEAD request
         request = Request(file_check)
-        request.get_method = lambda: 'HEAD'
+        request.get_method = lambda: "HEAD"
         try:
             print(" > attempting to download {0}".format(file_check))
             response = urlopen(request, timeout=30)
@@ -184,19 +220,26 @@ class bulk_downloader:
         except HTTPError:
             # If we ge this error, again, it likely means the user has not agreed to current EULA
             print("\nIMPORTANT: ")
-            print("Your user appears to lack permissions to download data from the ASF Datapool.")
-            print("\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov")
+            print(
+                "Your user appears to lack permissions to download data from the ASF Datapool."
+            )
+            print(
+                "\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov"
+            )
             exit(-1)
 
         # This return codes indicate the USER has not been approved to download the data
         if resp_code in (300, 301, 302, 303):
             try:
-                redir_url = response.info().getheader('Location')
+                redir_url = response.info().getheader("Location")
             except AttributeError:
-                redir_url = response.getheader('Location')
+                redir_url = response.getheader("Location")
 
             # Funky Test env:
-            if ("vertex-retired.daac.asf.alaska.edu" in redir_url and "test" in self.asf_urs4['redir']):
+            if (
+                "vertex-retired.daac.asf.alaska.edu" in redir_url
+                and "test" in self.asf_urs4["redir"]
+            ):
                 print("Cough, cough. It's dusty in this test env!")
                 return True
 
@@ -220,36 +263,63 @@ class bulk_downloader:
         new_password = getpass.getpass(prompt="Password (will not be displayed): ")
 
         # Build URS4 Cookie request
-        auth_cookie_url = self.asf_urs4['url'] + '?client_id=' + self.asf_urs4['client'] + '&redirect_uri=' + self.asf_urs4['redir'] + '&response_type=code&state='
+        auth_cookie_url = (
+            self.asf_urs4["url"]
+            + "?client_id="
+            + self.asf_urs4["client"]
+            + "&redirect_uri="
+            + self.asf_urs4["redir"]
+            + "&response_type=code&state="
+        )
 
         try:
             # python2
             user_pass = base64.b64encode(bytes(new_username + ":" + new_password))
         except TypeError:
             # python3
-            user_pass = base64.b64encode(bytes(new_username + ":" + new_password, "utf-8"))
+            user_pass = base64.b64encode(
+                bytes(new_username + ":" + new_password, "utf-8")
+            )
             user_pass = user_pass.decode("utf-8")
 
         # Authenticate against URS, grab all the cookies
         self.cookie_jar = MozillaCookieJar()
-        opener = build_opener(HTTPCookieProcessor(self.cookie_jar), HTTPHandler(), HTTPSHandler(**self.context))
-        request = Request(auth_cookie_url, headers={"Authorization": "Basic {0}".format(user_pass)})
+        opener = build_opener(
+            HTTPCookieProcessor(self.cookie_jar),
+            HTTPHandler(),
+            HTTPSHandler(**self.context),
+        )
+        request = Request(
+            auth_cookie_url, headers={"Authorization": "Basic {0}".format(user_pass)}
+        )
 
         # Watch out cookie rejection!
         try:
             response = opener.open(request)
         except HTTPError as e:
-            if "WWW-Authenticate" in e.headers and "Please enter your Earthdata Login credentials" in e.headers["WWW-Authenticate"]:
-                print(" > Username and Password combo was not successful. Please try again.")
+            if (
+                "WWW-Authenticate" in e.headers
+                and "Please enter your Earthdata Login credentials"
+                in e.headers["WWW-Authenticate"]
+            ):
+                print(
+                    " > Username and Password combo was not successful. Please try again."
+                )
                 return False
             else:
                 # If an error happens here, the user most likely has not confirmed EULA.
                 print("\nIMPORTANT: There was an error obtaining a download cookie!")
-                print("Your user appears to lack permission to download data from the ASF Datapool.")
-                print("\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov")
+                print(
+                    "Your user appears to lack permission to download data from the ASF Datapool."
+                )
+                print(
+                    "\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov"
+                )
                 exit(-1)
         except URLError:
-            print("\nIMPORTANT: There was a problem communicating with URS, unable to obtain cookie. ")
+            print(
+                "\nIMPORTANT: There was a problem communicating with URS, unable to obtain cookie. "
+            )
             print("Try cookie generation later.")
             exit(-1)
 
@@ -260,15 +330,19 @@ class bulk_downloader:
             return True
 
         # if we aren't successful generating the cookie, nothing will work. Stop here!
-        print("WARNING: Could not generate new cookie! Cannot proceed. Please try Username and Password again.")
+        print(
+            "WARNING: Could not generate new cookie! Cannot proceed. Please try Username and Password again."
+        )
         print("Response was {0}.".format(response.getcode()))
-        print("\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov")
+        print(
+            "\n\nNew users: you must first log into Vertex and accept the EULA. In addition, your Study Area must be set at Earthdata https://urs.earthdata.nasa.gov"
+        )
         exit(-1)
 
     # make sure we're logged into URS
     def check_cookie_is_logged_in(self, cj):
         for cookie in cj:
-            if cookie.name == 'urs_user_already_logged':
+            if cookie.name == "urs_user_already_logged":
                 # Only get this cookie if we logged in successfully!
                 return True
 
@@ -278,7 +352,7 @@ class bulk_downloader:
 
     def download_file_with_cookiejar(self, url, file_count, total, recursion=False):
         # see if we've already download this file and if it is that it is the correct size
-        download_file = os.path.basename(url).split('?')[0]
+        download_file = os.path.basename(url).split("?")[0]
         download_file = os.path.join(self.out_dir, download_file)
         if os.path.exists(os.path.splitext(download_file)[0] + ".SAFE"):
             print("SAFE exists, skipping download")
@@ -286,34 +360,50 @@ class bulk_downloader:
         if os.path.isfile(download_file):
             try:
                 request = Request(url)
-                request.get_method = lambda: 'HEAD'
+                request.get_method = lambda: "HEAD"
                 response = urlopen(request, timeout=30)
                 remote_size = self.get_total_size(response)
                 # Check that we were able to derive a size.
                 if remote_size:
                     local_size = os.path.getsize(download_file)
-                    if remote_size < (local_size + (local_size * .01)) and remote_size > (local_size - (local_size * .01)):
-                        print(" > Download file {0} exists! \n > Skipping download of {1}. ".format(download_file, url))
+                    if remote_size < (
+                        local_size + (local_size * 0.01)
+                    ) and remote_size > (local_size - (local_size * 0.01)):
+                        print(
+                            " > Download file {0} exists! \n > Skipping download of {1}. ".format(
+                                download_file, url
+                            )
+                        )
                         return None, None
                     # partial file size wasn't full file size, lets blow away the chunk and start again
-                    print(" > Found {0} but it wasn't fully downloaded. Removing file and downloading again.".format(download_file))
+                    print(
+                        " > Found {0} but it wasn't fully downloaded. Removing file and downloading again.".format(
+                            download_file
+                        )
+                    )
                     os.remove(download_file)
 
             except ssl.CertificateError as e:
                 print(" > ERROR: {0}".format(e))
-                print(" > Could not validate SSL Cert. You may be able to overcome this using the --insecure flag")
+                print(
+                    " > Could not validate SSL Cert. You may be able to overcome this using the --insecure flag"
+                )
                 return False, None
 
             except HTTPError as e:
                 if e.code == 401:
-                    print(" > IMPORTANT: Your user may not have permission to download this type of data!")
+                    print(
+                        " > IMPORTANT: Your user may not have permission to download this type of data!"
+                    )
                 else:
                     print(" > Unknown Error, Could not get file HEAD: {0}".format(e))
 
             except URLError as e:
                 print("URL Error (from HEAD): {0}, {1}".format(e.reason, url))
                 if "ssl.c" in "{0}".format(e.reason):
-                    print("IMPORTANT: Remote location may not be accepting your SSL configuration. This is a terminal error.")
+                    print(
+                        "IMPORTANT: Remote location may not be accepting your SSL configuration. This is a terminal error."
+                    )
                 return False, None
 
         # attempt https connection
@@ -323,10 +413,11 @@ class bulk_downloader:
 
             # Watch for redirect
             if response.geturl() != url:
-
                 # See if we were redirect BACK to URS for re-auth.
-                if 'https://urs.earthdata.nasa.gov/oauth/authorize' in response.geturl():
-
+                if (
+                    "https://urs.earthdata.nasa.gov/oauth/authorize"
+                    in response.geturl()
+                ):
                     if recursion:
                         print(" > Entering seemingly endless auth loop. Aborting. ")
                         return False, None
@@ -339,7 +430,11 @@ class bulk_downloader:
                     print(" > While attempting to download {0}....".format(url))
                     print(" > Need to obtain new cookie from {0}".format(new_auth_url))
                     old_cookies = [cookie.name for cookie in self.cookie_jar]
-                    opener = build_opener(HTTPCookieProcessor(self.cookie_jar), HTTPHandler(), HTTPSHandler(**self.context))
+                    opener = build_opener(
+                        HTTPCookieProcessor(self.cookie_jar),
+                        HTTPHandler(),
+                        HTTPSHandler(**self.context),
+                    )
                     request = Request(new_auth_url)
                     try:
                         response = opener.open(request)
@@ -349,29 +444,43 @@ class bulk_downloader:
 
                                 # A little hack to save session cookies
                                 if cookie.discard:
-                                    cookie.expires = int(time.time()) + 60 * 60 * 24 * 30
-                                    print(" > Saving session Cookie that should have been discarded! ")
+                                    cookie.expires = (
+                                        int(time.time()) + 60 * 60 * 24 * 30
+                                    )
+                                    print(
+                                        " > Saving session Cookie that should have been discarded! "
+                                    )
 
-                        self.cookie_jar.save(self.cookie_jar_path, ignore_discard=True, ignore_expires=True)
+                        self.cookie_jar.save(
+                            self.cookie_jar_path,
+                            ignore_discard=True,
+                            ignore_expires=True,
+                        )
                     except HTTPError as e:
                         print("HTTP Error: {0}, {1}".format(e.code, url))
                         return False, None
 
                     # Okay, now we have more cookies! Lets try again, recursively!
                     print(" > Attempting download again with new cookies!")
-                    return self.download_file_with_cookiejar(url, file_count, total, recursion=True)
+                    return self.download_file_with_cookiejar(
+                        url, file_count, total, recursion=True
+                    )
 
-                print(" > 'Temporary' Redirect download @ Remote archive:\n > {0}".format(response.geturl()))
+                print(
+                    " > 'Temporary' Redirect download @ Remote archive:\n > {0}".format(
+                        response.geturl()
+                    )
+                )
 
             # seems to be working
             print("({0}/{1}) Downloading {2}".format(file_count, total, url))
 
             # Open our local file for writing and build status bar
-            tf = tempfile.NamedTemporaryFile(mode='w+b', delete=False, dir='.')
+            tf = tempfile.NamedTemporaryFile(mode="w+b", delete=False, dir=".")
             self.chunk_read(response, tf, report_hook=self.chunk_report)
 
             # Reset download status
-            sys.stdout.write('\n')
+            sys.stdout.write("\n")
 
             tempfile_name = tf.name
             tf.close()
@@ -381,7 +490,9 @@ class bulk_downloader:
             print("HTTP Error: {0}, {1}".format(e.code, url))
 
             if e.code == 401:
-                print(" > IMPORTANT: Your user does not have permission to download this type of data!")
+                print(
+                    " > IMPORTANT: Your user does not have permission to download this type of data!"
+                )
 
             if e.code == 403:
                 print(" > Got a 403 Error trying to download this file.  ")
@@ -392,7 +503,9 @@ class bulk_downloader:
         except URLError as e:
             print("URL Error (from GET): {0}, {1}, {2}".format(e, e.reason, url))
             if "ssl.c" in "{0}".format(e.reason):
-                print("IMPORTANT: Remote location may not be accepting your SSL configuration. This is a terminal error.")
+                print(
+                    "IMPORTANT: Remote location may not be accepting your SSL configuration. This is a terminal error."
+                )
             return False, None
 
         except socket.timeout as e:
@@ -401,7 +514,9 @@ class bulk_downloader:
 
         except ssl.CertificateError as e:
             print(" > ERROR: {0}".format(e))
-            print(" > Could not validate SSL Cert. You may be able to overcome this using the --insecure flag")
+            print(
+                " > Could not validate SSL Cert. You may be able to overcome this using the --insecure flag"
+            )
             return False, None
 
         # Return the file size
@@ -420,7 +535,7 @@ class bulk_downloader:
         redirect_url = find_redirect.search(error)
         if redirect_url:
             print("Found: {0}".format(redirect_url.group(0)))
-            return (redirect_url.group(0))
+            return redirect_url.group(0)
 
         return None
 
@@ -430,8 +545,10 @@ class bulk_downloader:
         if file_size is not None:
             percent = float(bytes_so_far) / file_size
             percent = round(percent * 100, 2)
-            sys.stdout.write(" > Downloaded %d of %d bytes (%0.2f%%)\r" %
-                             (bytes_so_far, file_size, percent))
+            sys.stdout.write(
+                " > Downloaded %d of %d bytes (%0.2f%%)\r"
+                % (bytes_so_far, file_size, percent)
+            )
         else:
             # We couldn't figure out the size.
             sys.stdout.write(" > Downloaded %d of unknown Size\r" % (bytes_so_far))
@@ -464,10 +581,10 @@ class bulk_downloader:
 
     def get_total_size(self, response):
         try:
-            file_size = response.info().getheader('Content-Length').strip()
+            file_size = response.info().getheader("Content-Length").strip()
         except AttributeError:
             try:
-                file_size = response.getheader('Content-Length').strip()
+                file_size = response.getheader("Content-Length").strip()
             except AttributeError:
                 print("> Problem getting size")
                 return None
@@ -478,20 +595,20 @@ class bulk_downloader:
 
     def process_metalink(self, ml_file):
         print("Processing metalink file: {0}".format(ml_file))
-        with open(ml_file, 'r') as ml:
+        with open(ml_file, "r") as ml:
             xml = ml.read()
 
         # Hack to remove annoying namespace
         it = ET.iterparse(StringIO(xml))
         for _, el in it:
-            if '}' in el.tag:
-                el.tag = el.tag.split('}', 1)[1]  # strip all namespaces
+            if "}" in el.tag:
+                el.tag = el.tag.split("}", 1)[1]  # strip all namespaces
         root = it.root
 
         dl_urls = []
-        ml_files = root.find('files')
+        ml_files = root.find("files")
         for dl in ml_files:
-            dl_urls.append(dl.find('resources').find('url').text)
+            dl_urls.append(dl.find("resources").find("url").text)
 
         if len(dl_urls) > 0:
             return dl_urls
@@ -503,16 +620,22 @@ class bulk_downloader:
         print("Processing csv file: {0}".format(csv_file))
 
         dl_urls = []
-        with open(csv_file, 'r') as csvf:
+        with open(csv_file, "r") as csvf:
             try:
                 csvr = csv.DictReader(csvf)
                 for row in csvr:
-                    dl_urls.append(row['URL'])
+                    dl_urls.append(row["URL"])
             except csv.Error as e:
-                print("WARNING: Could not parse file %s, line %d: %s. Skipping." % (csv_file, csvr.line_num, e))
+                print(
+                    "WARNING: Could not parse file %s, line %d: %s. Skipping."
+                    % (csv_file, csvr.line_num, e)
+                )
                 return None
             except KeyError:
-                print("WARNING: Could not find URL column in file %s. Skipping." % (csv_file))
+                print(
+                    "WARNING: Could not find URL column in file %s. Skipping."
+                    % (csv_file)
+                )
 
         if len(dl_urls) > 0:
             return dl_urls
@@ -522,9 +645,8 @@ class bulk_downloader:
     # Download all the files in the list
     def download_files(self):
         for file_name in self.files:
-
             # make sure we haven't ctrl+c'd or some other abort trap
-            if abort == True:
+            if abort:
                 raise SystemExit
 
             # download counter
@@ -534,7 +656,9 @@ class bulk_downloader:
             start = time.time()
 
             # run download
-            size, total_size = self.download_file_with_cookiejar(file_name, self.cnt, len(self.files))
+            size, total_size = self.download_file_with_cookiejar(
+                file_name, self.cnt, len(self.files)
+            )
 
             # calculte rate
             end = time.time()
@@ -543,18 +667,25 @@ class bulk_downloader:
             if size is None:
                 self.skipped.append(file_name)
             # Check to see that the download didn't error and is the correct size
-            elif size is not False and (total_size < (size + (size * .01)) and total_size > (size - (size * .01))):
+            elif size is not False and (
+                total_size < (size + (size * 0.01))
+                and total_size > (size - (size * 0.01))
+            ):
                 # Download was good!
                 elapsed = end - start
                 elapsed = 1.0 if elapsed < 1 else elapsed
                 rate = (size / 1024**2) / elapsed
 
-                print("Downloaded {0}b in {1:.2f}secs, Average Rate: {2:.2f}MB/sec".format(size, elapsed, rate))
+                print(
+                    "Downloaded {0}b in {1:.2f}secs, Average Rate: {2:.2f}MB/sec".format(
+                        size, elapsed, rate
+                    )
+                )
 
                 # add up metrics
                 self.total_bytes += size
                 self.total_time += elapsed
-                self.success.append({'file': file_name, 'size': size})
+                self.success.append({"file": file_name, "size": size})
 
             else:
                 print("There was a problem downloading {0}".format(file_name))
@@ -563,10 +694,20 @@ class bulk_downloader:
     def print_summary(self):
         # Print summary:
         print("\n\nDownload Summary ")
-        print("--------------------------------------------------------------------------------")
-        print("  Successes: {0} files, {1} bytes ".format(len(self.success), self.total_bytes))
+        print(
+            "--------------------------------------------------------------------------------"
+        )
+        print(
+            "  Successes: {0} files, {1} bytes ".format(
+                len(self.success), self.total_bytes
+            )
+        )
         for success_file in self.success:
-            print("           - {0}  {1:.2f}MB".format(success_file['file'], (success_file['size'] / 1024.0**2)))
+            print(
+                "           - {0}  {1:.2f}MB".format(
+                    success_file["file"], (success_file["size"] / 1024.0**2)
+                )
+            )
         if len(self.failed) > 0:
             print("  Failures: {0} files".format(len(self.failed)))
             for failed_file in self.failed:
@@ -576,12 +717,18 @@ class bulk_downloader:
             for skipped_file in self.skipped:
                 print("          - {0}".format(skipped_file))
         if len(self.success) > 0:
-            print("  Average Rate: {0:.2f}MB/sec".format((self.total_bytes / 1024.0**2) / self.total_time))
-        print("--------------------------------------------------------------------------------")
+            print(
+                "  Average Rate: {0:.2f}MB/sec".format(
+                    (self.total_bytes / 1024.0**2) / self.total_time
+                )
+            )
+        print(
+            "--------------------------------------------------------------------------------"
+        )
 
     def unzip_downloaded(self):
         for success_file in self.success:
-            fname = success_file['file']
+            fname = success_file["file"]
             if os.path.splitext(fname)[-1] == ".zip":
                 unzip(os.path.join(self.out_dir, os.path.basename(fname)), self.out_dir)
 
@@ -593,7 +740,8 @@ def remove_file(path_to_file):
 
 def unzip(path_to_zip_file, directory_to_extract_to):
     import zipfile
-    with zipfile.ZipFile(path_to_zip_file, 'r') as zip_ref:
+
+    with zipfile.ZipFile(path_to_zip_file, "r") as zip_ref:
         print("Unzipping {0}".format(path_to_zip_file))
         zip_ref.extractall(directory_to_extract_to)
         print("Finished unzipping {0}".format(path_to_zip_file))

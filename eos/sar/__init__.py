@@ -1,22 +1,22 @@
-from eos.sar import cheb
-from eos.sar import const
-from eos.sar import coordinates
-from eos.sar import model
-from eos.sar import orbit
-from eos.sar import range_doppler
-from eos.sar import regist
-from eos.sar import roi
-from eos.sar import io
-from eos.sar import poly
-from eos.sar import geoconfig
-from eos.sar import utils
-from eos.sar import dem_to_radar
-from eos.sar import geom_phase
-from eos.sar import coherence
-from eos.sar import projection_correction
-from eos.sar import atmospheric_correction
-from eos.sar import srgr
-from eos.sar import rtc
-from eos.sar import ortho
-from eos.sar import goldstein_filter
-from eos.sar import unwrapping
+from eos.sar import cheb as cheb  # noqa (no sorting because of import errors otherwise)
+from eos.sar import atmospheric_correction as atmospheric_correction
+from eos.sar import coherence as coherence
+from eos.sar import const as const
+from eos.sar import coordinates as coordinates
+from eos.sar import dem_to_radar as dem_to_radar
+from eos.sar import geoconfig as geoconfig
+from eos.sar import geom_phase as geom_phase
+from eos.sar import goldstein_filter as goldstein_filter
+from eos.sar import io as io
+from eos.sar import model as model
+from eos.sar import orbit as orbit
+from eos.sar import ortho as ortho
+from eos.sar import poly as poly
+from eos.sar import projection_correction as projection_correction
+from eos.sar import range_doppler as range_doppler
+from eos.sar import regist as regist
+from eos.sar import roi as roi
+from eos.sar import rtc as rtc
+from eos.sar import srgr as srgr
+from eos.sar import unwrapping as unwrapping
+from eos.sar import utils as utils

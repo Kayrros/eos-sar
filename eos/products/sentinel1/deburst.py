@@ -1,12 +1,22 @@
 import numpy as np
-from eos.sar import utils
+
 from eos.products.sentinel1 import burst_resamp
+from eos.sar import utils
 
 
-def warp_rois_read_resample_deburst(bsids, burst_resamplers, within_burst_rois_no_correc,
-                                    secondary_cutter, image_readers,
-                                    write_rois, out_shape, out=None,
-                                    get_complex=True, margin=5, reramp=True):
+def warp_rois_read_resample_deburst(
+    bsids,
+    burst_resamplers,
+    within_burst_rois_no_correc,
+    secondary_cutter,
+    image_readers,
+    write_rois,
+    out_shape,
+    out=None,
+    get_complex=True,
+    margin=5,
+    reramp=True,
+):
     """
     Warp the rois, read then resample, and deburst.
 
@@ -55,11 +65,23 @@ def warp_rois_read_resample_deburst(bsids, burst_resamplers, within_burst_rois_n
         for bsid in bsids:
             dst_roi_in_burst = within_burst_rois_no_correc[bsid]
 
-            burst_orig_src_in_tiff = secondary_cutter.get_burst_outer_roi_in_tiff(bsid).get_origin()
+            burst_orig_src_in_tiff = secondary_cutter.get_burst_outer_roi_in_tiff(
+                bsid
+            ).get_origin()
 
-            burst_array_resamp, read_roi_src, resampler_on_roi = burst_resamp.warp_roi_read_resample(
-                burst_resamplers[bsid], dst_roi_in_burst, burst_orig_src_in_tiff,
-                image_readers[bsid], get_complex, margin, reramp)
+            (
+                burst_array_resamp,
+                read_roi_src,
+                resampler_on_roi,
+            ) = burst_resamp.warp_roi_read_resample(
+                burst_resamplers[bsid],
+                dst_roi_in_burst,
+                burst_orig_src_in_tiff,
+                image_readers[bsid],
+                get_complex,
+                margin,
+                reramp,
+            )
 
             read_rois_correc[bsid] = read_roi_src
             resamplers_on_rois[bsid] = resampler_on_roi
@@ -91,7 +113,7 @@ def get_bursts_intersection(num_bursts, burst_rel_ids):
     rel_min = np.amax(burst_rel_ids)
     rel_max = np.amin(b_rel_ids + n_bursts - 1)
     if rel_min > rel_max:
-        print('no intersection', rel_min, rel_max)
+        print("no intersection", rel_min, rel_max)
         return []
     else:
         list_rel_ids = np.arange(rel_min, rel_max + 1).reshape(1, -1)

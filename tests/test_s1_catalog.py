@@ -3,10 +3,12 @@ import datetime
 import pytest
 import shapely.geometry
 
-from eos.products.sentinel1.catalog import (CDSESentinel1CatalogBackend,
-                                            PhoenixSentinel1CatalogBackend,
-                                            Sentinel1Catalog,
-                                            Sentinel1CatalogQuery)
+from eos.products.sentinel1.catalog import (
+    CDSESentinel1CatalogBackend,
+    PhoenixSentinel1CatalogBackend,
+    Sentinel1Catalog,
+    Sentinel1CatalogQuery,
+)
 
 try:
     import phoenix.catalog as phx

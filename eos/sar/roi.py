@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import numpy as np
 import math
+
+import numpy as np
 
 from eos.sar import utils
 
 
 class Roi:
-
     col: int
     row: int
     w: int
@@ -66,7 +66,9 @@ class Roi:
         """
         return Roi(*Roi.bounds_to_roi(bounds))
 
-    def obj_from_roi_tuple(self, roi: tuple[int, int, int, int], inplace: bool = False) -> Roi:
+    def obj_from_roi_tuple(
+        self, roi: tuple[int, int, int, int], inplace: bool = False
+    ) -> Roi:
         """
         Parameters
         ----------
@@ -79,7 +81,9 @@ class Roi:
         else:
             return Roi.from_roi_tuple(roi)
 
-    def obj_from_bounds_tuple(self, bounds: tuple[int, int, int, int], inplace: bool = False) -> Roi:
+    def obj_from_bounds_tuple(
+        self, bounds: tuple[int, int, int, int], inplace: bool = False
+    ) -> Roi:
         """
         Parameters
         ----------
@@ -190,8 +194,9 @@ class Roi:
         col_min, row_min, col_max, row_max = self.to_bounds()
 
         # get the boundary points of the input roi
-        points = np.array([[row_min, row_min, row_max, row_max],
-                           [col_min, col_max, col_max, col_min]])
+        points = np.array(
+            [[row_min, row_min, row_max, row_max], [col_min, col_max, col_max, col_min]]
+        )
         if homogeneous:
             points = np.vstack((points, np.ones(4)))
         return points
@@ -204,8 +209,7 @@ class Roi:
         # output bounding points
         out_bounds = Roi.points_to_bbox(rows_out, cols_out)
         # reset or get new Roi instance
-        return self.obj_from_bounds_tuple(out_bounds,
-                                          inplace=inplace)
+        return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
 
     def add_margin(self, margin: int = 0, inplace: bool = False) -> Roi:
         """
@@ -226,9 +230,9 @@ class Roi:
         out_roi = (col - margin, row - margin, w + 2 * margin, h + 2 * margin)
         return self.obj_from_roi_tuple(out_roi, inplace=inplace)
 
-    def add_custom_margin(self,
-                          custom_margin: tuple[tuple[int, int], tuple[int, int]],
-                          inplace=False) -> tuple[Roi, Roi]:
+    def add_custom_margin(
+        self, custom_margin: tuple[tuple[int, int], tuple[int, int]], inplace=False
+    ) -> tuple[Roi, Roi]:
         """
         Add custom margin for all directions of a roi.
 
@@ -256,10 +260,10 @@ class Roi:
         h_parent, w_parent = parent_shape
         col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
         msg = "Roi outside of parent"
-        assert (col_child_max < w_parent), msg
-        assert (row_child_max < h_parent), msg
-        assert (col_child_min >= 0), msg
-        assert (row_child_min >= 0), msg
+        assert col_child_max < w_parent, msg
+        assert row_child_max < h_parent, msg
+        assert col_child_min >= 0, msg
+        assert row_child_min >= 0, msg
 
     def make_valid(self, parent_shape: tuple[int, int], inplace: bool = False) -> Roi:
         """
@@ -276,7 +280,7 @@ class Roi:
         adapted_roi : Roi
             region of interest that lies within the parent shape.
 
-        """""
+        """ ""
         h, w = parent_shape
         parent_roi = Roi(0, 0, w, h)
         return self.clip(parent_roi, inplace=inplace)
@@ -295,8 +299,13 @@ class Roi:
         adapted_roi : Roi
             region of interest that lies within the parent shape.
 
-        """""
-        col_parent_min, row_parent_min, col_parent_max, row_parent_max = parent_roi.to_bounds()
+        """ ""
+        (
+            col_parent_min,
+            row_parent_min,
+            col_parent_max,
+            row_parent_max,
+        ) = parent_roi.to_bounds()
         col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
 
         # take min, max with image boundary
@@ -314,7 +323,7 @@ class Roi:
             return self.obj_from_bounds_tuple(out_bounds, inplace=inplace)
 
     def intersects_roi(self, other_roi: Roi) -> bool:
-        '''
+        """
         Check whether other_roi and self intersect.
 
         Parameters
@@ -325,16 +334,18 @@ class Roi:
         -------
         are_intersecting : bool
             True if the two ROIs are intersecting, False otherwise.
-        '''
+        """
         clipped = self.clip(other_roi)
         return clipped.w > 0 and clipped.h > 0
 
-    def warp_valid_roi(self,
-                       input_parent_shape: tuple[int, int],
-                       output_parent_shape: tuple[int, int],
-                       matrix,
-                       margin: int = 0,
-                       inplace: bool = False) -> Roi:
+    def warp_valid_roi(
+        self,
+        input_parent_shape: tuple[int, int],
+        output_parent_shape: tuple[int, int],
+        matrix,
+        margin: int = 0,
+        inplace: bool = False,
+    ) -> Roi:
         """
         Warp an input roi while making sure it is valid to an output roi, add margin
         and make sure it is valid.
@@ -363,8 +374,7 @@ class Roi:
 
         # assert input roi within parent boundaries
         # if inplace=True, roi_obj is the same as self
-        roi_obj = self.make_valid(parent_shape=input_parent_shape,
-                                  inplace=inplace)
+        roi_obj = self.make_valid(parent_shape=input_parent_shape, inplace=inplace)
 
         # transform roi
         roi_obj.warp(matrix=matrix, inplace=True)
@@ -373,8 +383,7 @@ class Roi:
         roi_obj.add_margin(margin=margin, inplace=True)
 
         # make valid output roi within parent boundaries
-        roi_obj.make_valid(parent_shape=output_parent_shape,
-                           inplace=True)
+        roi_obj.make_valid(parent_shape=output_parent_shape, inplace=True)
         return roi_obj
 
     def translate_roi(self, col: int, row: int, inplace: bool = False) -> Roi:
@@ -398,13 +407,14 @@ class Roi:
 
     def crop_array(self, arr):
         col_min, row_min, col_max, row_max = self.to_bounds()
-        arr_cropped = arr[row_min:row_max + 1, col_min:col_max + 1]
+        arr_cropped = arr[row_min : row_max + 1, col_min : col_max + 1]
         return arr_cropped
 
     def get_meshgrid(self):
         col, row, w, h = self.to_roi()
-        cols_grid, rows_grid = np.meshgrid(np.arange(col, col + w),
-                                           np.arange(row, row + h))
+        cols_grid, rows_grid = np.meshgrid(
+            np.arange(col, col + w), np.arange(row, row + h)
+        )
         return cols_grid, rows_grid
 
     def contains(self, cols, rows):
@@ -427,7 +437,8 @@ class Roi:
         col_min, row_min, col_max, row_max = self.to_bounds()
 
         # get a mask on the points that are within the roi
-        mask = np.logical_and(utils.arr_in_interval(cols, col_min, col_max),
-                              utils.arr_in_interval(rows, row_min, row_max)
-                              )
+        mask = np.logical_and(
+            utils.arr_in_interval(cols, col_min, col_max),
+            utils.arr_in_interval(rows, row_min, row_max),
+        )
         return mask

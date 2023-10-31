@@ -1,10 +1,11 @@
-import imageio.v2 as imageio
 import io
+
+import imageio.v2 as imageio
 import numpy as np
 from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.colors import hsv_to_rgb, Normalize
 from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize, hsv_to_rgb
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
 def fig2img(fig, **kwargs):

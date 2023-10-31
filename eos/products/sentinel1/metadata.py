@@ -1,13 +1,15 @@
 """Fill needed metadata of a burst or a product."""
 from __future__ import annotations
-from dataclasses import dataclass
-import math
+
 import datetime
-from typing import Any, Iterable, Optional, Sequence, Union
-import xmltodict
-import numpy as np
 import logging
+import math
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional, Sequence, Union
+
+import numpy as np
 import shapely.geometry
+import xmltodict
 
 from eos.products.sentinel1.srgr import Sentinel1GRDSRGRMetadata
 from eos.sar import const
@@ -66,19 +68,23 @@ class Sentinel1BurstMetadata:
     approx_altitude: list[float]
     bsid: str
 
-    def with_new_state_vectors(self, state_vectors: list[StateVector], state_vectors_origin: str) -> Sentinel1BurstMetadata:
+    def with_new_state_vectors(
+        self, state_vectors: list[StateVector], state_vectors_origin: str
+    ) -> Sentinel1BurstMetadata:
         d = self.__dict__.copy()
         del d["state_vectors"]
         del d["state_vectors_origin"]
         return Sentinel1BurstMetadata(
-            state_vectors=state_vectors,
-            state_vectors_origin=state_vectors_origin,
-            **d)
+            state_vectors=state_vectors, state_vectors_origin=state_vectors_origin, **d
+        )
 
     def __getitem__(self, name: str) -> Any:
         import warnings
-        warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
-                      DeprecationWarning)
+
+        warnings.warn(
+            "Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
+            DeprecationWarning,
+        )
         return self.__dict__[name]
 
     def to_dict(self) -> dict[str, Any]:
@@ -95,7 +101,6 @@ class Sentinel1BurstMetadata:
 
 @dataclass(frozen=True)
 class Sentinel1GRDMetadata:
-
     mission_id: str
     absolute_orbit_number: int
     relative_orbit_number: int
@@ -122,19 +127,23 @@ class Sentinel1GRDMetadata:
     width: int
     height: int
 
-    def with_new_state_vectors(self, state_vectors: list[StateVector], state_vectors_origin: str) -> Sentinel1GRDMetadata:
+    def with_new_state_vectors(
+        self, state_vectors: list[StateVector], state_vectors_origin: str
+    ) -> Sentinel1GRDMetadata:
         d = self.__dict__.copy()
         del d["state_vectors"]
         del d["state_vectors_origin"]
         return Sentinel1GRDMetadata(
-            state_vectors=state_vectors,
-            state_vectors_origin=state_vectors_origin,
-            **d)
+            state_vectors=state_vectors, state_vectors_origin=state_vectors_origin, **d
+        )
 
     def __getitem__(self, name: str) -> Any:
         import warnings
-        warnings.warn("Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
-                      DeprecationWarning)
+
+        warnings.warn(
+            "Indexing a Sentinel1BurstMetadata is deprecated (they no longer are dict).",
+            DeprecationWarning,
+        )
         return self.__dict__[name]
 
     def to_dict(self) -> dict[str, Any]:
@@ -151,40 +160,44 @@ class Sentinel1GRDMetadata:
         return Sentinel1GRDMetadata(**d)
 
 
-def relative_orbit_number_from_absolute(mission_id: str, absolute_orbit_number: int) -> int:
-    if mission_id == 'S1A':
+def relative_orbit_number_from_absolute(
+    mission_id: str, absolute_orbit_number: int
+) -> int:
+    if mission_id == "S1A":
         return (absolute_orbit_number - 73) % 175 + 1
-    elif mission_id == 'S1B':
+    elif mission_id == "S1B":
         return (absolute_orbit_number - 27) % 175 + 1
-    raise ValueError(f'Invalid mission_id {mission_id}')
+    raise ValueError(f"Invalid mission_id {mission_id}")
 
 
 def isostring_to_timestamp(s: str) -> float:
     """Convert a string representing a date and time to a float number."""
-    return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f").replace(tzinfo=datetime.timezone.utc).timestamp()
+    return (
+        datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f")
+        .replace(tzinfo=datetime.timezone.utc)
+        .timestamp()
+    )
 
 
 def corners_of_geolocation_grid_points_list(l, only_burst_id):
     """Return the 4 corners of a Sentinel-1 geolocation grid points list.\
     only_burst_id (int): restrict to a particular burst."""
-    lines = sorted(list(set(int(c['line']) for c in l)))
+    lines = sorted(list(set(int(c["line"]) for c in l)))
     first_line_position = lines[only_burst_id]
     last_line_position = lines[only_burst_id + 1]
-    l = [c for c in l if int(c['line']) in (
-        first_line_position, last_line_position)]
-    line_indices = [int(c['line']) for c in l]
-    first_line = [c for c in l if int(c['line']) == min(line_indices)]
-    last_line = [c for c in l if int(c['line']) == max(line_indices)]
-    a = min(first_line, key=lambda k: int(k['pixel']))
-    b = max(first_line, key=lambda k: int(k['pixel']))
-    c = max(last_line, key=lambda k: int(k['pixel']))
-    d = min(last_line, key=lambda k: int(k['pixel']))
+    l = [c for c in l if int(c["line"]) in (first_line_position, last_line_position)]
+    line_indices = [int(c["line"]) for c in l]
+    first_line = [c for c in l if int(c["line"]) == min(line_indices)]
+    last_line = [c for c in l if int(c["line"]) == max(line_indices)]
+    a = min(first_line, key=lambda k: int(k["pixel"]))
+    b = max(first_line, key=lambda k: int(k["pixel"]))
+    c = max(last_line, key=lambda k: int(k["pixel"]))
+    d = min(last_line, key=lambda k: int(k["pixel"]))
     return a, b, c, d
 
 
 def _mid_burst_sensing_time_correction(o, first_burst_xml):
-    """
-    """
+    """ """
     # in the following, we have 3 slices (= 3 products), 3 bursts per slice
     # the second slice crosses the equator, somewhere inside the second burst
     # ================
@@ -246,18 +259,20 @@ def _mid_burst_sensing_time_correction(o, first_burst_xml):
     # the angle difference between two consecutive orbits
     angle_per_orbit = 360 / 175 * 12
     # approximative longitude of the current burst (it's ok if it is a few degrees of)
-    current_lon = np.mean([c[0] for c in o['approx_geom']])
+    current_lon = np.mean([c[0] for c in o["approx_geom"]])
     # expected longitude for a given orbit number
 
-    def lon_at_anx(orbit): return (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
+    def lon_at_anx(orbit):
+        return (orbit1_lon - angle_per_orbit * (orbit - 1) + 180) % 360 - 180
+
     # since the longitude difference between the swaths is +/-1° the longitude of swath 2,
     # we don't have to correct it since the margin of error will be around 10°
-    expected_lon = lon_at_anx(o['relative_orbit_number'])
+    expected_lon = lon_at_anx(o["relative_orbit_number"])
 
     # the current orbit is wrong if
     # 1. we are close to the next ANX
     # 2. the orbit number was not yet incremented (= expected_lon is way off)
-    t_anx = o['azimuth_anx_time']
+    t_anx = o["azimuth_anx_time"]
     close_to_next_anx = abs(t_anx - T_orb) < 50
     orbit_looks_off = abs(current_lon - expected_lon) > angle_per_orbit / 2
 
@@ -273,7 +288,7 @@ def _mid_burst_sensing_time_correction(o, first_burst_xml):
     # - then we can check case 1. by checking whether the first burst of the product
     #   was already after the next anx
     # this strategy avoid having to rely on precise timings (with timings from other swaths to consider)
-    fanx = float(first_burst_xml['azimuthAnxTime'])
+    fanx = float(first_burst_xml["azimuthAnxTime"])
     if not (close_to_next_anx and orbit_looks_off) and fanx > T_orb:
         return -T_orb
     else:
@@ -307,22 +322,28 @@ def compute_burst_id(burst, first_burst_xml):
     int: absolute burst id
     """
     # orbit numbers, ANX time and burst parameters
-    relative_orbit_number = burst['relative_orbit_number']
-    absolute_orbit_number = burst['absolute_orbit_number']
-    anx_time = burst['anx_time']
-    n = burst['lines_per_burst']
-    pri = burst['pri']
-    burst_sensing_time = burst['burst_sensing_time'] + _mid_burst_sensing_time_correction(burst, first_burst_xml)
+    relative_orbit_number = burst["relative_orbit_number"]
+    absolute_orbit_number = burst["absolute_orbit_number"]
+    anx_time = burst["anx_time"]
+    n = burst["lines_per_burst"]
+    pri = burst["pri"]
+    burst_sensing_time = burst[
+        "burst_sensing_time"
+    ] + _mid_burst_sensing_time_correction(burst, first_burst_xml)
 
     # mid-burst sensing time
     t_b = burst_sensing_time + pri * (n - 1) / 2
 
     # time distance between t_b and the first ANX time in the current mission cycle
     delta_t_b_rel = t_b - anx_time + (relative_orbit_number - 1) * T_orb
-    delta_t_b_abs = delta_t_b_rel + (absolute_orbit_number - relative_orbit_number) * T_orb2
+    delta_t_b_abs = (
+        delta_t_b_rel + (absolute_orbit_number - relative_orbit_number) * T_orb2
+    )
 
     # subtract the preamble and divide by the beam cycle time to obtain the burst ids
-    relative_burst_id = 1 + math.floor((delta_t_b_rel - T_pre) / T_beam) % N_bursts_per_cycle
+    relative_burst_id = (
+        1 + math.floor((delta_t_b_rel - T_pre) / T_beam) % N_bursts_per_cycle
+    )
     absolute_burst_id = 1 + math.floor((delta_t_b_abs - T_pre) / T_beam)
 
     return relative_burst_id, absolute_burst_id
@@ -344,92 +365,102 @@ def extract_common_metadata(xml):
         Full metadata contained in the xml as a nested dictionnary.
 
     """
-    i = xmltodict.parse(xml)['product']  # input full dictionary (huge)
+    i = xmltodict.parse(xml)["product"]  # input full dictionary (huge)
     o = {}  # output dictionary with only the stuff we need (tiny)
 
     # compute orbit numbers
-    mission_id = i['adsHeader']['missionId']
-    absolute_orbit_number = int(i['adsHeader']['absoluteOrbitNumber'])
+    mission_id = i["adsHeader"]["missionId"]
+    absolute_orbit_number = int(i["adsHeader"]["absoluteOrbitNumber"])
 
-    relative_orbit_number = relative_orbit_number_from_absolute(mission_id, absolute_orbit_number)
+    relative_orbit_number = relative_orbit_number_from_absolute(
+        mission_id, absolute_orbit_number
+    )
 
-    o['mission_id'] = mission_id
-    o['absolute_orbit_number'] = absolute_orbit_number
-    o['relative_orbit_number'] = relative_orbit_number
+    o["mission_id"] = mission_id
+    o["absolute_orbit_number"] = absolute_orbit_number
+    o["relative_orbit_number"] = relative_orbit_number
 
-    d = i['imageAnnotation']['imageInformation']
-    o['azimuth_frequency'] = float(d['azimuthFrequency'])
-    o['slant_range_time'] = float(d['slantRangeTime'])
-    o['anx_time'] = isostring_to_timestamp(d['ascendingNodeTime'])
-    o['slice_number'] = int(d['sliceNumber'])
-    o['slice_count'] = int(d['sliceList']['@count'])
+    d = i["imageAnnotation"]["imageInformation"]
+    o["azimuth_frequency"] = float(d["azimuthFrequency"])
+    o["slant_range_time"] = float(d["slantRangeTime"])
+    o["anx_time"] = isostring_to_timestamp(d["ascendingNodeTime"])
+    o["slice_number"] = int(d["sliceNumber"])
+    o["slice_count"] = int(d["sliceList"]["@count"])
 
-    d = i['swathTiming']
-    o['lines_per_burst'] = int(d['linesPerBurst'])
-    o['samples_per_burst'] = int(d['samplesPerBurst'])
+    d = i["swathTiming"]
+    o["lines_per_burst"] = int(d["linesPerBurst"])
+    o["samples_per_burst"] = int(d["samplesPerBurst"])
 
     # subswath
-    o['swath'] = i['adsHeader']['swath']
+    o["swath"] = i["adsHeader"]["swath"]
 
-    d = i['generalAnnotation']['productInformation']
-    o['range_frequency'] = float(d['rangeSamplingRate'])
-    o['orbit_pass'] = d['pass']
+    d = i["generalAnnotation"]["productInformation"]
+    o["range_frequency"] = float(d["rangeSamplingRate"])
+    o["orbit_pass"] = d["pass"]
 
     # state vectors (sv)
-    o['state_vectors'] = []
-    for s in i['generalAnnotation']['orbitList']['orbit']:
-        o['state_vectors'].append({
-            'time': isostring_to_timestamp(s['time']),
-            'position': [float(s['position'][k]) for k in ['x', 'y', 'z']],
-            'velocity': [float(s['velocity'][k]) for k in ['x', 'y', 'z']]
-        })
+    o["state_vectors"] = []
+    for s in i["generalAnnotation"]["orbitList"]["orbit"]:
+        o["state_vectors"].append(
+            {
+                "time": isostring_to_timestamp(s["time"]),
+                "position": [float(s["position"][k]) for k in ["x", "y", "z"]],
+                "velocity": [float(s["velocity"][k]) for k in ["x", "y", "z"]],
+            }
+        )
     # we assume the lowest quality here, even though some products might be generated with more accurate orbit data
-    o['state_vectors_origin'] = 'orbpre'
+    o["state_vectors_origin"] = "orbpre"
 
     # deramping parameters
-    o['steering_rate'] = np.radians(
-        float(i['generalAnnotation']['productInformation']['azimuthSteeringRate']))
-    o['wave_length'] = const.LIGHT_SPEED_M_PER_SEC / \
-        float(i['generalAnnotation']['productInformation']['radarFrequency'])
+    o["steering_rate"] = np.radians(
+        float(i["generalAnnotation"]["productInformation"]["azimuthSteeringRate"])
+    )
+    o["wave_length"] = const.LIGHT_SPEED_M_PER_SEC / float(
+        i["generalAnnotation"]["productInformation"]["radarFrequency"]
+    )
 
     # azimuth fm rates
-    o['az_fm_times'] = []
-    o['az_fm_info'] = []
-    for az in i['generalAnnotation']['azimuthFmRateList']['azimuthFmRate']:
+    o["az_fm_times"] = []
+    o["az_fm_info"] = []
+    for az in i["generalAnnotation"]["azimuthFmRateList"]["azimuthFmRate"]:
         try:
-            azp = az['azimuthFmRatePolynomial']['#text'].split()
+            azp = az["azimuthFmRatePolynomial"]["#text"].split()
         except KeyError:  # old xml files were formatted differently
-            azp = [az['c0'], az['c1'], az['c2']]
-        o['az_fm_times'].append(isostring_to_timestamp(az['azimuthTime']))
-        o['az_fm_info'].append(
-            list(map(float, [az['t0'], azp[0], azp[1], azp[2]])))
+            azp = [az["c0"], az["c1"], az["c2"]]
+        o["az_fm_times"].append(isostring_to_timestamp(az["azimuthTime"]))
+        o["az_fm_info"].append(list(map(float, [az["t0"], azp[0], azp[1], azp[2]])))
 
     # doppler centroid estimates
-    dc_estimate = i['dopplerCentroid']['dcEstimateList']['dcEstimate']
-    o['dc_estimate_time'] = [isostring_to_timestamp(
-        x['azimuthTime']) for x in dc_estimate]
-    o['dc_estimate_t0'] = [float(x['t0']) for x in dc_estimate]
-    if i['imageAnnotation']['processingInformation']['dcMethod'] == 'Data Analysis':
-        dc_polynomial_name = 'dataDcPolynomial'
+    dc_estimate = i["dopplerCentroid"]["dcEstimateList"]["dcEstimate"]
+    o["dc_estimate_time"] = [
+        isostring_to_timestamp(x["azimuthTime"]) for x in dc_estimate
+    ]
+    o["dc_estimate_t0"] = [float(x["t0"]) for x in dc_estimate]
+    if i["imageAnnotation"]["processingInformation"]["dcMethod"] == "Data Analysis":
+        dc_polynomial_name = "dataDcPolynomial"
     else:  # geometrical method. Polynom more stable
-        dc_polynomial_name = 'geometryDcPolynomial'
-    o['dc_estimate_poly'] = []
+        dc_polynomial_name = "geometryDcPolynomial"
+    o["dc_estimate_poly"] = []
     for x in dc_estimate:
-        o['dc_estimate_poly'].append(
-            list(map(float, x[dc_polynomial_name]['#text'].split())))
+        o["dc_estimate_poly"].append(
+            list(map(float, x[dc_polynomial_name]["#text"].split()))
+        )
 
-    if i['adsHeader']['productType'] == 'SLC':
+    if i["adsHeader"]["productType"] == "SLC":
         # pulse things
-        d = i['generalAnnotation']['downlinkInformationList']['downlinkInformation']['downlinkValues']
-        o['chirp_rate'] = float(d['txPulseRampRate'])  # used for intra_pulse_correction
-        o['pri'] = float(d['pri'])    # used for full_bistatic_correction
-        o['rank'] = float(d['rank'])  # used for full_bistatic_correction
+        d = i["generalAnnotation"]["downlinkInformationList"]["downlinkInformation"][
+            "downlinkValues"
+        ]
+        o["chirp_rate"] = float(d["txPulseRampRate"])  # used for intra_pulse_correction
+        o["pri"] = float(d["pri"])  # used for full_bistatic_correction
+        o["rank"] = float(d["rank"])  # used for full_bistatic_correction
 
     return o, i
 
 
-def extract_bursts_metadata(xml: Union[str, bytes],
-                            burst_ids: Optional[Iterable[int]] = None) -> list[Sentinel1BurstMetadata]:
+def extract_bursts_metadata(
+    xml: Union[str, bytes], burst_ids: Optional[Iterable[int]] = None
+) -> list[Sentinel1BurstMetadata]:
     """Extract metadata for a list of bursts.
 
     Parameters
@@ -447,16 +478,17 @@ def extract_bursts_metadata(xml: Union[str, bytes],
     """
     o, i = extract_common_metadata(xml)
 
-    dictbursts = i['swathTiming']['burstList']['burst']
+    dictbursts = i["swathTiming"]["burstList"]["burst"]
 
     if burst_ids:
-        assert min(burst_ids) >= 0 and max(burst_ids) < len(dictbursts),\
-            "burst ids out of range"
+        assert min(burst_ids) >= 0 and max(burst_ids) < len(
+            dictbursts
+        ), "burst ids out of range"
     else:
         burst_ids = range(len(dictbursts))
 
     # longitude, latitude bounding box: select the four corners of the gcp grid
-    gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
+    gcp = i["geolocationGrid"]["geolocationGridPointList"]["geolocationGridPoint"]
 
     bursts: list[Sentinel1BurstMetadata] = []
     for bid in burst_ids:
@@ -466,56 +498,61 @@ def extract_bursts_metadata(xml: Union[str, bytes],
         burst = o.copy()
 
         # region of interest (roi) within the burst: x, y, w, h
-        first_valid_x = map(int, b['firstValidSample']['#text'].split())
-        last_valid_x = map(int, b['lastValidSample']['#text'].split())
-        valid_rows_left = [(v, j)
-                           for j, v in enumerate(first_valid_x) if v >= 0]
-        valid_rows_right = [(v, j)
-                            for j, v in enumerate(last_valid_x) if v >= 0]
+        first_valid_x = map(int, b["firstValidSample"]["#text"].split())
+        last_valid_x = map(int, b["lastValidSample"]["#text"].split())
+        valid_rows_left = [(v, j) for j, v in enumerate(first_valid_x) if v >= 0]
+        valid_rows_right = [(v, j) for j, v in enumerate(last_valid_x) if v >= 0]
         x, y = valid_rows_left[0]
         w = valid_rows_right[0][0] - x + 1
         h = valid_rows_left[-1][1] - y + 1
 
         # time interval corresponding to the valid burst domain
-        start = isostring_to_timestamp(b['azimuthTime'])
-        start_valid = start + y / o['azimuth_frequency']
-        end_valid = start_valid + h / o['azimuth_frequency']
-        burst['burst_times'] = (start, start_valid, end_valid)
+        start = isostring_to_timestamp(b["azimuthTime"])
+        start_valid = start + y / o["azimuth_frequency"]
+        end_valid = start_valid + h / o["azimuth_frequency"]
+        burst["burst_times"] = (start, start_valid, end_valid)
 
         # make the burst roi coordinates relative the the full swath
-        y += bid * o['lines_per_burst']
-        burst['burst_roi'] = (x, y, w, h)
+        y += bid * o["lines_per_burst"]
+        burst["burst_roi"] = (x, y, w, h)
 
-        burst['azimuth_anx_time'] = float(b['azimuthAnxTime'])
-        burst['burst_sensing_time'] = isostring_to_timestamp(b['sensingTime'])
+        burst["azimuth_anx_time"] = float(b["azimuthAnxTime"])
+        burst["burst_sensing_time"] = isostring_to_timestamp(b["sensingTime"])
 
-        corners = corners_of_geolocation_grid_points_list(gcp,
-                                                          only_burst_id=bid)
-        burst['approx_geom'] = [(float(c['longitude']),
-                                 float(c['latitude'])) for c in corners]
-        burst['approx_altitude'] = [float(c['height']) for c in corners]
+        corners = corners_of_geolocation_grid_points_list(gcp, only_burst_id=bid)
+        burst["approx_geom"] = [
+            (float(c["longitude"]), float(c["latitude"])) for c in corners
+        ]
+        burst["approx_altitude"] = [float(c["height"]) for c in corners]
 
         # compute the burst id
-        relative_burst_id, absolute_burst_id = compute_burst_id(burst, first_burst_xml=dictbursts[0])
+        relative_burst_id, absolute_burst_id = compute_burst_id(
+            burst, first_burst_xml=dictbursts[0]
+        )
 
-        if 'burstId' in b:  # True for IPF >= 3.40
-            esa_relative_burst_id = int(b['burstId']['#text'])
+        if "burstId" in b:  # True for IPF >= 3.40
+            esa_relative_burst_id = int(b["burstId"]["#text"])
             if relative_burst_id != esa_relative_burst_id:
-                logger.warning('relative_burst_id mismatch (xml:{}, computed:{})'
-                               .format(esa_relative_burst_id, relative_burst_id))
+                logger.warning(
+                    "relative_burst_id mismatch (xml:{}, computed:{})".format(
+                        esa_relative_burst_id, relative_burst_id
+                    )
+                )
             # don't compare the absolute burst id since our definition is different than ESA's one
 
-        burst['relative_burst_id'] = relative_burst_id
-        burst['absolute_burst_id'] = absolute_burst_id
-        swath = burst['swath']
-        burst['bsid'] = f'{relative_burst_id}_{swath}'
+        burst["relative_burst_id"] = relative_burst_id
+        burst["absolute_burst_id"] = absolute_burst_id
+        swath = burst["swath"]
+        burst["bsid"] = f"{relative_burst_id}_{swath}"
 
         bursts.append(Sentinel1BurstMetadata.from_dict(burst))
 
     return bursts
 
 
-def extract_burst_metadata(xml: Union[str, bytes], burst_id: int) -> Sentinel1BurstMetadata:
+def extract_burst_metadata(
+    xml: Union[str, bytes], burst_id: int
+) -> Sentinel1BurstMetadata:
     """Extract metadata for a single burst.
 
     Parameters
@@ -556,29 +593,35 @@ def extract_grd_metadata(xml: Union[str, bytes]) -> Sentinel1GRDMetadata:
     del o["dc_estimate_t0"]
     del o["dc_estimate_poly"]
 
-    gcp = i['geolocationGrid']['geolocationGridPointList']['geolocationGridPoint']
+    gcp = i["geolocationGrid"]["geolocationGridPointList"]["geolocationGridPoint"]
     corners = corners_of_geolocation_grid_points_list(gcp, 0)
-    o['approx_geom'] = [(float(c['longitude']), float(c['latitude'])) for c in corners]
-    o['approx_altitude'] = [float(c['height']) for c in corners]
+    o["approx_geom"] = [(float(c["longitude"]), float(c["latitude"])) for c in corners]
+    o["approx_altitude"] = [float(c["height"]) for c in corners]
 
-    d = i['imageAnnotation']['imageInformation']
-    o['image_start'] = isostring_to_timestamp(d['productFirstLineUtcTime'])
-    o['image_end'] = isostring_to_timestamp(d['productLastLineUtcTime'])
+    d = i["imageAnnotation"]["imageInformation"]
+    o["image_start"] = isostring_to_timestamp(d["productFirstLineUtcTime"])
+    o["image_end"] = isostring_to_timestamp(d["productLastLineUtcTime"])
 
-    o['azimuth_time_interval'] = float(d['azimuthTimeInterval'])
-    o['range_pixel_spacing'] = float(d['rangePixelSpacing'])
+    o["azimuth_time_interval"] = float(d["azimuthTimeInterval"])
+    o["range_pixel_spacing"] = float(d["rangePixelSpacing"])
 
-    srgr = i['coordinateConversion']['coordinateConversionList']['coordinateConversion']
-    o['srgr'] = {
-        'times': [isostring_to_timestamp(s["azimuthTime"]) for s in srgr],
-        'srgr_coeffs': [list(map(float, srgr[k]["srgrCoefficients"]["#text"].split())) for k in range(len(srgr))],
-        'grsr_coeffs': [list(map(float, srgr[k]["grsrCoefficients"]["#text"].split())) for k in range(len(srgr))],
-        'sr0': [float(srgr[k]["sr0"]) for k in range(len(srgr))],
-        'gr0': [float(srgr[k]["gr0"]) for k in range(len(srgr))],
+    srgr = i["coordinateConversion"]["coordinateConversionList"]["coordinateConversion"]
+    o["srgr"] = {
+        "times": [isostring_to_timestamp(s["azimuthTime"]) for s in srgr],
+        "srgr_coeffs": [
+            list(map(float, srgr[k]["srgrCoefficients"]["#text"].split()))
+            for k in range(len(srgr))
+        ],
+        "grsr_coeffs": [
+            list(map(float, srgr[k]["grsrCoefficients"]["#text"].split()))
+            for k in range(len(srgr))
+        ],
+        "sr0": [float(srgr[k]["sr0"]) for k in range(len(srgr))],
+        "gr0": [float(srgr[k]["gr0"]) for k in range(len(srgr))],
     }
 
-    o['width'] = int(i['imageAnnotation']['imageInformation']['numberOfSamples'])
-    o['height'] = int(i['imageAnnotation']['imageInformation']['numberOfLines'])
+    o["width"] = int(i["imageAnnotation"]["imageInformation"]["numberOfSamples"])
+    o["height"] = int(i["imageAnnotation"]["imageInformation"]["numberOfLines"])
 
     return Sentinel1GRDMetadata.from_dict(o)
 
@@ -590,14 +633,21 @@ def assemble_multiple_products_into_metas(
     return bursts
 
 
-def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadata]) -> Sentinel1GRDMetadata:
+def assemble_multiple_grd_products_into_meta(
+    metas: Sequence[Sentinel1GRDMetadata]
+) -> Sentinel1GRDMetadata:
     # make sure the product are ordered by time
     metas = sorted(metas, key=lambda m: m.image_start)
 
     # make sure all products start at the same range time
-    assert all(abs(m.slant_range_time - metas[0].slant_range_time) < 1e-9 for m in metas)
+    assert all(
+        abs(m.slant_range_time - metas[0].slant_range_time) < 1e-9 for m in metas
+    )
     # and some quantities should be equal
-    assert all(abs(m.azimuth_time_interval - metas[0].azimuth_time_interval) < 1e-7 for m in metas)
+    assert all(
+        abs(m.azimuth_time_interval - metas[0].azimuth_time_interval) < 1e-7
+        for m in metas
+    )
     assert all(m.range_pixel_spacing == metas[0].range_pixel_spacing for m in metas)
     assert all(m.wave_length == metas[0].wave_length for m in metas)
     assert all(m.steering_rate == metas[0].steering_rate for m in metas)
@@ -629,17 +679,19 @@ def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadat
     gr0 = [all_gr0[i] for i in indices]
     sr0 = [all_sr0[i] for i in indices]
 
-    meta['srgr'] = {
-        'times': times,
-        'srgr_coeffs': srgr_coeffs,
-        'grsr_coeffs': grsr_coeffs,
-        'gr0': gr0,
-        'sr0': sr0,
+    meta["srgr"] = {
+        "times": times,
+        "srgr_coeffs": srgr_coeffs,
+        "grsr_coeffs": grsr_coeffs,
+        "gr0": gr0,
+        "sr0": sr0,
     }
 
     # merge geometries
     geoms = [m.approx_geom for m in metas]
-    multipolygon = shapely.geometry.MultiPolygon([shapely.geometry.Polygon(g) for g in geoms])
+    multipolygon = shapely.geometry.MultiPolygon(
+        [shapely.geometry.Polygon(g) for g in geoms]
+    )
     meta["approx_geom"] = list(multipolygon.convex_hull.exterior.coords)
 
     def find_alt(p) -> float:
@@ -648,6 +700,7 @@ def assemble_multiple_grd_products_into_meta(metas: Sequence[Sentinel1GRDMetadat
                 idx = m.approx_geom.index(p)
                 return m.approx_altitude[idx]
         assert False
+
     meta["approx_altitude"] = [find_alt(p) for p in meta["approx_geom"]]
 
     # adjust the size of the mosaic
@@ -689,7 +742,9 @@ def _unique_sv(state_vectors: Sequence[StateVector]) -> list[StateVector]:
     return unique_state_vectors
 
 
-def unique_sv_from_bursts_meta(bursts_meta: list[Sentinel1BurstMetadata]) -> list[StateVector]:
+def unique_sv_from_bursts_meta(
+    bursts_meta: list[Sentinel1BurstMetadata]
+) -> list[StateVector]:
     """
     Get an aggregated list of state_vectors from bursts_meta
 
@@ -703,8 +758,7 @@ def unique_sv_from_bursts_meta(bursts_meta: list[Sentinel1BurstMetadata]) -> lis
     unique_state_vectors: list[StateVector]
         Each element is a unique state_vectors
     """
-    state_vectors = [sv for bmeta in bursts_meta
-                     for sv in bmeta.state_vectors]
+    state_vectors = [sv for bmeta in bursts_meta for sv in bmeta.state_vectors]
     return _unique_sv(state_vectors)
 
 
@@ -725,6 +779,6 @@ def get_file_links_from_manifest(manifest_content: str) -> list[str]:
     """
     i = xmltodict.parse(manifest_content)
     links = []
-    for data_obj in i['xfdu:XFDU']['dataObjectSection']['dataObject']:
-        links.append(data_obj['byteStream']['fileLocation']['@href'])
+    for data_obj in i["xfdu:XFDU"]["dataObjectSection"]["dataObject"]:
+        links.append(data_obj["byteStream"]["fileLocation"]["@href"])
     return links

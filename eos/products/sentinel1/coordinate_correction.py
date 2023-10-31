@@ -1,15 +1,17 @@
 from __future__ import annotations
+
+import warnings
 from dataclasses import dataclass
 from typing import Any, Optional
-import warnings
-import numpy as np
-from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 
-from eos.sar import const
-from eos.sar.projection_correction import ImageCorrection, GeoImagePoints, Corrector
+import numpy as np
+
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
-from eos.sar.orbit import Orbit
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from eos.sar import const
 from eos.sar.atmospheric_correction import ApdCorrection
+from eos.sar.orbit import Orbit
+from eos.sar.projection_correction import Corrector, GeoImagePoints, ImageCorrection
 
 
 class IntraPulse(ImageCorrection):
@@ -63,9 +65,10 @@ class IntraPulse(ImageCorrection):
         azt, rng = im_pt.get_azt_rng()
 
         _, _, f_geom, f = self.doppler.get_doppler_quantities(
-            azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC)
+            azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC
+        )
 
-        self.drng = - (f + f_geom) / self.chirp_rate * const.LIGHT_SPEED_M_PER_SEC / 2
+        self.drng = -(f + f_geom) / self.chirp_rate * const.LIGHT_SPEED_M_PER_SEC / 2
 
 
 class Bistatic(ImageCorrection):
@@ -116,9 +119,11 @@ class Bistatic(ImageCorrection):
         _, rng = im_pt.get_azt_rng()
 
         # Simple bistatic correction
-        self.dazt = - 0.5 * (2 * rng / const.LIGHT_SPEED_M_PER_SEC -
-                             self.slant_range_time -
-                             0.5 * self.samples_per_burst / self.range_frequency)
+        self.dazt = -0.5 * (
+            2 * rng / const.LIGHT_SPEED_M_PER_SEC
+            - self.slant_range_time
+            - 0.5 * self.samples_per_burst / self.range_frequency
+        )
 
 
 @dataclass(frozen=True)
@@ -132,8 +137,11 @@ class FullBistaticReference:
 
     def __getitem__(self, name: str) -> Any:
         import warnings
-        warnings.warn("Indexing a FullBistaticReference is deprecated (they no longer are dict).",
-                      DeprecationWarning)
+
+        warnings.warn(
+            "Indexing a FullBistaticReference is deprecated (they no longer are dict).",
+            DeprecationWarning,
+        )
         return self.__dict__[name]
 
     @staticmethod
@@ -164,10 +172,9 @@ class FullBistatic(ImageCorrection):
     samples_per_burst and range_frequency from the ref metadata
     """
 
-    def __init__(self,
-                 full_bistatic_reference: FullBistaticReference,
-                 pri: float,
-                 rank: float):
+    def __init__(
+        self, full_bistatic_reference: FullBistaticReference, pri: float, rank: float
+    ):
         """
         Create FullBistatic object.
 
@@ -209,8 +216,15 @@ class FullBistatic(ImageCorrection):
         _, rng = im_pt.get_azt_rng()
 
         # Full bistatic correction
-        dazt = - ((self.ref_slant_range_time + 0.5 * self.ref_samples_per_burst / self.ref_range_frequency) / 2
-                  - self.rank * self.pri + (2 * rng / const.LIGHT_SPEED_M_PER_SEC) / 2)
+        dazt = -(
+            (
+                self.ref_slant_range_time
+                + 0.5 * self.ref_samples_per_burst / self.ref_range_frequency
+            )
+            / 2
+            - self.rank * self.pri
+            + (2 * rng / const.LIGHT_SPEED_M_PER_SEC) / 2
+        )
 
         self.dazt = dazt
 
@@ -240,7 +254,7 @@ def get_k_geo(orbit: Orbit, azt, points, wavelength: float):
     # speedS
     V = orbit.evaluate(azt, order=1)
     # LOS vector
-    D = (orbit.evaluate(azt) - points)
+    D = orbit.evaluate(azt) - points
     # acceleration
     Acc = orbit.evaluate(azt, order=2)
     # scalar product
@@ -304,22 +318,30 @@ class AltFmMismatch(ImageCorrection):
         azt, rng = geo_im_pt.get_azt_rng()
         gx, gy, gz = geo_im_pt.get_geo()
 
-        k_geo = get_k_geo(self.orbit, azt, np.column_stack([gx, gy, gz]),
-                          self.wavelength)
-        range_dependent_doppler_rate, _, f_geom, f = self.doppler.get_doppler_quantities(
-            azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC)
+        k_geo = get_k_geo(
+            self.orbit, azt, np.column_stack([gx, gy, gz]), self.wavelength
+        )
+        (
+            range_dependent_doppler_rate,
+            _,
+            f_geom,
+            f,
+        ) = self.doppler.get_doppler_quantities(
+            azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC
+        )
         self.dazt = (f + f_geom) * (1 / k_geo - 1 / range_dependent_doppler_rate)
 
 
-def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
-                             orbit: Orbit,
-                             doppler: Sentinel1Doppler,
-                             apd: bool = False,
-                             bistatic: bool = False,
-                             full_bistatic_reference: Optional[FullBistaticReference] = None,
-                             intra_pulse: bool = False,
-                             alt_fm_mismatch: bool = False
-                             ) -> list[ImageCorrection]:
+def s1_corrections_from_meta(
+    burst_meta: Sentinel1BurstMetadata,
+    orbit: Orbit,
+    doppler: Sentinel1Doppler,
+    apd: bool = False,
+    bistatic: bool = False,
+    full_bistatic_reference: Optional[FullBistaticReference] = None,
+    intra_pulse: bool = False,
+    alt_fm_mismatch: bool = False,
+) -> list[ImageCorrection]:
     """
     S1 corrections from burst metadata.
 
@@ -359,34 +381,40 @@ def s1_corrections_from_meta(burst_meta: Sentinel1BurstMetadata,
         bistatic_corr: ImageCorrection
         if full_bistatic_reference is not None:
             if isinstance(full_bistatic_reference, dict):
-                warnings.warn("Using dict for `full_bistatic_reference` is deprecated. Use a full_bistatic_reference object.",
-                              DeprecationWarning)
-                full_bistatic_reference = FullBistaticReference.from_dict(full_bistatic_reference)
+                warnings.warn(
+                    "Using dict for `full_bistatic_reference` is deprecated. Use a full_bistatic_reference object.",
+                    DeprecationWarning,
+                )
+                full_bistatic_reference = FullBistaticReference.from_dict(
+                    full_bistatic_reference
+                )
             bistatic_corr = FullBistatic(
-                full_bistatic_reference, burst_meta.pri, burst_meta.rank)
+                full_bistatic_reference, burst_meta.pri, burst_meta.rank
+            )
 
         else:
             bistatic_corr = Bistatic(
-                burst_meta.slant_range_time, burst_meta.samples_per_burst,
-                burst_meta.range_frequency
+                burst_meta.slant_range_time,
+                burst_meta.samples_per_burst,
+                burst_meta.range_frequency,
             )
         coord_corrections.append(bistatic_corr)
 
     if intra_pulse:
-        coord_corrections.append(
-            IntraPulse(doppler, burst_meta.chirp_rate))
+        coord_corrections.append(IntraPulse(doppler, burst_meta.chirp_rate))
 
     if alt_fm_mismatch:
-        coord_corrections.append(
-            AltFmMismatch(doppler, orbit, burst_meta.wave_length))
+        coord_corrections.append(AltFmMismatch(doppler, orbit, burst_meta.wave_length))
 
     return coord_corrections
 
 
-def s1_corrector_from_meta(burst_meta: Sentinel1BurstMetadata,
-                           orbit: Orbit,
-                           doppler: Sentinel1Doppler,
-                           **kwargs) -> Corrector:
+def s1_corrector_from_meta(
+    burst_meta: Sentinel1BurstMetadata,
+    orbit: Orbit,
+    doppler: Sentinel1Doppler,
+    **kwargs,
+) -> Corrector:
     """
     Corrector from burst meta.
 

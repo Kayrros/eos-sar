@@ -1,8 +1,9 @@
 import numpy as np
-from shapely.geometry import Polygon, MultiPoint
 from scipy.interpolate import LinearNDInterpolator
-import eos.sar
+from shapely.geometry import MultiPoint, Polygon
+
 import eos.dem
+import eos.sar
 from eos.sar.model import SensorModel
 
 # TODO add support for dem crs
@@ -40,8 +41,7 @@ def poly_vs_dem_intersect(approx_geometry, x, y, raster):
     polygon = Polygon(approx_geometry)
 
     # Get the bounding dem as shapely multipoint
-    dem_points = MultiPoint(np.column_stack(
-        [x, y, raster]))
+    dem_points = MultiPoint(np.column_stack([x, y, raster]))
 
     intersection = polygon.intersection(dem_points)
 
@@ -50,14 +50,16 @@ def poly_vs_dem_intersect(approx_geometry, x, y, raster):
     return x, y, raster
 
 
-def get_radar_dem_interpolator(model: SensorModel,
-                               x,
-                               y,
-                               raster,
-                               row_interval: tuple[int, int],
-                               col_interval: tuple[int, int],
-                               margin: int = 10,
-                               get_xy: bool = False) -> LinearNDInterpolator:
+def get_radar_dem_interpolator(
+    model: SensorModel,
+    x,
+    y,
+    raster,
+    row_interval: tuple[int, int],
+    col_interval: tuple[int, int],
+    margin: int = 10,
+    get_xy: bool = False,
+) -> LinearNDInterpolator:
     """
     Construct a height (and optionally x, y dem coordinates) interpolator in radar coordinates
 
@@ -93,10 +95,12 @@ def get_radar_dem_interpolator(model: SensorModel,
 
     # projection of dem
     rows, cols, _ = model.projection(x, y, raster)
-    row_mask = np.logical_and(rows >= row_interval[0] - margin,
-                              rows <= row_interval[1] + margin)
-    col_mask = np.logical_and(cols >= col_interval[0] - margin,
-                              cols <= col_interval[1] + margin)
+    row_mask = np.logical_and(
+        rows >= row_interval[0] - margin, rows <= row_interval[1] + margin
+    )
+    col_mask = np.logical_and(
+        cols >= col_interval[0] - margin, cols <= col_interval[1] + margin
+    )
     mask = np.logical_and(row_mask, col_mask)
     # project DEM in crop
     irreg_points = np.column_stack([rows[mask], cols[mask]])
@@ -110,8 +114,9 @@ def get_radar_dem_interpolator(model: SensorModel,
     return interpolator
 
 
-def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry,
-                  margin=10, get_xy=False):
+def get_radar_dem(
+    x, y, raster, model, rows, cols, approx_geometry, margin=10, get_xy=False
+):
     """
     Compute the height (and lon, lat optionally) at a set of locations in a radar image.
 
@@ -146,8 +151,7 @@ def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry,
 
     """
     # restrict the dem points to the approx_geometry
-    x, y, raster = poly_vs_dem_intersect(
-        approx_geometry, x, y, raster)
+    x, y, raster = poly_vs_dem_intersect(approx_geometry, x, y, raster)
 
     # get the interval where we need the interpolator
     row_interval = np.amin(rows), np.amax(rows)
@@ -155,14 +159,20 @@ def get_radar_dem(x, y, raster, model, rows, cols, approx_geometry,
     # project the dem points and deduce interpolator
     # assume points are in epsg:4326 and height w.r.t. ellispoind
     interpolator = get_radar_dem_interpolator(
-        model, x, y, raster, row_interval, col_interval,
-        margin=margin, get_xy=get_xy)
+        model, x, y, raster, row_interval, col_interval, margin=margin, get_xy=get_xy
+    )
 
     return interpolator(rows, cols)
 
 
-def dem_radarcoding(dem: eos.dem.DEM, model: SensorModel, roi=None, approx_geometry=None,
-                    margin=10, get_xy=False):
+def dem_radarcoding(
+    dem: eos.dem.DEM,
+    model: SensorModel,
+    roi=None,
+    approx_geometry=None,
+    margin=10,
+    get_xy=False,
+):
     """
     Project a dem in radar coordinates and compute a height value for
     each pixel in the radar image.
@@ -201,12 +211,12 @@ def dem_radarcoding(dem: eos.dem.DEM, model: SensorModel, roi=None, approx_geome
         approx_geometry = model.get_buffered_geom(dem, roi, margin=margin)
 
     # get the raster grid x, y and crop it
-    x, y = eos.sar.utils.raster_xy_grid(dem.array.shape, dem.transform,
-                                        px_is_area=True)
+    x, y = eos.sar.utils.raster_xy_grid(dem.array.shape, dem.transform, px_is_area=True)
 
     # roi on the bounds of approximate geometry in raster
     crop_roi = eos.sar.utils.geom_to_raster_roi(
-        approx_geometry, dem.transform, dem.array.shape)
+        approx_geometry, dem.transform, dem.array.shape
+    )
     # crop raster and x, y coordinates
     x = crop_roi.crop_array(x)
     y = crop_roi.crop_array(y)
@@ -216,8 +226,16 @@ def dem_radarcoding(dem: eos.dem.DEM, model: SensorModel, roi=None, approx_geome
     cols_grid, rows_grid = roi.get_meshgrid()
     # Call function to project (x, y, raster) points inside approx geom
     # build a height interpolator and predict it on rows and cols meshgrid
-    radarcoded = get_radar_dem(x.ravel(), y.ravel(), raster.ravel(), model,
-                               rows_grid, cols_grid,
-                               approx_geometry, margin=margin, get_xy=get_xy)
+    radarcoded = get_radar_dem(
+        x.ravel(),
+        y.ravel(),
+        raster.ravel(),
+        model,
+        rows_grid,
+        cols_grid,
+        approx_geometry,
+        margin=margin,
+        get_xy=get_xy,
+    )
 
     return radarcoded

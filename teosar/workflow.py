@@ -1,14 +1,13 @@
 from typing import Optional
+
 import tifffile
 
+import eos.dem
 import eos.products.sentinel1
 import eos.sar
-import eos.dem
 from eos.sar.orbit import StateVector
-
+from teosar import inout, utils
 from teosar.overlap_utils import OverlapResampler, OverlapRoiInfo
-from teosar import utils
-from teosar import inout
 from teosar.utils import conditional_profiler, pid2date
 
 PROF = False
@@ -22,7 +21,9 @@ class Pipeline:
         self.log = {}
 
     @conditional_profiler(PROF)
-    def get_inputs(self, product_provider, statevectors: Optional[list[StateVector]], polarization):
+    def get_inputs(
+        self, product_provider, statevectors: Optional[list[StateVector]], polarization
+    ):
         print(f"{self.date} Getting inputs")
         self.products, self.asm = inout.get_inputs_for_date(
             self.product_ids, "all", product_provider, statevectors, polarization

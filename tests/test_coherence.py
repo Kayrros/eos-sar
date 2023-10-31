@@ -1,5 +1,6 @@
-import pytest
 import numpy as np
+import pytest
+
 from eos.sar import coherence
 
 
@@ -80,7 +81,7 @@ def test_coherence_might_contain_nans_with_nan():
 
     # if might_contain_nans == 'overwrite', then u1 will be modified
     assert np.isnan(u1).sum() == 1
-    v3 = coherence.on_pair(u1, u2, filter_size=3, might_contain_nans='overwrite')
+    v3 = coherence.on_pair(u1, u2, filter_size=3, might_contain_nans="overwrite")
     assert np.isnan(u1).sum() == 0
 
     assert not np.allclose(v1, v2, equal_nan=True)
@@ -114,5 +115,5 @@ def test_coherence_spatial_filter():
 
     # just check that it doesn't crash, at least
     # spatial_filter='gaussian' is not really meant to be used anyway
-    coherence.on_pair(u1, u2, filter_size=3, spatial_filter='uniform')
-    coherence.on_pair(u1, u2, filter_size=3, spatial_filter='gaussian')
+    coherence.on_pair(u1, u2, filter_size=3, spatial_filter="uniform")
+    coherence.on_pair(u1, u2, filter_size=3, spatial_filter="gaussian")

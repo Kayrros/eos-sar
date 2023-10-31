@@ -45,11 +45,9 @@ def get_paraboloid(h, w):
     mr = np.random.uniform(h // 2 - 0.5, h // 2 + 0.5)
     mc = np.random.uniform(w // 2 - 0.5, w // 2 + 0.5)
     # ground truth poly coeffs
-    coeffs = - np.array([[mc**2 + mr**2, -2 * mc, 1],
-                         [-2 * mr, 0, 0], [1, 0, 0]])
+    coeffs = -np.array([[mc**2 + mr**2, -2 * mc, 1], [-2 * mr, 0, 0], [1, 0, 0]])
     # generate polynomial image
-    simulated = np.polynomial.polynomial.polygrid2d(np.arange(h), np.arange(w),
-                                                    coeffs)
+    simulated = np.polynomial.polynomial.polygrid2d(np.arange(h), np.arange(w), coeffs)
     min_simulated = np.amin(simulated)
     # translate so the min is 0
     coeffs[0, 0] = coeffs[0, 0] - min_simulated
@@ -58,10 +56,7 @@ def get_paraboloid(h, w):
     return simulated, coeffs, mr, mc
 
 
-image_shapes = ((3, 3),
-                (30, 50),
-                (300, 500)
-                )
+image_shapes = ((3, 3), (30, 50), (300, 500))
 
 
 @pytest.mark.parametrize("image_shape", image_shapes)
@@ -124,7 +119,7 @@ def get_gaussian(h, w):
     dist_squared = (Cols - mc) ** 2 + (Rows - mr) ** 2
     intensity = np.random.uniform(1, 2)
 
-    simulated = intensity * np.exp(- dist_squared / sig ** 2)
+    simulated = intensity * np.exp(-dist_squared / sig**2)
 
     return simulated, intensity, mr, mc
 
@@ -161,13 +156,11 @@ def simulate_set_of_maximas(h, w, step=3, p=0.1):
     # this way ensure non overlapping paraboloids
     candidate_rows = np.arange(0, h - step - 1, step)
     candidate_cols = np.arange(0, w - step - 1, step)
-    Candidate_cols, Candidate_rows = np.meshgrid(
-        candidate_cols, candidate_rows)
+    Candidate_cols, Candidate_rows = np.meshgrid(candidate_cols, candidate_rows)
     mask = None
     while mask is None or not np.any(mask):
         # at least one location validated for simulation
-        mask = np.random.binomial(
-            1, p=p, size=Candidate_cols.shape).astype(bool)
+        mask = np.random.binomial(1, p=p, size=Candidate_cols.shape).astype(bool)
 
     cols_maximas = Candidate_cols[mask]
     rows_maximas = Candidate_rows[mask]
@@ -183,13 +176,16 @@ def simulate_set_of_maximas(h, w, step=3, p=0.1):
         mrs[ids] = mr + row_max
         mcs[ids] = mc + col_max
         intensities[ids] = intensity
-        simulated_image[row_max:row_max + step //
-                        2, col_max:col_max + step // 2] += para
+        simulated_image[
+            row_max : row_max + step // 2, col_max : col_max + step // 2
+        ] += para
 
     # sort by descending intensities
     sorting_indices = np.argsort(intensities)[::-1]
 
-    return simulated_image, mrs[sorting_indices], mcs[sorting_indices], intensities[sorting_indices]
+    return simulated_image, mrs[sorting_indices], mcs[sorting_indices], intensities[
+        sorting_indices
+    ]
 
 
 def test_sub_pixel_max():
@@ -197,29 +193,32 @@ def test_sub_pixel_max():
     # simulate zoomed image where some are contains parabolas (actually we use gaussians instead)
     image_size = 256
     zoom_factor = 2
-    image_zoomed = np.zeros(
-        (image_size * zoom_factor, image_size * zoom_factor))
+    image_zoomed = np.zeros((image_size * zoom_factor, image_size * zoom_factor))
     grid_size = image_size // 10
-    area_with_maximas = roi.Roi(grid_size,
-                                grid_size,
-                                image_size - 2 * grid_size,
-                                image_size - 2 * grid_size)
+    area_with_maximas = roi.Roi(
+        grid_size, grid_size, image_size - 2 * grid_size, image_size - 2 * grid_size
+    )
     col, row, w, h = area_with_maximas.to_roi()
     # define local paraboloid maximas within this area
     simulated_image, mrs, mcs, intensities_simu = simulate_set_of_maximas(
-        h * zoom_factor, w * zoom_factor, step=grid_size * zoom_factor, p=0.1 / zoom_factor)
+        h * zoom_factor,
+        w * zoom_factor,
+        step=grid_size * zoom_factor,
+        p=0.1 / zoom_factor,
+    )
 
     mrs += row * zoom_factor
     mcs += col * zoom_factor
 
-    image_zoomed[row * zoom_factor:(row + h) * zoom_factor,
-                 col * zoom_factor:(col + w) * zoom_factor] += simulated_image
+    image_zoomed[
+        row * zoom_factor : (row + h) * zoom_factor,
+        col * zoom_factor : (col + w) * zoom_factor,
+    ] += simulated_image
 
     # now test subpixel maxima
     max_results, _ = max_finding.sub_pixel_maxima(
-        image_zoomed,
-        area_with_maximas,
-        zoom_factor)
+        image_zoomed, area_with_maximas, zoom_factor
+    )
 
     n_maxs = len(max_results)
     row_maxima = np.zeros(n_maxs)
@@ -234,9 +233,6 @@ def test_sub_pixel_max():
 
     assert len(mrs) == len(row_maxima)
 
-    np.testing.assert_allclose(row_maxima, mrs / zoom_factor,
-                               atol=1e-2, verbose=True)
-    np.testing.assert_allclose(col_maxima, mcs / zoom_factor,
-                               atol=1e-2, verbose=True)
-    np.testing.assert_allclose(intensities, intensities_simu,
-                               atol=1e-2, verbose=True)
+    np.testing.assert_allclose(row_maxima, mrs / zoom_factor, atol=1e-2, verbose=True)
+    np.testing.assert_allclose(col_maxima, mcs / zoom_factor, atol=1e-2, verbose=True)
+    np.testing.assert_allclose(intensities, intensities_simu, atol=1e-2, verbose=True)

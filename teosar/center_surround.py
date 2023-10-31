@@ -1,8 +1,8 @@
+from dataclasses import dataclass
+
 import numpy as np
 import scipy
 import scipy.sparse
-
-from dataclasses import dataclass
 from numpy.typing import NDArray
 
 from teosar import periodogram, psutils

@@ -5,13 +5,13 @@ import logging
 from typing import Optional, Union
 
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 import pyproj
+from numpy.typing import ArrayLike, NDArray
 
-from eos.sar.orbit import Orbit
-from eos.sar import utils
-from eos.sar.roi import Roi as Roi
 import eos.dem
+from eos.sar import utils
+from eos.sar.orbit import Orbit
+from eos.sar.roi import Roi as Roi
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +37,16 @@ class SensorModel(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def projection(self,
-                   x: ArrayLike,
-                   y: ArrayLike,
-                   alt: ArrayLike,
-                   crs: Union[str, pyproj.CRS] = 'epsg:4326',
-                   vert_crs: Optional[Union[str, pyproj.CRS]] = None,
-                   azt_init: Optional[ArrayLike] = None,
-                   as_azt_rng: bool = False) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    def projection(
+        self,
+        x: ArrayLike,
+        y: ArrayLike,
+        alt: ArrayLike,
+        crs: Union[str, pyproj.CRS] = "epsg:4326",
+        vert_crs: Optional[Union[str, pyproj.CRS]] = None,
+        azt_init: Optional[ArrayLike] = None,
+        as_azt_rng: bool = False,
+    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
         """Projects a 3D point into the image coordinates.
 
         Parameters
@@ -76,15 +78,17 @@ class SensorModel(abc.ABC):
         """
 
     @abc.abstractmethod
-    def localization(self,
-                     row: ArrayLike,
-                     col: ArrayLike,
-                     alt: ArrayLike,
-                     crs: Union[str, pyproj.CRS] = 'epsg:4326',
-                     vert_crs: Optional[Union[str, pyproj.CRS]] = None,
-                     x_init: Optional[ArrayLike] = None,
-                     y_init: Optional[ArrayLike] = None,
-                     z_init: Optional[ArrayLike] = None) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    def localization(
+        self,
+        row: ArrayLike,
+        col: ArrayLike,
+        alt: ArrayLike,
+        crs: Union[str, pyproj.CRS] = "epsg:4326",
+        vert_crs: Optional[Union[str, pyproj.CRS]] = None,
+        x_init: Optional[ArrayLike] = None,
+        y_init: Optional[ArrayLike] = None,
+        z_init: Optional[ArrayLike] = None,
+    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
         """Localize a point in the image at a certain altitude.
 
         Parameters
@@ -119,9 +123,19 @@ class SensorModel(abc.ABC):
         geometry of the model, with altitudes given by the alt array.
         """
 
-    def localize_without_alt(self, row, col, max_iter=5, eps=1.0,
-                             alt_min=-1000, alt_max=9000, num_alt=100,
-                             verbosity=False, *, dem: eos.dem.DEM):
+    def localize_without_alt(
+        self,
+        row,
+        col,
+        max_iter=5,
+        eps=1.0,
+        alt_min=-1000,
+        alt_max=9000,
+        num_alt=100,
+        verbosity=False,
+        *,
+        dem: eos.dem.DEM,
+    ):
         """
         Localize a pixel in the image to the 3D point without needing the
         the altitude. A set of altitude values are tested recursively.
@@ -168,21 +182,33 @@ class SensorModel(abc.ABC):
         """
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
-            self, row, col, alt_min, alt_max, num_alt,
-            max_iter=max_iter, eps=eps, verbosity=verbosity, dem=dem)
+            self,
+            row,
+            col,
+            alt_min,
+            alt_max,
+            num_alt,
+            max_iter=max_iter,
+            eps=eps,
+            verbosity=verbosity,
+            dem=dem,
+        )
 
         # do a last linear interpolation
-        alt_opt = alt_min - alt_diff1 * \
-            (alt_max - alt_min) / (alt_diff2 - alt_diff1 + 1e-32)
+        alt_opt = alt_min - alt_diff1 * (alt_max - alt_min) / (
+            alt_diff2 - alt_diff1 + 1e-32
+        )
         lon, lat, alt_opt = self.localization(row, col, alt_opt)
         return lon, lat, alt_opt, masks
 
-    def fetch_dem(self,
-                  dem_source: eos.dem.DEMSource,
-                  roi: Optional[Roi] = None,
-                  margin: int = 1000,
-                  alt_min: float = -1000,
-                  alt_max: float = 9000) -> eos.dem.DEM:
+    def fetch_dem(
+        self,
+        dem_source: eos.dem.DEMSource,
+        roi: Optional[Roi] = None,
+        margin: int = 1000,
+        alt_min: float = -1000,
+        alt_max: float = 9000,
+    ) -> eos.dem.DEM:
         """
         Given a eos.dem.DEMSource, returns a eos.dem.DEM of the scene (restricted to an ROI if provided).
         The DEM will be large enough to contain the scene, for this very imprecise assumptions are used.
@@ -200,19 +226,18 @@ class SensorModel(abc.ABC):
         alt_max : float, optional
             Maximum altitude, assumed in far-range. The default is 9000.
         """
-        geometry = self.get_coarse_approx_geom(roi, margin=margin,
-                                               alt_min=alt_min, alt_max=alt_max)
+        geometry = self.get_coarse_approx_geom(
+            roi, margin=margin, alt_min=alt_min, alt_max=alt_max
+        )
         lons = [P[0] for P in geometry]
         lats = [P[1] for P in geometry]
         bounds = (min(lons), min(lats), max(lons), max(lats))
         dem = dem_source.fetch_dem(bounds)
         return dem
 
-    def get_coarse_approx_geom(self, roi: Optional[Roi] = None, *,
-                               margin: int,
-                               alt_min: float,
-                               alt_max: float
-                               ) -> list[tuple[float, float]]:
+    def get_coarse_approx_geom(
+        self, roi: Optional[Roi] = None, *, margin: int, alt_min: float, alt_max: float
+    ) -> list[tuple[float, float]]:
         """
         Get the very approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
@@ -286,7 +311,8 @@ class SensorModel(abc.ABC):
         rows, cols = roi.to_bounding_points()
 
         lons, lats, alts, masks = self.localize_without_alt(
-            rows, cols, dem=dem, **kwargs)
+            rows, cols, dem=dem, **kwargs
+        )
 
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
@@ -294,7 +320,9 @@ class SensorModel(abc.ABC):
             logger.warning("get_approx_geom: some points may be invalid.")
         return approx_geom, alts, masks
 
-    def get_buffered_geom(self, dem: eos.dem.DEM, roi=None, margin=0, row_sampling=50, **kwargs):
+    def get_buffered_geom(
+        self, dem: eos.dem.DEM, roi=None, margin=0, row_sampling=50, **kwargs
+    ):
         """
         Get the approximate geometry in epsg:4326 of a roi in an image whose
         localization function is defined by a model. Localization is conducted
@@ -337,7 +365,8 @@ class SensorModel(abc.ABC):
 
         # deal with the left boundary
         lons_left, lats_left, alts, masks = self.localize_without_alt(
-            _rows, col * np.ones_like(_rows), dem=dem, **kwargs)
+            _rows, col * np.ones_like(_rows), dem=dem, **kwargs
+        )
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -346,7 +375,8 @@ class SensorModel(abc.ABC):
 
         # deal with the right boundary
         lons_right, lats_right, alts, masks = self.localize_without_alt(
-            _rows, (col + w - 1) * np.ones_like(_rows), dem=dem, **kwargs)
+            _rows, (col + w - 1) * np.ones_like(_rows), dem=dem, **kwargs
+        )
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -355,10 +385,14 @@ class SensorModel(abc.ABC):
 
         rows, cols = roi.to_bounding_points()
 
-        lons, lats, _ = self.localization(rows, cols, [min_alt, max_alt, max_alt, min_alt],
-                                          x_init=[lons_left[0], lons_right[0], lons_right[-1], lons_left[-1]],
-                                          y_init=[lats_left[0], lats_right[0], lats_right[-1], lats_left[-1]],
-                                          z_init=[min_alt, max_alt, max_alt, min_alt])
+        lons, lats, _ = self.localization(
+            rows,
+            cols,
+            [min_alt, max_alt, max_alt, min_alt],
+            x_init=[lons_left[0], lons_right[0], lons_right[-1], lons_left[-1]],
+            y_init=[lats_left[0], lats_right[0], lats_right[-1], lats_left[-1]],
+            z_init=[min_alt, max_alt, max_alt, min_alt],
+        )
 
         buffered_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
@@ -395,8 +429,9 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
     return alt - dem.elevation(lon, lat)
 
 
-def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
-                    *, dem: eos.dem.DEM):
+def shrink_interval(
+    sensor_model, rows, cols, alts_min, alts_max, num_alt, *, dem: eos.dem.DEM
+):
     """
     Shrink a search interval by num_alt
 
@@ -447,16 +482,17 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
     # num_alt float
 
     # Take num_alt steps
-    potential_alt = np.linspace(
-        alts_min, alts_max, num_alt, axis=1)  # N x num_alt
+    potential_alt = np.linspace(alts_min, alts_max, num_alt, axis=1)  # N x num_alt
 
     # take actual localized points at different heights
     # Check height diff w.r.t. dem
-    alt_diff = localized_vs_dem(sensor_model,
-                                utils.hrepeat(rows, num_alt).ravel(),
-                                utils.hrepeat(cols, num_alt).ravel(),
-                                potential_alt.ravel(),
-                                dem)
+    alt_diff = localized_vs_dem(
+        sensor_model,
+        utils.hrepeat(rows, num_alt).ravel(),
+        utils.hrepeat(cols, num_alt).ravel(),
+        potential_alt.ravel(),
+        dem,
+    )
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
@@ -496,14 +532,23 @@ def shrink_interval(sensor_model, rows, cols, alts_min, alts_max, num_alt,
     _alts_max = potential_alt[line_ids, upper_ids]
     alts_diff1 = alt_diff[line_ids, lower_ids]
     alts_diff2 = alt_diff[line_ids, upper_ids]
-    masks = {"zeros": zero_mask, "valid": valid_mask,
-             "invalid": invalid_mask}
+    masks = {"zeros": zero_mask, "valid": valid_mask, "invalid": invalid_mask}
     return _alts_min, _alts_max, alts_diff1, alts_diff2, masks
 
 
-def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
-                              num_alt, max_iter=10, eps=1e-1,
-                              verbosity=False, *, dem: eos.dem.DEM):
+def recursive_shrink_interval(
+    sensor_model,
+    row,
+    col,
+    alt_min,
+    alt_max,
+    num_alt,
+    max_iter=10,
+    eps=1e-1,
+    verbosity=False,
+    *,
+    dem: eos.dem.DEM,
+):
     """
     Iteratively shrink the search interval for the altitude of a point.
 
@@ -570,14 +615,17 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
             col[iterate_mask],
             alts_min[iterate_mask],
             alts_max[iterate_mask],
-            num_alt, dem=dem)
+            num_alt,
+            dem=dem,
+        )
         # update masks
         zero_mask[iterate_mask] = masks["zeros"]
         invalid_mask[iterate_mask] = masks["invalid"]
         # stop iterating on some data
         _converged_mask = np.zeros(masks["valid"].shape, dtype=bool)
         _converged_mask[masks["valid"]] = (
-            am2[masks["valid"]] - am1[masks["valid"]]) < eps
+            am2[masks["valid"]] - am1[masks["valid"]]
+        ) < eps
         converged_mask[iterate_mask] = _converged_mask
         _converged_mask[masks["invalid"]] = True
         _converged_mask[masks["zeros"]] = True
@@ -597,11 +645,24 @@ def recursive_shrink_interval(sensor_model, row, col, alt_min, alt_max,
 
     # check if a scalar needs to be returned
     if len(row) == 1:
-        alts_min, alts_max, alts_diff1, alts_diff2, zero_mask,\
-            invalid_mask, converged_mask = alts_min[0], alts_max[0], alts_diff1[0],\
-            alts_diff2[0], zero_mask[0], invalid_mask[0], converged_mask[0]
+        (
+            alts_min,
+            alts_max,
+            alts_diff1,
+            alts_diff2,
+            zero_mask,
+            invalid_mask,
+            converged_mask,
+        ) = (
+            alts_min[0],
+            alts_max[0],
+            alts_diff1[0],
+            alts_diff2[0],
+            zero_mask[0],
+            invalid_mask[0],
+            converged_mask[0],
+        )
 
-    masks = {"zeros": zero_mask, "invalid": invalid_mask,
-             "converged": converged_mask}
+    masks = {"zeros": zero_mask, "invalid": invalid_mask, "converged": converged_mask}
 
     return alts_min, alts_max, alts_diff1, alts_diff2, masks

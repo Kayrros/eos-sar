@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+
 import numpy as np
 
 import eos.sar
@@ -9,7 +10,6 @@ import eos.sar
 
 @dataclass(frozen=True)
 class Sentinel1GRDSRGRMetadata:
-
     times: list[float]
     srgr_coeffs: list[list[float]]
     grsr_coeffs: list[list[float]]
@@ -18,8 +18,11 @@ class Sentinel1GRDSRGRMetadata:
 
     def __getitem__(self, name: str) -> Any:
         import warnings
-        warnings.warn("Indexing a Sentinel1GRDSRGRMetadata is deprecated (they no longer are dict).",
-                      DeprecationWarning)
+
+        warnings.warn(
+            "Indexing a Sentinel1GRDSRGRMetadata is deprecated (they no longer are dict).",
+            DeprecationWarning,
+        )
         return self.__dict__[name]
 
     def to_dict(self) -> dict[str, Any]:
@@ -87,7 +90,6 @@ def _evaluate(azt, x, times, coeffs, origins):
 
 
 class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
-
     def __init__(self, srgr_meta: Sentinel1GRDSRGRMetadata):
         super().__init__()
         self.times = np.asarray(srgr_meta.times)

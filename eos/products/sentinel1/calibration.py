@@ -1,11 +1,13 @@
-from typing import Any, Optional, Sequence, Union
-import numpy as np
-from numpy.typing import NDArray
-import xmltodict
 import datetime
-from eos.sar.io import ImageReader, Window
+from typing import Any, Optional, Sequence, Union
 
+import numpy as np
+import xmltodict
+from numpy.typing import NDArray
+
+from eos.sar.io import ImageReader, Window
 from eos.sar.roi import Roi
+
 from . import _calibration as _cal  # type: ignore
 
 
@@ -97,8 +99,10 @@ def _read_lut_from_noise_xml(xml):
         # /!\ this was modified from s1c
         noise_azimuth_vector_list = d["noiseAzimuthVectorList"]
         # for some reason, when @count is 1, the list is not considered as such
-        if int(noise_azimuth_vector_list['@count']) == 1:
-            noise_azimuth_vector_list = [noise_azimuth_vector_list["noiseAzimuthVector"], ]
+        if int(noise_azimuth_vector_list["@count"]) == 1:
+            noise_azimuth_vector_list = [
+                noise_azimuth_vector_list["noiseAzimuthVector"],
+            ]
         else:
             noise_azimuth_vector_list = noise_azimuth_vector_list["noiseAzimuthVector"]
         azimuth_blocks = _get_noise_azimuth_blocks(noise_azimuth_vector_list)
@@ -116,9 +120,11 @@ def _read_lut_from_noise_xml(xml):
         values.append(list(map(float, v[lut_key]["#text"].split())))
 
     # check lists lengths
-    if (len(lines) != len(pixels) or
-        len(pixels) != len(values) or
-            any(len(p) != len(v) for p, v in zip(pixels, values))):
+    if (
+        len(lines) != len(pixels)
+        or len(pixels) != len(values)
+        or any(len(p) != len(v) for p, v in zip(pixels, values))
+    ):
         raise RuntimeError("Unexpected data format in noise xml")
 
     return lines, pixels, values, azimuth_blocks
@@ -150,7 +156,7 @@ def _read_lut_from_calibration_xml(xml):
         "sigmaNought": [],
         "betaNought": [],
         "gamma": [],
-        "dn": []
+        "dn": [],
     }
     for v in d["calibrationVectorList"]["calibrationVector"]:
         lines.append(float(v["line"]))
@@ -162,8 +168,9 @@ def _read_lut_from_calibration_xml(xml):
     if len(lines) != len(pixels):
         raise CalibrationError("Unexpected data format in calibration xml")
     for k in values:
-        if (len(pixels) != len(values[k]) or
-                any(len(p) != len(v) for p, v in zip(pixels, values[k]))):
+        if len(pixels) != len(values[k]) or any(
+            len(p) != len(v) for p, v in zip(pixels, values[k])
+        ):
             raise CalibrationError("Unexpected data format in calibration xml")
 
     return lines, pixels, values
@@ -172,14 +179,19 @@ def _read_lut_from_calibration_xml(xml):
 def _bilinear_interpolation(window, lines, pixels, values):
     x, y, w, h = window
     if y + h > lines[-1]:
-        values = np.pad(values, ((0, 1), (0, 0)), mode='edge')
+        values = np.pad(values, ((0, 1), (0, 0)), mode="edge")
         lines = np.append(lines, y + h)
 
     if x + w > pixels[-1]:
-        values = np.pad(values, ((0, 0), (0, 1)), mode='edge')
+        values = np.pad(values, ((0, 0), (0, 1)), mode="edge")
         pixels = np.append(pixels, x + w)
 
-    res = _cal.bilinear_interpolation(window, lines.astype(np.int32), pixels.astype(np.int32), values.astype(np.float32))
+    res = _cal.bilinear_interpolation(
+        window,
+        lines.astype(np.int32),
+        pixels.astype(np.int32),
+        values.astype(np.float32),
+    )
     return res
 
 
@@ -188,19 +200,28 @@ def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_no
         assert img.dtype == np.complex64
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
-        _cal.apply_radiometric_calibration_complex64(img, calib_coeffs, noise_coeffs, dont_clip_noise)
+        _cal.apply_radiometric_calibration_complex64(
+            img, calib_coeffs, noise_coeffs, dont_clip_noise
+        )
         return img
     else:
         assert img.dtype == np.float32
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
-        _cal.apply_radiometric_calibration_float32(img, calib_coeffs, noise_coeffs, dont_clip_noise)
+        _cal.apply_radiometric_calibration_float32(
+            img, calib_coeffs, noise_coeffs, dont_clip_noise
+        )
         return img
 
 
 def _get_product_date(calibration_xml_content):
-    year, month, day = xmltodict.parse(calibration_xml_content)["calibration"][
-        "adsHeader"]["startTime"].split('T')[0].split('-')
+    year, month, day = (
+        xmltodict.parse(calibration_xml_content)["calibration"]["adsHeader"][
+            "startTime"
+        ]
+        .split("T")[0]
+        .split("-")
+    )
     return datetime.datetime(int(year), int(month), int(day))
 
 
@@ -217,9 +238,9 @@ class Sentinel1Calibrator:
         Expect some small differences between eos and SNAP because of this. Any other difference should be reported!
     """
 
-    def __init__(self,
-                 calibration_xml_content: str,
-                 noise_xml_content: Optional[str] = None):
+    def __init__(
+        self, calibration_xml_content: str, noise_xml_content: Optional[str] = None
+    ):
         self._date = _get_product_date(calibration_xml_content)
         self._load_calibration(calibration_xml_content)
         if noise_xml_content:
@@ -230,32 +251,34 @@ class Sentinel1Calibrator:
 
     def calibrate_inplace(self, image, roi, method, dont_clip_noise=False):
         """
-            Apply the radiometric calibration on the given raster, at position `window` of the SLC tif image.
+        Apply the radiometric calibration on the given raster, at position `window` of the SLC tif image.
 
-            Args
-                image (np.array): array of shape (h, w), of type float32 or complex64
-                roi (Roi): position in the source SLC tif image
-                method (str): 'sigma' | 'gamma' | 'beta'
-                dont_clip_noise (bool, default False):
-                    if true, during noise calibration, values are not clipped to 0 but stay positive
-                    this is what happens in the implementation of SNAP
+        Args
+            image (np.array): array of shape (h, w), of type float32 or complex64
+            roi (Roi): position in the source SLC tif image
+            method (str): 'sigma' | 'gamma' | 'beta'
+            dont_clip_noise (bool, default False):
+                if true, during noise calibration, values are not clipped to 0 but stay positive
+                this is what happens in the implementation of SNAP
 
-            Returns
-                the calibration is applied in-place, the returned array is the same instance as the input image
-                if you need an out-of-place calibration, copy the array first
+        Returns
+            the calibration is applied in-place, the returned array is the same instance as the input image
+            if you need an out-of-place calibration, copy the array first
         """
-        assert method in ('sigma', 'gamma', 'beta')
+        assert method in ("sigma", "gamma", "beta")
         assert image.shape == roi.get_shape()
 
         # IPF defines the calibration methods with 'Nought' postfix except for gamma
-        if method in ('sigma', 'beta'):
-            method += 'Nought'
+        if method in ("sigma", "beta"):
+            method += "Nought"
 
         window = roi.to_roi()
         calib_array = self._get_calibration_array(window, method)
         noise_array = self._get_noise_array(window) if self.has_noise else None
 
-        return _apply_radiometric_calibration(image, calib_array, noise_array, dont_clip_noise)
+        return _apply_radiometric_calibration(
+            image, calib_array, noise_array, dont_clip_noise
+        )
 
     def _load_calibration(self, calibration_xml_content):
         lines, pixels, values = _read_lut_from_calibration_xml(calibration_xml_content)
@@ -269,11 +292,16 @@ class Sentinel1Calibrator:
         # we kept only the first row of pixels, because they are all the same (it's a grid)
         assert all((p == self._pixels).all() for p in pixels)
         # we should have one value per grid node
-        assert len(self._lines) == len(self._values['gamma'])
-        assert len(self._lines) * len(self._pixels) == np.asarray(self._values['gamma']).size
+        assert len(self._lines) == len(self._values["gamma"])
+        assert (
+            len(self._lines) * len(self._pixels)
+            == np.asarray(self._values["gamma"]).size
+        )
 
     def _load_noise(self, noise_xml_content):
-        lines, pixels, values, azimuth_blocks = _read_lut_from_noise_xml(noise_xml_content)
+        lines, pixels, values, azimuth_blocks = _read_lut_from_noise_xml(
+            noise_xml_content
+        )
 
         self._noise_lines = np.array(lines)
 
@@ -285,7 +313,9 @@ class Sentinel1Calibrator:
         # get the noise values according to the new pixels
         self._noise_values = np.zeros((len(lines), self._noise_pixels.size))
         for i in range(len(values)):
-            self._noise_values[i, :] = np.interp(self._noise_pixels, pixels[i], values[i])
+            self._noise_values[i, :] = np.interp(
+                self._noise_pixels, pixels[i], values[i]
+            )
             # some noise maps have negative values, which creates signal during the calibration
             # so we clip to 0 the noise map
             # ex: S1B_IW_GRDH_1SDV_20210605T230132_20210605T230150_027227_0340A2_9DF3 vv (lon lat -68.43241, -8.13822)
@@ -300,7 +330,10 @@ class Sentinel1Calibrator:
 
         # we should have one value per grid node
         assert len(self._noise_lines) == len(self._noise_values)
-        assert len(self._noise_lines) * len(self._noise_pixels) == np.asarray(self._noise_values).size
+        assert (
+            len(self._noise_lines) * len(self._noise_pixels)
+            == np.asarray(self._noise_values).size
+        )
 
         if azimuth_blocks is not None:
             self._noise_azimuth_block = azimuth_blocks[0]
@@ -312,12 +345,18 @@ class Sentinel1Calibrator:
         return _bilinear_interpolation(window, self._lines, self._pixels, values)
 
     def _get_noise_array(self, window):
-        range_noise = _bilinear_interpolation(window, self._noise_lines, self._noise_pixels, self._noise_values)
+        range_noise = _bilinear_interpolation(
+            window, self._noise_lines, self._noise_pixels, self._noise_values
+        )
 
         if self._noise_azimuth_block is not None:
             _, y, _, h = window
             ys = np.arange(y, y + h, dtype=np.int16)
-            azimuth_noise = np.interp(ys, self._noise_azimuth_block.lines, self._noise_azimuth_block.noise_azimuth_LUT)
+            azimuth_noise = np.interp(
+                ys,
+                self._noise_azimuth_block.lines,
+                self._noise_azimuth_block.noise_azimuth_LUT,
+            )
             range_noise *= azimuth_noise[:, None]
 
         # Scaling factor to apply while calibrating, following IPF version. Based on doc:
@@ -332,11 +371,13 @@ class Sentinel1Calibrator:
 class CalibrationReader(ImageReader):
     """Class to calibrate after reading the data"""
 
-    def __init__(self,
-                 reader: ImageReader,
-                 calibrator: Sentinel1Calibrator,
-                 method: str,
-                 dont_clip_noise: bool = False):
+    def __init__(
+        self,
+        reader: ImageReader,
+        calibrator: Sentinel1Calibrator,
+        method: str,
+        dont_clip_noise: bool = False,
+    ):
         """
         Constructor.
 
@@ -362,10 +403,12 @@ class CalibrationReader(ImageReader):
         self.method = method
         self.dont_clip_noise = dont_clip_noise
 
-    def read(self,
-             indexes: Optional[Union[int, Sequence[int]]],
-             window: Window,
-             **kwargs: Any) -> NDArray[Any]:
+    def read(
+        self,
+        indexes: Optional[Union[int, Sequence[int]]],
+        window: Window,
+        **kwargs: Any,
+    ) -> NDArray[Any]:
         """
         Read and calibrate the data.
 

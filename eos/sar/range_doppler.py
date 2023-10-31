@@ -1,13 +1,14 @@
 """Range Doppler physical sensor model for projection and localization."""
 
 import numpy as np
-from eos.sar import const
-from eos.sar import geoconfig
+
+from eos.sar import const, geoconfig
 from eos.sar.orbit import Orbit
 
 
-def iterative_projection(orbit: Orbit, gx, gy, gz, azt_init=None,
-                         max_iterations=20, tol=1.2 * 1e-7):
+def iterative_projection(
+    orbit: Orbit, gx, gy, gz, azt_init=None, max_iterations=20, tol=1.2 * 1e-7
+):
     """Solves the point of closest approach using the Newton-Raphson algorithm.
 
     Parameters
@@ -42,7 +43,7 @@ def iterative_projection(orbit: Orbit, gx, gy, gz, azt_init=None,
     else:
         azt_curr = np.array(azt_init)
     # mask on points on which to iterate
-    index = np.ones((len(azt_curr), ), dtype=bool)
+    index = np.ones((len(azt_curr),), dtype=bool)
     # initialization of step
     dazt = np.ones_like(azt_curr)
     # Newton-Raphson iterations
@@ -65,9 +66,9 @@ def iterative_projection(orbit: Orbit, gx, gy, gz, azt_init=None,
     return azt_curr, rng, i
 
 
-def ascending_node_crossing_time(orbit: Orbit,
-                                 max_iterations: int = 20,
-                                 tol: float = 1.2 * 1e-7) -> float:
+def ascending_node_crossing_time(
+    orbit: Orbit, max_iterations: int = 20, tol: float = 1.2 * 1e-7
+) -> float:
     """Find the azimuth time solving `orbit(azt).z = 0`.
     The orbit instance should be defined around the solution.
 
@@ -154,11 +155,13 @@ def get_E_dE(azt, orbit: Orbit, M):
     dE = term1 - term2
     return E, dE
 
+
 # localization functions
 
 
-def iterative_localization(orbit: Orbit, azt, rng, alt, gxyz_init,
-                           max_iterations=10000, tol=0.01):
+def iterative_localization(
+    orbit: Orbit, azt, rng, alt, gxyz_init, max_iterations=10000, tol=0.01
+):
     """Solves the Range-Doppler equations for a set of points using \
         the Newton-Raphson method.
 
@@ -216,17 +219,22 @@ def iterative_localization(orbit: Orbit, azt, rng, alt, gxyz_init,
     # P is variable that will change throughout the iterations
     P = np.column_stack(gxyz_init)
     # init
-    ell_axis = np.array([const.EARTH_WGS84_AXIS_A_M,
-                         const.EARTH_WGS84_AXIS_A_M,
-                         const.EARTH_WGS84_AXIS_B_M]).reshape(1, 3)
+    ell_axis = np.array(
+        [
+            const.EARTH_WGS84_AXIS_A_M,
+            const.EARTH_WGS84_AXIS_A_M,
+            const.EARTH_WGS84_AXIS_B_M,
+        ]
+    ).reshape(1, 3)
     ell_axis = ell_axis + np.reshape(alt, (N, 1))  # (N, 3)
     # mask on points on which to iterate
     index = np.ones((N,), dtype=bool)
     step = np.ones((N, 3))
     # iterate
     for i in range(max_iterations):
-        step[index] = get_step(P[index], satPos[index],
-                               satV[index], rng[index], ell_axis[index])
+        step[index] = get_step(
+            P[index], satPos[index], satV[index], rng[index], ell_axis[index]
+        )
         P[index] += step[index]
         index = np.any(np.abs(step) > tol, axis=1)
         if index.sum() == 0:
@@ -267,12 +275,12 @@ def get_step(P, satPos, satV, rng, ell_axis):
     LOS = P - satPos  # (N, 3)
     # compute F(xyz)
     F[:, 0] = np.sum(satV * LOS, axis=1)
-    F[:, 1] = np.linalg.norm(LOS, axis=1) ** 2 - rng ** 2
-    F[:, 2] = np.sum((P / ell_axis)**2, axis=1) - 1
+    F[:, 1] = np.linalg.norm(LOS, axis=1) ** 2 - rng**2
+    F[:, 2] = np.sum((P / ell_axis) ** 2, axis=1) - 1
     # compute the jacobian matrix
     delta[:, 0, :] = satV
     delta[:, 1, :] = 2 * LOS
-    delta[:, 2, :] = 2 * P / (ell_axis ** 2)
+    delta[:, 2, :] = 2 * P / (ell_axis**2)
     # find the step in xyz
     step = np.linalg.solve(delta, -F)
     return step

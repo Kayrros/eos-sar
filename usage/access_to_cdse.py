@@ -2,8 +2,7 @@ import os
 
 import boto3
 
-from eos.products.sentinel1.product import \
-    CDSEUnzippedSafeSentinel1SLCProductInfo
+from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 
 session = boto3.Session(
     aws_access_key_id=os.environ["CDSE_ACCESS_KEY_ID"],

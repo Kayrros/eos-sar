@@ -1,6 +1,6 @@
-from functools import partial
 import itertools
 import multiprocessing.dummy
+from functools import partial
 
 import numpy as np
 from scipy.ndimage import uniform_filter
@@ -25,7 +25,7 @@ def triangular_filter(step: int):
     """
     half_size = 2 * step
     curr_idx = np.arange(4 * step)
-    filt_tri = 1 - np.abs(curr_idx - half_size + .5) / half_size
+    filt_tri = 1 - np.abs(curr_idx - half_size + 0.5) / half_size
     # divide by 2 to normalize, because of stride of step
     tri_row = filt_tri / 2
     return np.outer(tri_row, tri_row)
@@ -99,7 +99,9 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
     [1] R. M. Goldstein and C. L. Werner, “Radar interferogram filtering for geophysical applications,” 1998.
 
     """
-    assert patch_roi.get_shape() == filt_triangle.shape, "Patches and triangular filter must have the same shape"
+    assert (
+        patch_roi.get_shape() == filt_triangle.shape
+    ), "Patches and triangular filter must have the same shape"
 
     fft_win = patch_roi.crop_array(full_ifg)
     nan_mask = np.isnan(fft_win)
@@ -116,8 +118,9 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
 
     fft_win = np.fft.fft2(fft_win)
 
-    filtered = uniform_filter(np.fft.fftshift(np.abs(fft_win)),
-                              size=window_size, mode='wrap')
+    filtered = uniform_filter(
+        np.fft.fftshift(np.abs(fft_win)), size=window_size, mode="wrap"
+    )
 
     filtered = np.fft.ifftshift(filtered) ** alpha
 
@@ -194,15 +197,18 @@ def pad_img(img, step: int):
     up_pad, down_pad = dim_padding(h, step)
     left_pad, right_pad = dim_padding(w, step)
 
-    padded_img = np.pad(img, ((up_pad, down_pad), (left_pad, right_pad)),
-                        constant_values=np.nan)
+    padded_img = np.pad(
+        img, ((up_pad, down_pad), (left_pad, right_pad)), constant_values=np.nan
+    )
 
     orig_roi = Roi(left_pad, up_pad, w, h)
 
     return padded_img, orig_roi
 
 
-def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers: int = 1):
+def apply(
+    img, step: int = 8, window_size: int = 5, alpha: float = 0.5, nworkers: int = 1
+):
     """
     Apply the Goldstein filtering for an Interferogram. If the img contains NaNs, the output
     image will contain NaNs at the same location. NaNs are converted to zeros in the computation
@@ -232,7 +238,9 @@ def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers:
     """
     assert img.dtype in (np.csingle, np.cdouble)
     assert alpha >= 0 and alpha <= 1, "alpha out of bounds"
-    assert window_size < 4 * step, "smoothing window size should be less than patch size"
+    assert (
+        window_size < 4 * step
+    ), "smoothing window size should be less than patch size"
 
     filt_triangle = triangular_filter(step)
 
@@ -242,8 +250,13 @@ def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers:
 
     patch_roi_generator = extract_patch_rois(img.shape, step)
 
-    proc_window = partial(transform_one_window, full_ifg=img, alpha=alpha,
-                          window_size=window_size, filt_triangle=filt_triangle)
+    proc_window = partial(
+        transform_one_window,
+        full_ifg=img,
+        alpha=alpha,
+        window_size=window_size,
+        filt_triangle=filt_triangle,
+    )
 
     if nworkers > 1:
         pool = multiprocessing.dummy.Pool(nworkers)
@@ -253,7 +266,7 @@ def apply(img, step: int = 8, window_size: int = 5, alpha: float = .5, nworkers:
 
     for patch_roi, transformed_win in result:
         col, row, w, h = patch_roi.to_roi()
-        out_image[row:row + h, col:col + w] += transformed_win
+        out_image[row : row + h, col : col + w] += transformed_win
 
     if nworkers > 1:
         pool.close()

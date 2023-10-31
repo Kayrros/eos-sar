@@ -31,7 +31,7 @@ def fourier_zoom(image, z=2):
     ft = np.fft.fftshift(np.fft.fft2(image))
 
     # the zoom-in is performed by zero padding the Fourier transform
-    ft = np.pad(ft, [(top, bottom), (left, right)], 'constant', constant_values=0 + 0j)
+    ft = np.pad(ft, [(top, bottom), (left, right)], "constant", constant_values=0 + 0j)
 
     # apply ifftshift before taking the inverse Fourier transform
     out = np.fft.ifft2(np.fft.ifftshift(ft))

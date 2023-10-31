@@ -1,13 +1,14 @@
 import numpy as np
-from eos.sar.fourier_zoom import fourier_zoom
 import pytest
+
+from eos.sar.fourier_zoom import fourier_zoom
 
 val_range = range(1, 8)
 
 
-@pytest.mark.parametrize('w', val_range)
-@pytest.mark.parametrize('h', val_range)
-@pytest.mark.parametrize('z', val_range)
+@pytest.mark.parametrize("w", val_range)
+@pytest.mark.parametrize("h", val_range)
+@pytest.mark.parametrize("z", val_range)
 def test_fourier_zoom(w, h, z):
     """
     Generate a random image of specified shape and zoom with specified zoom factor.

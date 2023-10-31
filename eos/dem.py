@@ -1,33 +1,37 @@
 from __future__ import annotations
-import abc
-from dataclasses import dataclass
-import os
-from typing import Any, Iterable, Union
-from typing_extensions import TypeAlias
-import affine
-import warnings
 
+import abc
+import os
+import warnings
+from dataclasses import dataclass
+from typing import Any, Iterable, Union
+
+import affine
 import numpy as np
-from numpy.typing import ArrayLike, NDArray
 import rasterio
-import rasterio.session
 import rasterio.errors
+import rasterio.session
 import rasterio.windows
+from numpy.typing import ArrayLike, NDArray
+from typing_extensions import TypeAlias
 
 try:
     import multidem
+
     has_multidem = True
 except ImportError:
     has_multidem = False
 
 try:
     import srtm4
+
     has_srtm4 = True
 except ImportError:
     has_srtm4 = False
 
 try:
     import dem_stitcher
+
     has_demstitcher = True
 except ImportError:
     has_demstitcher = False
@@ -49,18 +53,20 @@ def write_crop_to_file(array, transform, crs, path):
         path (str): path to output file
     """
     height, width = array.shape
-    profile = dict(driver="GTiff",
-                   count=1,
-                   width=width,
-                   height=height,
-                   dtype=array.dtype,
-                   transform=transform,
-                   crs=crs,
-                   tiled=True,
-                   compress="deflate",
-                   predictor=2,
-                   blockxsize=256,
-                   blockysize=256)
+    profile = dict(
+        driver="GTiff",
+        count=1,
+        width=width,
+        height=height,
+        dtype=array.dtype,
+        transform=transform,
+        crs=crs,
+        tiled=True,
+        compress="deflate",
+        predictor=2,
+        blockxsize=256,
+        blockysize=256,
+    )
 
     with rasterio.open(path, "w", **profile) as f:
         f.write(array, 1)
@@ -97,7 +103,10 @@ def _bilinear_interp(array, x, y):
     u, v = ones - dx, ones - dy
 
     h_interp = (
-        u * v * array[:, 0, 0] + dx * v * array[:, 0, 1] + u * dy * array[:, 1, 0] + dx * dy * array[:, 1, 1]
+        u * v * array[:, 0, 0]
+        + dx * v * array[:, 0, 1]
+        + u * dy * array[:, 1, 0]
+        + dx * dy * array[:, 1, 1]
     )
 
     return np.around(h_interp, 5)
@@ -122,18 +131,25 @@ class DEM:
 
     def _assert_in_raster(self, xmin: float, xmax: float, ymin: float, ymax: float):
         if xmin < 0:
-            raise OutOfBoundsException(f"x coord min {xmin} negative, out of raster bounds")
+            raise OutOfBoundsException(
+                f"x coord min {xmin} negative, out of raster bounds"
+            )
         if xmax > self.array.shape[1] - 1:
-            raise OutOfBoundsException(f"x coord max {xmax}, out of raster bounds, shape: {self.array.shape}")
+            raise OutOfBoundsException(
+                f"x coord max {xmax}, out of raster bounds, shape: {self.array.shape}"
+            )
         if ymin < 0:
-            raise OutOfBoundsException(f"y coord min {ymin} negative, out of raster bounds")
+            raise OutOfBoundsException(
+                f"y coord min {ymin} negative, out of raster bounds"
+            )
         if ymax > self.array.shape[0] - 1:
-            raise OutOfBoundsException(f"y coord max {ymax}, out of raster bounds, shape: {self.array.shape}")
+            raise OutOfBoundsException(
+                f"y coord max {ymax}, out of raster bounds, shape: {self.array.shape}"
+            )
 
-    def elevation(self,
-                  lons: ArrayLike,
-                  lats: ArrayLike,
-                  interpolation: str = "bilinear") -> Union[float, list[float], NDArray[np.float32]]:
+    def elevation(
+        self, lons: ArrayLike, lats: ArrayLike, interpolation: str = "bilinear"
+    ) -> Union[float, list[float], NDArray[np.float32]]:
         """
         Gives the altitude of a (list of) point(s).
 
@@ -165,13 +181,15 @@ class DEM:
         self._assert_in_raster(xmin, xmax, ymin, ymax)
 
         if interpolation == "nearest":
-            alts = np.array([self.array[int(round(y)), int(round(x))] for x, y in zip(*img_coords)])
+            alts = np.array(
+                [self.array[int(round(y)), int(round(x))] for x, y in zip(*img_coords)]
+            )
         else:
             dem_subparts = []
             for x, y in zip(img_coords[0], img_coords[1]):
                 xx = int(x)
                 yy = int(y)
-                window = self.array[yy:yy + 2, xx:xx + 2]
+                window = self.array[yy : yy + 2, xx : xx + 2]
                 dem_subparts.append(window)
 
             dem_subparts = np.stack(dem_subparts, axis=0)
@@ -213,7 +231,7 @@ class DEM:
 
         self._assert_in_raster(xmin, xmax, ymin, ymax)
 
-        array = self.array[ymin:ymax + 1, xmin:xmax + 1]
+        array = self.array[ymin : ymax + 1, xmin : xmax + 1]
         resx = self.transform.a
         resy = self.transform.e
         transform = affine.Affine.translation(xmin * resx, ymin * resy) * self.transform
@@ -272,29 +290,31 @@ class DEMSource(abc.ABC):
 
 @dataclass(frozen=True)
 class SRTM4Source(DEMSource):
-
     def fetch_dem(self, bounds: Bounds) -> DEM:
         array, transform, crs = srtm4.crop(bounds, datum="ellipsoidal")
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert transform is not None
-        assert crs == 'EPSG:4326'
+        assert crs == "EPSG:4326"
         return DEM(array=array, transform=transform)
 
     def elevation(self, lons, lats, interpolation="bilinear"):
-        warnings.warn("DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
-                      DeprecationWarning)
+        warnings.warn(
+            "DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
+            DeprecationWarning,
+        )
         assert interpolation == "bilinear"
         return srtm4.srtm4(lons, lats)
 
     def crop(self, bounds):
-        warnings.warn("DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
-                      DeprecationWarning)
+        warnings.warn(
+            "DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
+            DeprecationWarning,
+        )
         return srtm4.crop(bounds, datum="ellipsoidal")
 
 
 class MultidemSource(DEMSource):
-
     def __init__(self, demsource="SRTM30"):
         """
         Args:
@@ -305,32 +325,44 @@ class MultidemSource(DEMSource):
         self.demsource = demsource
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
-        array, transform, crs = multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
+        array, transform, crs = multidem.crop(
+            bounds, source=self.demsource, datum="ellipsoidal"
+        )
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
-        assert crs == 'EPSG:4326'
+        assert crs == "EPSG:4326"
         return DEM(array=array, transform=transform)
 
     def elevation(self, lons, lats, interpolation="bilinear"):
-        warnings.warn("DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
-                      DeprecationWarning)
-        return multidem.elevation(lons, lats, interpolation=interpolation,
-                                  source=self.demsource, datum="ellipsoidal")
+        warnings.warn(
+            "DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
+            DeprecationWarning,
+        )
+        return multidem.elevation(
+            lons,
+            lats,
+            interpolation=interpolation,
+            source=self.demsource,
+            datum="ellipsoidal",
+        )
 
     def crop(self, bounds):
-        warnings.warn("DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
-                      DeprecationWarning)
+        warnings.warn(
+            "DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
+            DeprecationWarning,
+        )
         return multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
 
 
 @dataclass(frozen=True)
 class DEMStitcherSource(DEMSource):
-
     dem_name: str = "glo30"
     """ see https://github.com/ACCESS-Cloud-Based-InSAR/dem-stitcher#dems-supported """
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
-        array, profile = dem_stitcher.stitch_dem(list(bounds), "glo_30", merge_nodata_value=0)
+        array, profile = dem_stitcher.stitch_dem(
+            list(bounds), "glo_30", merge_nodata_value=0
+        )
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
@@ -340,10 +372,12 @@ class DEMStitcherSource(DEMSource):
 
 def get_any_source() -> DEMSource:
     if has_multidem:
-        demsource = os.environ.get('EOS_SAR_MULTIDEM_SOURCE', 'SRTM30')
+        demsource = os.environ.get("EOS_SAR_MULTIDEM_SOURCE", "SRTM30")
         return MultidemSource(demsource)
     if has_srtm4:
         return SRTM4Source()
     if has_demstitcher:
         return DEMStitcherSource()
-    raise RuntimeError("couldn't find a DEM source; please install multidem, srtm4 or dem-stitcher.")
+    raise RuntimeError(
+        "couldn't find a DEM source; please install multidem, srtm4 or dem-stitcher."
+    )

@@ -1,14 +1,15 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
 
 import cv2
-import shapely.geometry
 import numpy as np
 import rasterio
 import rasterio.warp
+import shapely.geometry
 
-from eos.sar import model, regist
 import eos.dem
+from eos.sar import model, regist
 
 
 @dataclass
@@ -49,8 +50,7 @@ def _compute_transform_shape(crs, res, bbox, align=None):
     tuple of float
         Extent of the bbox
     """
-    left, bottom, right, top = rasterio.warp.transform_bounds(
-        'epsg:4326', crs, *bbox)
+    left, bottom, right, top = rasterio.warp.transform_bounds("epsg:4326", crs, *bbox)
 
     if align and (align % res > 0):
         raise AlignmentError
@@ -75,7 +75,7 @@ def _utm_zone_of_bbox(bbox):
     zone = int(((bbox[0] + bbox[2]) / 2 + 180) // 6 + 1)
     const = 32600 if bbox[1] + bbox[3] > 0 else 32700
     epsg = const + zone
-    return f'epsg:{epsg}'
+    return f"epsg:{epsg}"
 
 
 class _DEMInfo:
@@ -102,14 +102,14 @@ class _DEMInfo:
 
 
 class Orthorectifier:
-
     shape: tuple
     transform: rasterio.Affine
     crs: rasterio.CRS
 
     @staticmethod
-    def from_roi(proj_model, roi, resolution, dem: eos.dem.DEM,
-                 crs=None, align=None) -> Orthorectifier:
+    def from_roi(
+        proj_model, roi, resolution, dem: eos.dem.DEM, crs=None, align=None
+    ) -> Orthorectifier:
         coords, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
         geometry = shapely.geometry.Polygon(coords)
         bbox = geometry.bounds
@@ -120,13 +120,21 @@ class Orthorectifier:
         transform, shape, _ = _compute_transform_shape(crs, resolution, bbox, align)
         origin_col, origin_row = roi.get_origin()
         deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
-        ortho = Orthorectifier(proj_model, deminfo, origin_col, origin_row, crs, transform, shape)
+        ortho = Orthorectifier(
+            proj_model, deminfo, origin_col, origin_row, crs, transform, shape
+        )
         return ortho
 
     @staticmethod
-    def from_transform(proj_model, roi, crs, transform, shape,
-                       dem: eos.dem.DEM,
-                       previous_orthorectifier=None) -> Orthorectifier:
+    def from_transform(
+        proj_model,
+        roi,
+        crs,
+        transform,
+        shape,
+        dem: eos.dem.DEM,
+        previous_orthorectifier=None,
+    ) -> Orthorectifier:
         if previous_orthorectifier:
             assert previous_orthorectifier.crs == crs
             assert previous_orthorectifier.transform == transform
@@ -136,18 +144,21 @@ class Orthorectifier:
             deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
 
         origin_col, origin_row = roi.get_origin()
-        ortho = Orthorectifier(proj_model, deminfo, origin_col, origin_row, crs, transform, shape)
+        ortho = Orthorectifier(
+            proj_model, deminfo, origin_col, origin_row, crs, transform, shape
+        )
         return ortho
 
-    def __init__(self,
-                 proj_model: model.SensorModel,
-                 deminfo: _DEMInfo,
-                 origin_col,
-                 origin_row,
-                 dst_crs,
-                 dst_transform,
-                 dst_shape,
-                 ):
+    def __init__(
+        self,
+        proj_model: model.SensorModel,
+        deminfo: _DEMInfo,
+        origin_col,
+        origin_row,
+        dst_crs,
+        dst_transform,
+        dst_shape,
+    ):
         rows, cols, _ = proj_model.projection(deminfo.x, deminfo.y, deminfo.alt)
         rows = rows.reshape(deminfo.shape)
         cols = cols.reshape(deminfo.shape)
@@ -158,7 +169,8 @@ class Orthorectifier:
         dst_map_c = np.full(dst_shape, np.nan, dtype=np.float32)
 
         rasterio.warp.reproject(
-            cols, dst_map_c,
+            cols,
+            dst_map_c,
             dtype=np.float32,
             src_crs=deminfo.crs,
             src_transform=deminfo.transform,
@@ -169,7 +181,8 @@ class Orthorectifier:
             resampling=rasterio.warp.Resampling.bilinear,
         )
         rasterio.warp.reproject(
-            rows, dst_map_r,
+            rows,
+            dst_map_r,
             dtype=np.float32,
             src_crs=deminfo.crs,
             src_transform=deminfo.transform,
@@ -200,6 +213,6 @@ class Orthorectifier:
                 self._map_y,
                 interpolation=interpolation.cv2_flag,
                 borderMode=cv2.BORDER_CONSTANT,
-                borderValue=np.nan
+                borderValue=np.nan,
             )
         return out
