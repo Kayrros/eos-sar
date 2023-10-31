@@ -2,6 +2,7 @@ import os
 import io
 import glob
 import datetime
+import warnings
 import functools
 from typing import Any, Optional, Sequence, Union
 
@@ -192,6 +193,8 @@ def retrieve_statevectors_using_local_folder(path,
     Raises
         FileNotFoundError: if no orbit file is found for the product_info
     '''
+    warnings.warn("the sentinel1.orbits module is deprecated, use sentinel1.orbit_catalog instead.",
+                  DeprecationWarning)
 
     def source(date, missionid, type):
         file = search_valid_orbit_files_from_local_folder(path, (date, missionid), type)
@@ -228,6 +231,8 @@ def retrieve_statevectors_using_phoenix(
     Raises
         FileNotFoundError: if no orbit file is found for the product_info
     '''
+    warnings.warn("the sentinel1.orbits module is deprecated, use sentinel1.orbit_catalog instead.",
+                  DeprecationWarning)
 
     import phoenix.catalog
 
