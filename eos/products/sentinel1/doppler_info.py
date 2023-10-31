@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import numpy as np
+
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar.orbit import Orbit
 
 
-def doppler_from_meta(burst_meta: Sentinel1BurstMetadata,
-                      orbit: Orbit) -> Sentinel1Doppler:
+def doppler_from_meta(
+    burst_meta: Sentinel1BurstMetadata, orbit: Orbit
+) -> Sentinel1Doppler:
     """
     Construct a Sentinel1Doppler object from burst metadata.
 
@@ -36,12 +38,11 @@ def doppler_from_meta(burst_meta: Sentinel1BurstMetadata,
         dc_estimate_poly=burst_meta.dc_estimate_poly,
         steering_rate=burst_meta.steering_rate,
         wave_length=burst_meta.wave_length,
-        orbit=orbit
+        orbit=orbit,
     )
 
 
 class Sentinel1Doppler:
-
     def to_dict(self):
         return dict(
             mid_swath_slrt=self.mid_swath_slrt,
@@ -49,24 +50,37 @@ class Sentinel1Doppler:
             az_fm_info=self.az_fm_info,
             dc_t0=self.dc_t0,
             dc_poly=self.dc_poly,
-            krot=self.krot)
+            krot=self.krot,
+        )
 
     @staticmethod
     def from_dict(dop_dict):
         return Sentinel1Doppler(
-            dop_dict["mid_swath_slrt"], dop_dict["burst_mid_time"],
-            dop_dict["az_fm_info"], dop_dict["dc_t0"],
-            dop_dict["dc_poly"], dop_dict["krot"])
+            dop_dict["mid_swath_slrt"],
+            dop_dict["burst_mid_time"],
+            dop_dict["az_fm_info"],
+            dop_dict["dc_t0"],
+            dop_dict["dc_poly"],
+            dop_dict["krot"],
+        )
 
     @staticmethod
-    def from_meta_fields(lines_per_burst, samples_per_burst,
-                         azimuth_frequency, range_frequency, slant_range_time,
-                         burst_times,
-                         az_fm_times, az_fm_info,
-                         dc_estimate_time, dc_estimate_t0, dc_estimate_poly,
-                         steering_rate, wave_length,
-                         orbit: Orbit,
-                         ):
+    def from_meta_fields(
+        lines_per_burst,
+        samples_per_burst,
+        azimuth_frequency,
+        range_frequency,
+        slant_range_time,
+        burst_times,
+        az_fm_times,
+        az_fm_info,
+        dc_estimate_time,
+        dc_estimate_t0,
+        dc_estimate_poly,
+        steering_rate,
+        wave_length,
+        orbit: Orbit,
+    ):
         """Instantiate a Sentinel1Doppler object from fields easily obtained from metadata.
 
         Parameters
@@ -112,17 +126,16 @@ class Sentinel1Doppler:
             Orbit instance
         """
 
-        mid_swath_slrt = (samples_per_burst / 2) / range_frequency \
-            + slant_range_time
+        mid_swath_slrt = (samples_per_burst / 2) / range_frequency + slant_range_time
 
         # get the burst deramping info
         # burst mid time
-        burst_mid_time = burst_times[0] + \
-            (lines_per_burst - 1) / (2 * azimuth_frequency)
+        burst_mid_time = burst_times[0] + (lines_per_burst - 1) / (
+            2 * azimuth_frequency
+        )
 
         # find the times closest to mid time of metadata polys
-        az_fm_info_burst = az_fm_info[find_nearest_index(
-            az_fm_times, burst_mid_time)]
+        az_fm_info_burst = az_fm_info[find_nearest_index(az_fm_times, burst_mid_time)]
 
         dc_id = find_nearest_index(dc_estimate_time, burst_mid_time)
 
@@ -135,10 +148,13 @@ class Sentinel1Doppler:
         # doppler rate due to rotation of EM beam
         krot = 2 * speed * steering_rate / wave_length
 
-        return Sentinel1Doppler(mid_swath_slrt, burst_mid_time, az_fm_info_burst, dc_t0,
-                                dc_poly, krot)
+        return Sentinel1Doppler(
+            mid_swath_slrt, burst_mid_time, az_fm_info_burst, dc_t0, dc_poly, krot
+        )
 
-    def __init__(self, mid_swath_slrt, burst_mid_time, az_fm_info, dc_t0, dc_poly, krot):
+    def __init__(
+        self, mid_swath_slrt, burst_mid_time, az_fm_info, dc_t0, dc_poly, krot
+    ):
         """
         Instantiate Doppler object with the necessary fields for it to function properly.
 
@@ -185,8 +201,8 @@ class Sentinel1Doppler:
             range dependent Doppler rate.
         """
         return np.polynomial.polynomial.polyval(
-            slrt - self.az_fm_info[0],
-            self.az_fm_info[1:4])
+            slrt - self.az_fm_info[0], self.az_fm_info[1:4]
+        )
 
     def get_dop_centroid(self, slrt):
         """Compute the doppler centroid at range time (slrt).
@@ -225,8 +241,9 @@ class Sentinel1Doppler:
         dop_centroid_mid = self.get_dop_centroid(self.mid_swath_slrt)
         rg_dpt_dop_rate_mid = self.get_rg_dpt_dop_rate(self.mid_swath_slrt)
 
-        ref_time = dop_centroid_mid / rg_dpt_dop_rate_mid - \
-            dop_centroid / rg_dpt_dop_rate
+        ref_time = (
+            dop_centroid_mid / rg_dpt_dop_rate_mid - dop_centroid / rg_dpt_dop_rate
+        )
 
         return ref_time
 

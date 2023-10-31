@@ -1,14 +1,15 @@
-import numpy as np
-import time
-from ortools.graph.python import min_cost_flow
-from numpy.typing import NDArray
-from typing import Any
 import logging
+import time
+from enum import Enum
+from typing import Any  # noqa
+
+import numpy as np
+from numpy.typing import NDArray
+from ortools.graph.python import min_cost_flow
+from scipy.optimize import linprog
+from scipy.sparse import block_diag, diags, hstack
 
 from eos.sar.utils import wrap
-from scipy.sparse import diags, hstack, block_diag
-from scipy.optimize import linprog
-from enum import Enum
 
 RealArray = NDArray["np.floating[Any]"]
 
@@ -67,7 +68,7 @@ def compute_residue(vert_grad1: RealArray, horiz_grad2: RealArray):
 
     """
     residue = np.diff(vert_grad1, axis=1) - np.diff(horiz_grad2, axis=0)
-    residue = - residue / (2 * np.pi)
+    residue = -residue / (2 * np.pi)
     residue = round_assert_almost_int(residue)
 
     in_mask = np.isin(residue, [-1, 0, 1])
@@ -197,7 +198,8 @@ def solve_smcf(residue: NDArray[np.int8]):
     # construct object
     smcf = min_cost_flow.SimpleMinCostFlow()
     all_arcs = smcf.add_arcs_with_capacity_and_unit_cost(
-        start_nodes, end_nodes, capacities, unit_costs)
+        start_nodes, end_nodes, capacities, unit_costs
+    )
     smcf.set_nodes_supplies(np.arange(0, len(supplies)), supplies)
 
     # solve
@@ -211,6 +213,7 @@ def solve_smcf(residue: NDArray[np.int8]):
     flows = smcf.flows(all_arcs)
 
     return flows
+
 
 # scipy variant
 
@@ -233,8 +236,9 @@ def get_horiz_grad_mat(image_shape: tuple[int, int]):
     h, w = image_shape
     ones = np.ones((w - 1,), dtype=np.int8)
     # gradient matrix for 1 line of the image
-    line_grad_mat = diags([-ones, ones], offsets=[0, 1], shape=(w - 1, w),
-                          format="coo", dtype=np.int8)
+    line_grad_mat = diags(
+        [-ones, ones], offsets=[0, 1], shape=(w - 1, w), format="coo", dtype=np.int8
+    )
     # repeat it for each line
     horiz_grad_mat = block_diag([line_grad_mat] * h)
     return horiz_grad_mat
@@ -259,8 +263,13 @@ def get_vert_grad_mat(image_shape: tuple[int, int]):
     out_size = (h - 1) * w
     ones = np.ones(out_size, dtype=np.int8)
 
-    vert_grad_mat = diags([-ones, ones], offsets=[0, w], shape=(out_size, h * w),
-                          format="coo", dtype=np.int8)
+    vert_grad_mat = diags(
+        [-ones, ones],
+        offsets=[0, w],
+        shape=(out_size, h * w),
+        format="coo",
+        dtype=np.int8,
+    )
 
     return vert_grad_mat
 
@@ -388,10 +397,12 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
     """
 
     # assert at least one is 0
-    assert np.all(np.logical_or(x1_plus == 0, x1_minus == 0)
-                  ), "horizontal flow error: at leat one flow from + and - should be zero"
-    assert np.all(np.logical_or(x2_plus == 0, x2_minus == 0)
-                  ), "vertical flow error: at leat one flow from + and - should be zero"
+    assert np.all(
+        np.logical_or(x1_plus == 0, x1_minus == 0)
+    ), "horizontal flow error: at leat one flow from + and - should be zero"
+    assert np.all(
+        np.logical_or(x2_plus == 0, x2_minus == 0)
+    ), "vertical flow error: at leat one flow from + and - should be zero"
 
     K1 = x1_plus - x1_minus
     K2 = x2_plus - x2_minus
@@ -401,6 +412,7 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
 
 class MCFSolver(Enum):
     """Enum for the solver."""
+
     SMCF = 0
     SCIPY = 1
 
@@ -450,8 +462,7 @@ def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray, mcf_solver: MCFSolve
     num_non_zero = np.sum(residue != 0)
     tot = (N - 1) * (M - 1)
     perctg = (num_non_zero / tot) * 100
-    logging.info(
-        f"Number of non zero residue : {num_non_zero} / {tot} = {perctg} %")
+    logging.info(f"Number of non zero residue : {num_non_zero} / {tot} = {perctg} %")
 
     if mcf_solver == MCFSolver.SMCF:
         # constructing MCF graph and solving for the flows
@@ -472,14 +483,17 @@ def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray, mcf_solver: MCFSolve
     del flows
 
     # adding ambiguities to get unwrapped gradients
-    grad1_unwrapped_phase = (w_vert_grad_array1 +
-                             2 * np.pi * K1).astype(wrapped_phase.dtype)
-    grad2_unwrapped_phase = (w_horiz_grad_array2 +
-                             2 * np.pi * K2).astype(wrapped_phase.dtype)
+    grad1_unwrapped_phase = (w_vert_grad_array1 + 2 * np.pi * K1).astype(
+        wrapped_phase.dtype
+    )
+    grad2_unwrapped_phase = (w_horiz_grad_array2 + 2 * np.pi * K2).astype(
+        wrapped_phase.dtype
+    )
 
     # assert true gradient field
-    true_grad = np.all(compute_residue(
-        grad1_unwrapped_phase, grad2_unwrapped_phase) == 0)
+    true_grad = np.all(
+        compute_residue(grad1_unwrapped_phase, grad2_unwrapped_phase) == 0
+    )
 
     assert true_grad, "non zero residue detected: the gradient estimated by MCF is not a true gradient field"
     logging.info("The gradient estimated by MCF is a true gradient field")
@@ -487,7 +501,9 @@ def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray, mcf_solver: MCFSolve
     return grad1_unwrapped_phase, grad2_unwrapped_phase
 
 
-def integrate_gradient_field(grad1: RealArray, grad2: RealArray, upper_left_val: float = 0.):
+def integrate_gradient_field(
+    grad1: RealArray, grad2: RealArray, upper_left_val: float = 0.0
+):
     """
     Integrate a gradient field (rasters of vertical and horizontal gradients) to get the image. We start
     from the upper left value and go from left to right, down one line, then right to left, down one line, until
@@ -540,10 +556,10 @@ def integrate_gradient_field(grad1: RealArray, grad2: RealArray, upper_left_val:
 
         if is_odd:
             # go from right to left, need to also invert gradient sign
-            cumsum = last_cumsum + np.cumsum(- grad2[i, ::-1])
+            cumsum = last_cumsum + np.cumsum(-grad2[i, ::-1])
 
             # set horizontal row from right to left, skipping first element
-            integrated[i, M - 2::-1] = cumsum
+            integrated[i, M - 2 :: -1] = cumsum
 
             # update cumsum
             last_cumsum = cumsum[-1]
@@ -597,10 +613,12 @@ def mcf(wrapped_phase: RealArray, mcf_solver: MCFSolver = MCFSolver.SMCF):
     """
     # estimate unwrapped phase gradients with MCF method
     grad1_unwrapped, grad2_unwrapped = mcf_estim_unwrapped_gradients(
-        wrapped_phase, mcf_solver)
+        wrapped_phase, mcf_solver
+    )
 
-    unwrapped_phase = integrate_gradient_field(grad1_unwrapped, grad2_unwrapped,
-                                               wrapped_phase[0, 0])
+    unwrapped_phase = integrate_gradient_field(
+        grad1_unwrapped, grad2_unwrapped, wrapped_phase[0, 0]
+    )
 
     # avoid cumulating small floating precision errors during gradient integration
     # this seems to bring a very small overhead from profiling

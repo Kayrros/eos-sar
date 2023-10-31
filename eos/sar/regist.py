@@ -1,9 +1,11 @@
 """Generic registration functions."""
-import numpy as np
-import cv2
 import abc
-from eos.sar import utils
+
+import cv2
+import numpy as np
+
 import eos.dem
+from eos.sar import utils
 from eos.sar.model import SensorModel
 
 
@@ -32,8 +34,10 @@ def affine_transformation(src, dst):
     """
     # check that there are at least 3 points
     if len(src) < 3:
-        print("ERROR: estimation.affine_transformation\
-              needs 3 correspondences")
+        print(
+            "ERROR: estimation.affine_transformation\
+              needs 3 correspondences"
+        )
         return np.eye(3)
 
     # translate the input points so that the centroid is at the origin.
@@ -49,13 +53,13 @@ def affine_transformation(src, dst):
     # matrix A. See Hartley and Zissermann for details.  These are the first
     # two lines of matrix V (because np.linalg.svd returns V^T)
     _, _, V = np.linalg.svd(A, full_matrices=False)
-#    print(S)
+    #    print(S)
     v1 = V[0, :]
     v2 = V[1, :]
 
     # compute blocks B and C, then H
     tmp = np.vstack((v1, v2)).T
-    assert (np.shape(tmp) == (4, 2))
+    assert np.shape(tmp) == (4, 2)
     B = tmp[0:2, :]
     C = tmp[2:4, :]
     H = np.dot(C, np.linalg.inv(B))
@@ -107,13 +111,15 @@ def dem_points(geometry, dem: eos.dem.DEM, outfile=None):
     return x, y, raster, transform, crs
 
 
-def get_registration_dem_pts(primary_model: SensorModel,
-                             roi=None,
-                             margin=0,
-                             sampling_ratio=0.01,
-                             *,
-                             dem: eos.dem.DEM,
-                             outfile=None):
+def get_registration_dem_pts(
+    primary_model: SensorModel,
+    roi=None,
+    margin=0,
+    sampling_ratio=0.01,
+    *,
+    dem: eos.dem.DEM,
+    outfile=None,
+):
     """
     Get pts sampled on the dem to be used for the registration.
 
@@ -162,9 +168,9 @@ def get_registration_dem_pts(primary_model: SensorModel,
     return x_sampled, y_sampled, raster_sampled, crs
 
 
-def orbital_registration(row_primary, col_primary,
-                         secondary_model: SensorModel,
-                         x, y, raster, crs):
+def orbital_registration(
+    row_primary, col_primary, secondary_model: SensorModel, x, y, raster, crs
+):
     """Compute registration matrix between primary and secondary model.
 
     Parameters
@@ -195,7 +201,8 @@ def orbital_registration(row_primary, col_primary,
     # some points will exceed the burst bounds,
     # however this does not harm registration
     row_secondary, col_secondary, _ = secondary_model.projection(
-        x.ravel(), y.ravel(), raster.ravel(), crs=crs)
+        x.ravel(), y.ravel(), raster.ravel(), crs=crs
+    )
 
     # fit affine matrix
     primary_pts = np.column_stack([row_primary.ravel(), col_primary.ravel()])
@@ -246,7 +253,7 @@ def apply_affine(src_array, matrix, destination_array_shape):
 
     if src_array.dtype == np.complex64:
         h, w = src_array.shape
-        img = src_array.copy(order='C')  # ensures contiguous data and C order
+        img = src_array.copy(order="C")  # ensures contiguous data and C order
         img = img.view(dtype=np.float32)  # now data is float
         img = img.reshape([h, w, 2])  # now data is float2
 
@@ -302,7 +309,9 @@ class SarResample(abc.ABC):
         """
         if src_array.dtype == np.complex64:
             # deramp, resample, reramp
-            dst_array = apply_affine(self.deramp(src_array), self.matrix, self.dst_shape)
+            dst_array = apply_affine(
+                self.deramp(src_array), self.matrix, self.dst_shape
+            )
             if reramp:
                 dst_array = self.reramp(dst_array)
         else:
@@ -334,7 +343,7 @@ def change_resamp_mat_orig(row_dst, col_dst, row_src, col_src, A):
 
     """
     T_dst_inv = translation_matrix(col_dst, row_dst)
-    T_src = translation_matrix(- col_src, - row_src)
+    T_src = translation_matrix(-col_src, -row_src)
     return T_src.dot(A.dot(T_dst_inv))
 
 

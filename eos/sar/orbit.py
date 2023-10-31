@@ -1,12 +1,13 @@
 """Encapsulation of ephemerides position and speed interpolation."""
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any
-import warnings
 
 import numpy as np
 from numpy.typing import NDArray
+
 from eos.sar import cheb
 
 
@@ -17,8 +18,10 @@ class StateVector:
     velocity: tuple[float, float, float]
 
     def __getitem__(self, name: str) -> Any:
-        warnings.warn("Indexing a StateVector is deprecated (they no longer are dict).",
-                      DeprecationWarning)
+        warnings.warn(
+            "Indexing a StateVector is deprecated (they no longer are dict).",
+            DeprecationWarning,
+        )
         return self.__dict__[name]
 
     def to_dict(self) -> dict[str, Any]:
@@ -55,9 +58,11 @@ class Orbit:
         # from accepting a list[dict] to a list[StateVector]
         if self.sv and isinstance(self.sv[0], dict):
             self.sv = [StateVector.from_dict(s) for s in self.sv]  # type: ignore
-            warnings.warn("The Orbit constructor will no longer accept a list of dict for the sv parameter. "
-                          "Use StateVector.from_dict or Orbit.from_dict(dict(state_vectors=sv)) instead.",
-                          DeprecationWarning)
+            warnings.warn(
+                "The Orbit constructor will no longer accept a list of dict for the sv parameter. "
+                "Use StateVector.from_dict or Orbit.from_dict(dict(state_vectors=sv)) instead.",
+                DeprecationWarning,
+            )
         self.fit()
 
     def fit(self):
@@ -67,8 +72,9 @@ class Orbit:
         self.coeffs.append(coeffs)
         # Also store the speed/acc coefficients
         for i in range(2):
-            self.coeffs.append(cheb.get_diff_coeffs(
-                self.coeffs[-1], self.cheb_domain, der=1))
+            self.coeffs.append(
+                cheb.get_diff_coeffs(self.coeffs[-1], self.cheb_domain, der=1)
+            )
 
     def evaluate(self, azt, order=0):
         """Evaluate the nth order derivative of the position of satellite
@@ -90,8 +96,7 @@ class Orbit:
         if order < 3:
             coeff = self.coeffs[order]
         else:
-            coeff = cheb.get_diff_coeffs(
-                self.coeffs[0], self.cheb_domain, der=order)
+            coeff = cheb.get_diff_coeffs(self.coeffs[0], self.cheb_domain, der=order)
         return cheb.evaluate_cheb_interp(azt, coeff, self.cheb_domain)
 
     def to_dict(self) -> dict[str, Any]:

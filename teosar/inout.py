@@ -1,17 +1,20 @@
-from typing import Optional
-import requests.exceptions
 import json
 import os
-import tifffile
+from typing import Optional
+
 import rasterio
+import requests.exceptions
+import tifffile
 
 import eos.products.sentinel1 as s1
 from eos.sar import io
-from eos.sar.orbit import Orbit, StateVector
+from eos.sar.orbit import StateVector
 from eos.sar.roi import Roi
 
 
-def get_inputs_for_date(product_ids, swath, product_provider, statevectors: Optional[list[StateVector]], pol):
+def get_inputs_for_date(
+    product_ids, swath, product_provider, statevectors: Optional[list[StateVector]], pol
+):
     products = []
     for pid in product_ids:
         try:
@@ -232,9 +235,9 @@ class DirectoryReader:
         if roi is None:
             return reader.read().squeeze()
         else:
-            if type(roi) == Roi:
+            if isinstance(roi, Roi):
                 return io.read_window(reader, roi, get_complex)
-            elif type(roi) == list:
+            elif isinstance(roi, list):
                 return io.read_windows(reader, roi, get_complex)
             else:
                 print("unrecognized type")

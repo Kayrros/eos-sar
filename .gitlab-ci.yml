@@ -23,14 +23,15 @@ test:
 checkstyle:
   stage: test
   before_script:
-    - pip install flake8~=6.0.0
+    - pip install ruff~=0.1.3
   script:
-    - flake8 --show-source .
+    - ruff check .
+    - ruff format --check .
 
 mypy:
   stage: test
   before_script:
-    - pip install mypy~=1.4.0 cython numpy
+    - pip install mypy~=1.6.0 cython numpy
     - pip install -e ".[test]"
   script:
     - mypy --non-interactive eos/ tests/ usage/

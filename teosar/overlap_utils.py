@@ -1,6 +1,6 @@
 import eos.products.sentinel1 as s1
-from eos.sar.roi import Roi
 from eos.products.sentinel1.overlap import Osid
+from eos.sar.roi import Roi
 
 
 class OverlapRoiInfo:

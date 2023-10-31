@@ -1,18 +1,18 @@
-from eos.products.sentinel1 import proj_model
-from eos.products.sentinel1 import metadata
-from eos.products.sentinel1 import burst_resamp
-from eos.products.sentinel1 import deburst
-from eos.products.sentinel1 import orbits
-from eos.products.sentinel1 import doppler_info
-from eos.products.sentinel1 import regist
-from eos.products.sentinel1 import calibration
-from eos.products.sentinel1 import overlap
-from eos.products.sentinel1 import acquisition
-from eos.products.sentinel1 import assembler
-from eos.products.sentinel1 import product
-from eos.products.sentinel1 import coordinate_correction
-from eos.products.sentinel1 import srgr
-from eos.products.sentinel1 import border_noise_grd
-from eos.products.sentinel1 import mosaic_zoom
-from eos.products.sentinel1 import catalog
-from eos.products.sentinel1 import orbit_catalog
+from eos.products.sentinel1 import acquisition as acquisition
+from eos.products.sentinel1 import assembler as assembler
+from eos.products.sentinel1 import border_noise_grd as border_noise_grd
+from eos.products.sentinel1 import burst_resamp as burst_resamp
+from eos.products.sentinel1 import calibration as calibration
+from eos.products.sentinel1 import catalog as catalog
+from eos.products.sentinel1 import coordinate_correction as coordinate_correction
+from eos.products.sentinel1 import deburst as deburst
+from eos.products.sentinel1 import doppler_info as doppler_info
+from eos.products.sentinel1 import metadata as metadata
+from eos.products.sentinel1 import mosaic_zoom as mosaic_zoom
+from eos.products.sentinel1 import orbit_catalog as orbit_catalog
+from eos.products.sentinel1 import orbits as orbits
+from eos.products.sentinel1 import overlap as overlap
+from eos.products.sentinel1 import product as product
+from eos.products.sentinel1 import proj_model as proj_model
+from eos.products.sentinel1 import regist as regist
+from eos.products.sentinel1 import srgr as srgr

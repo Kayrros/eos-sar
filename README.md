@@ -65,17 +65,12 @@ For the future, all tests should be able to run locally, but test data should be
 
 ### Code formatting
 
-The CI validates the code against pep8 rules, as configured in `pyproject.toml` and `setup.cfg`.
+The CI validates the code against pep8 rules and formatting, as configured in `pyproject.toml`.
 
 You can check your code locally before commiting using:
 ```bash
-pip install flake8
-flake8 .
-```
-
-You can use autopep8 to autoformat your code:
-```bash
-autopep8 eos/ tests/
+pip install ruff~=0.1.3
+ruff check . --fix; ruff format .
 ```
 
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.

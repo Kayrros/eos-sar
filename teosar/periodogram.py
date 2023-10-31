@@ -1,11 +1,14 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 from abc import ABC, abstractmethod
-import numpy as np
+from dataclasses import dataclass
 from typing import Optional
+
+import numpy as np
+import tqdm
 from numpy.typing import NDArray
 from scipy.optimize import minimize
-import tqdm
+
 from teosar import psutils
 
 
@@ -165,7 +168,7 @@ class CompoundModel(BaseModel):
         ), f"Expected {self.d} elements in theta_single"
         pred = 0
         for mod, pos, d in zip(self.models, self.begin_positions, self.dims):
-            pred = pred + mod.predict_single(theta_single[pos: pos + d])
+            pred = pred + mod.predict_single(theta_single[pos : pos + d])
         return pred
 
     # override base method

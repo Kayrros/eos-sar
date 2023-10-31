@@ -1,22 +1,21 @@
-import pytest
 import numpy as np
+import pytest
+
 from eos.sar import goldstein_filter
 
 
-@pytest.mark.parametrize('step', (4, 8))
-@pytest.mark.parametrize('window_size', (3, 4, 5))
-@pytest.mark.parametrize('alpha', (0, 0.5, 1))
-@pytest.mark.parametrize('nworkers', (1, 4))
+@pytest.mark.parametrize("step", (4, 8))
+@pytest.mark.parametrize("window_size", (3, 4, 5))
+@pytest.mark.parametrize("alpha", (0, 0.5, 1))
+@pytest.mark.parametrize("nworkers", (1, 4))
 def test_goldstein(step, window_size, alpha, nworkers):
     h = w = 256
     ifg = np.random.randn(h, w, 2).view(np.cdouble).squeeze()
-    filtered = goldstein_filter.apply(
-        ifg, step, window_size, alpha, nworkers)
+    filtered = goldstein_filter.apply(ifg, step, window_size, alpha, nworkers)
     assert filtered.dtype == np.complex128
 
     ifg = ifg.astype(np.complex64)
-    filtered = goldstein_filter.apply(
-        ifg, step, window_size, alpha, nworkers)
+    filtered = goldstein_filter.apply(ifg, step, window_size, alpha, nworkers)
 
     assert filtered.dtype == np.complex64
 
@@ -25,25 +24,22 @@ def test_goldstein_wrong_img_type():
     h = w = 256
     ifg = np.random.randn(h, w)
     with pytest.raises(AssertionError):
-        goldstein_filter.apply(
-            ifg)
+        goldstein_filter.apply(ifg)
 
 
-@pytest.mark.parametrize('alpha', (-1.1, 2))
+@pytest.mark.parametrize("alpha", (-1.1, 2))
 def test_goldstein_wrong_alpha_bound(alpha):
     h = w = 256
     ifg = np.random.randn(h, w, 2).view(np.cdouble).squeeze()
     with pytest.raises(AssertionError):
-        goldstein_filter.apply(
-            ifg, alpha=alpha)
+        goldstein_filter.apply(ifg, alpha=alpha)
 
 
 def test_goldstein_wrong_win_size():
     h = w = 256
     ifg = np.random.randn(h, w, 2).view(np.cdouble).squeeze()
     with pytest.raises(AssertionError):
-        goldstein_filter.apply(
-            ifg, step=8, window_size=33)
+        goldstein_filter.apply(ifg, step=8, window_size=33)
 
 
 def apply_tri_by_patches_and_recombine(img, step):
@@ -56,7 +52,7 @@ def apply_tri_by_patches_and_recombine(img, step):
 
     for roi in patch_roi_generator:
         col, row, w, h = roi.to_roi()
-        out_image[row: row + h, col:col + w] += filt_triangle * roi.crop_array(img)
+        out_image[row : row + h, col : col + w] += filt_triangle * roi.crop_array(img)
 
     return orig_roi.crop_array(out_image)
 

@@ -4,15 +4,18 @@ from __future__ import annotations
 import numpy as np
 
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
-from eos.sar import regist, roi, io
+from eos.sar import io, regist, roi
 
 from . import doppler_info
 
 
-def burst_resample_from_meta(burst_meta: Sentinel1BurstMetadata,
-                             dst_burst_shape: tuple[int, int],
-                             matrix,
-                             doppler: doppler_info.Sentinel1Doppler, **kwargs) -> Sentinel1BurstResample:
+def burst_resample_from_meta(
+    burst_meta: Sentinel1BurstMetadata,
+    dst_burst_shape: tuple[int, int],
+    matrix,
+    doppler: doppler_info.Sentinel1Doppler,
+    **kwargs,
+) -> Sentinel1BurstResample:
     """Create a Sentinel1BurstResample instance from a Sentinel1Model\
     instance and additional parameters.
 
@@ -35,12 +38,18 @@ def burst_resample_from_meta(burst_meta: Sentinel1BurstMetadata,
         Instance that can be used to resample the complex burst array.
     """
 
-    return Sentinel1BurstResample(burst_meta.burst_roi, dst_burst_shape, matrix, doppler,
-                                  burst_meta.lines_per_burst,
-                                  burst_meta.azimuth_frequency,
-                                  burst_meta.range_frequency,
-                                  burst_meta.slant_range_time,
-                                  burst_meta.burst_times, **kwargs)
+    return Sentinel1BurstResample(
+        burst_meta.burst_roi,
+        dst_burst_shape,
+        matrix,
+        doppler,
+        burst_meta.lines_per_burst,
+        burst_meta.azimuth_frequency,
+        burst_meta.range_frequency,
+        burst_meta.slant_range_time,
+        burst_meta.burst_times,
+        **kwargs,
+    )
 
 
 class Sentinel1BurstResample(regist.SarResample):
@@ -63,7 +72,7 @@ class Sentinel1BurstResample(regist.SarResample):
             slant_range_time=self.slant_range_time,
             burst_times=self.burst_times,
             dst_roi_in_burst=self.dst_roi_in_burst.to_roi(),
-            src_roi_in_burst=self.src_roi_in_burst.to_roi()
+            src_roi_in_burst=self.src_roi_in_burst.to_roi(),
         )
 
     @staticmethod
@@ -79,13 +88,23 @@ class Sentinel1BurstResample(regist.SarResample):
             slant_range_time=bresamp_dict["slant_range_time"],
             burst_times=bresamp_dict["burst_times"],
             dst_roi_in_burst=roi.Roi.from_roi_tuple(bresamp_dict["dst_roi_in_burst"]),
-            src_roi_in_burst=roi.Roi.from_roi_tuple(bresamp_dict["src_roi_in_burst"]))
+            src_roi_in_burst=roi.Roi.from_roi_tuple(bresamp_dict["src_roi_in_burst"]),
+        )
 
-    def __init__(self, src_burst_roi, dst_burst_shape, burst_matrix,
-                 doppler: doppler_info.Sentinel1Doppler,
-                 lines_per_burst,
-                 azimuth_frequency, range_frequency, slant_range_time,
-                 burst_times, dst_roi_in_burst=None, src_roi_in_burst=None):
+    def __init__(
+        self,
+        src_burst_roi,
+        dst_burst_shape,
+        burst_matrix,
+        doppler: doppler_info.Sentinel1Doppler,
+        lines_per_burst,
+        azimuth_frequency,
+        range_frequency,
+        slant_range_time,
+        burst_times,
+        dst_roi_in_burst=None,
+        src_roi_in_burst=None,
+    ):
         """Instantiate a Sentinel1BurstResample object.
 
         Parameters
@@ -143,9 +162,9 @@ class Sentinel1BurstResample(regist.SarResample):
         col_dst, row_dst, w_dst, h_dst = dst_roi_in_burst.to_roi()
 
         # adapt the matrix
-        self.matrix = regist.change_resamp_mat_orig(row_dst, col_dst,
-                                                    row_src, col_src,
-                                                    self.burst_matrix)
+        self.matrix = regist.change_resamp_mat_orig(
+            row_dst, col_dst, row_src, col_src, self.burst_matrix
+        )
         # set self.src_roi_in_burst
         self.src_roi_in_burst = src_roi_in_burst
 
@@ -167,8 +186,8 @@ class Sentinel1BurstResample(regist.SarResample):
         self.burst_times = burst_times
 
     def get_resampler_on_different_roi(
-            self, dst_roi_in_burst: roi.Roi,
-            src_roi_in_burst: roi.Roi):
+        self, dst_roi_in_burst: roi.Roi, src_roi_in_burst: roi.Roi
+    ):
         """
         Create a new instance (copy), but on different roi.
 
@@ -187,11 +206,18 @@ class Sentinel1BurstResample(regist.SarResample):
         """
         # create a new instance with similar stuff, but on different roi
         return Sentinel1BurstResample(
-            self.src_burst_roi.to_roi(), self.dst_burst_shape,
-            self.burst_matrix, self.doppler,
-            self.lines_per_burst, self.azimuth_frequency, self.range_frequency,
-            self.slant_range_time, self.burst_times,
-            dst_roi_in_burst, src_roi_in_burst)
+            self.src_burst_roi.to_roi(),
+            self.dst_burst_shape,
+            self.burst_matrix,
+            self.doppler,
+            self.lines_per_burst,
+            self.azimuth_frequency,
+            self.range_frequency,
+            self.slant_range_time,
+            self.burst_times,
+            dst_roi_in_burst,
+            src_roi_in_burst,
+        )
 
     def src_roi_from_dst_roi(self, dst_roi_in_burst, margin=5):
         """
@@ -212,8 +238,11 @@ class Sentinel1BurstResample(regist.SarResample):
 
         """
         src_roi_in_burst = dst_roi_in_burst.warp_valid_roi(
-            self.dst_burst_shape, self.src_burst_roi.get_shape(),
-            self.burst_matrix, margin=margin)
+            self.dst_burst_shape,
+            self.src_burst_roi.get_shape(),
+            self.burst_matrix,
+            margin=margin,
+        )
         return src_roi_in_burst
 
     def to_eta_slrt(self, row, col):
@@ -239,14 +268,21 @@ class Sentinel1BurstResample(regist.SarResample):
             the azimuth frequency is shifted along the aquisition.
 
         """
-        eta = (self.burst_times[1] - self.burst_times[0]) \
-            + (row - (self.lines_per_burst - 1) / 2) / self.azimuth_frequency
-        slrt = (self.src_burst_roi.col + col) / self.range_frequency \
-            + self.slant_range_time
+        eta = (self.burst_times[1] - self.burst_times[0]) + (
+            row - (self.lines_per_burst - 1) / 2
+        ) / self.azimuth_frequency
+        slrt = (
+            self.src_burst_roi.col + col
+        ) / self.range_frequency + self.slant_range_time
         return eta, slrt
 
-    def get_doppler_params(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                           matrix_to_doppler_frame_roi=None):
+    def get_doppler_params(
+        self,
+        rows_roi,
+        cols_roi,
+        roi_origin_in_doppler_frame,
+        matrix_to_doppler_frame_roi=None,
+    ):
         """
         Get the Doppler parameters for a set of rows, cols locations within a roi.
         The roi in this function is with respect to the burst.
@@ -287,16 +323,27 @@ class Sentinel1BurstResample(regist.SarResample):
 
         if matrix_to_doppler_frame_roi is not None:
             # in this case, ensure that given arrays are of the same length (points)
-            assert len(rows_roi) == len(cols_roi), "Cols and Rows arrays must be of same length."
+            assert len(rows_roi) == len(
+                cols_roi
+            ), "Cols and Rows arrays must be of same length."
             # homogeneous coordinates
             dst_points = np.vstack(
-                [rows_roi_in_dop_frame, cols_roi_in_dop_frame, np.ones_like(rows_roi_in_dop_frame)])
+                [
+                    rows_roi_in_dop_frame,
+                    cols_roi_in_dop_frame,
+                    np.ones_like(rows_roi_in_dop_frame),
+                ]
+            )
             # grid at src
-            rows_roi_in_dop_frame, cols_roi_in_dop_frame = matrix_to_doppler_frame_roi.dot(dst_points)[:2]
+            (
+                rows_roi_in_dop_frame,
+                cols_roi_in_dop_frame,
+            ) = matrix_to_doppler_frame_roi.dot(dst_points)[:2]
             del dst_points
 
-        eta, slrt = self.to_eta_slrt(rows_roi_in_dop_frame + row_roi,
-                                     cols_roi_in_dop_frame + col_roi)
+        eta, slrt = self.to_eta_slrt(
+            rows_roi_in_dop_frame + row_roi, cols_roi_in_dop_frame + col_roi
+        )
         del rows_roi_in_dop_frame
         del cols_roi_in_dop_frame
 
@@ -310,8 +357,13 @@ class Sentinel1BurstResample(regist.SarResample):
 
         return eta, ref_time, dop_centroid, dop_rate
 
-    def get_doppler_params_gridded(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                                   matrix_to_doppler_frame_roi=None):
+    def get_doppler_params_gridded(
+        self,
+        rows_roi,
+        cols_roi,
+        roi_origin_in_doppler_frame,
+        matrix_to_doppler_frame_roi=None,
+    ):
         """
         Get the Doppler parameters for a set of locations within a roi (reference to a burst)
         defined by the meshgrid of the given rows_roi, cols_roi.
@@ -349,7 +401,11 @@ class Sentinel1BurstResample(regist.SarResample):
         del cols_roi_mesh
 
         eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
-            rows_roi_pts, cols_roi_pts, roi_origin_in_doppler_frame, matrix_to_doppler_frame_roi)
+            rows_roi_pts,
+            cols_roi_pts,
+            roi_origin_in_doppler_frame,
+            matrix_to_doppler_frame_roi,
+        )
 
         out_shape = (len(rows_roi), (len(cols_roi)))
 
@@ -360,8 +416,13 @@ class Sentinel1BurstResample(regist.SarResample):
 
         return eta, ref_time, dop_centroid, dop_rate
 
-    def get_phi_ramp(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                     matrix_to_doppler_frame_roi=None):
+    def get_phi_ramp(
+        self,
+        rows_roi,
+        cols_roi,
+        roi_origin_in_doppler_frame,
+        matrix_to_doppler_frame_roi=None,
+    ):
         """
         Get the phase ramp present in the data at certain locations within a
         roi (reference to a burst) defined by the points (rows_roi, cols_roi).
@@ -383,19 +444,26 @@ class Sentinel1BurstResample(regist.SarResample):
         phi : np.ndarray, (npts, ).
             Phase ramp, i.e. the parabola present in the data because of the TOPSAR mode.
         """
-        assert len(rows_roi) == len(cols_roi), "Cols and Rows arrays must be of same length."
+        assert len(rows_roi) == len(
+            cols_roi
+        ), "Cols and Rows arrays must be of same length."
         eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
-            rows_roi, cols_roi, roi_origin_in_doppler_frame, matrix_to_doppler_frame_roi)
+            rows_roi, cols_roi, roi_origin_in_doppler_frame, matrix_to_doppler_frame_roi
+        )
 
         deta = eta - ref_time
 
-        phi = (np.pi * dop_rate * deta +
-               2 * np.pi * dop_centroid) * deta
+        phi = (np.pi * dop_rate * deta + 2 * np.pi * dop_centroid) * deta
 
         return phi
 
-    def get_phi_ramp_gridded(self, rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                             matrix_to_doppler_frame_roi=None):
+    def get_phi_ramp_gridded(
+        self,
+        rows_roi,
+        cols_roi,
+        roi_origin_in_doppler_frame,
+        matrix_to_doppler_frame_roi=None,
+    ):
         """
         Get the phase ramp present in the data at certain locations within a
         roi (reference to a burst) defined by the meshgrid of the given rows_roi, cols_roi.
@@ -420,7 +488,8 @@ class Sentinel1BurstResample(regist.SarResample):
         if matrix_to_doppler_frame_roi is None:
             # already in the doppler frame
             eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
-                rows_roi, cols_roi, roi_origin_in_doppler_frame)
+                rows_roi, cols_roi, roi_origin_in_doppler_frame
+            )
             # reshape the 1D vectors for broadcasting
             dop_centroid = dop_centroid[None, :]
             ref_time = ref_time[None, :]
@@ -428,13 +497,15 @@ class Sentinel1BurstResample(regist.SarResample):
             eta = eta[:, None]
         else:
             eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params_gridded(
-                rows_roi, cols_roi, roi_origin_in_doppler_frame,
-                matrix_to_doppler_frame_roi)
+                rows_roi,
+                cols_roi,
+                roi_origin_in_doppler_frame,
+                matrix_to_doppler_frame_roi,
+            )
 
         deta = eta - ref_time
 
-        phi = (np.pi * dop_rate * deta +
-               2 * np.pi * dop_centroid) * deta
+        phi = (np.pi * dop_rate * deta + 2 * np.pi * dop_centroid) * deta
 
         return phi
 
@@ -455,12 +526,13 @@ class Sentinel1BurstResample(regist.SarResample):
             done after this step.
 
         """
-        assert src_array.shape == self.src_roi_in_burst.get_shape(), "src array is not of the expected shape"
+        assert (
+            src_array.shape == self.src_roi_in_burst.get_shape()
+        ), "src array is not of the expected shape"
 
         col0, row0, w, h = self.src_roi_in_burst.to_roi()
 
-        phi = - self.get_phi_ramp_gridded(np.arange(h), np.arange(w),
-                                          (col0, row0))
+        phi = -self.get_phi_ramp_gridded(np.arange(h), np.arange(w), (col0, row0))
 
         deramping_func = np.exp(1j * phi, dtype=np.complex64)
 
@@ -483,11 +555,16 @@ class Sentinel1BurstResample(regist.SarResample):
             Reramped burst.
 
         """
-        assert dst_array.shape == self.dst_shape, "destination array is not of the expected shape"
+        assert (
+            dst_array.shape == self.dst_shape
+        ), "destination array is not of the expected shape"
 
-        phi = self.get_phi_ramp_gridded(np.arange(self.dst_shape[0]), np.arange(self.dst_shape[1]),
-                                        self.src_roi_in_burst.get_origin(),
-                                        matrix_to_doppler_frame_roi=self.matrix)
+        phi = self.get_phi_ramp_gridded(
+            np.arange(self.dst_shape[0]),
+            np.arange(self.dst_shape[1]),
+            self.src_roi_in_burst.get_origin(),
+            matrix_to_doppler_frame_roi=self.matrix,
+        )
 
         reramping_func = np.exp(1j * phi, dtype=np.complex64)
 
@@ -497,8 +574,13 @@ class Sentinel1BurstResample(regist.SarResample):
 class ResampledBurstResampler(regist.SarResample):
     """Class to Resample a roi again within a resampled roi."""
 
-    def __init__(self, src_roi_within_dst_roi, backward_matrix, dst_shape,
-                 previous_burst_resampler):
+    def __init__(
+        self,
+        src_roi_within_dst_roi,
+        backward_matrix,
+        dst_shape,
+        previous_burst_resampler,
+    ):
         """
         Constructor.
 
@@ -544,10 +626,12 @@ class ResampledBurstResampler(regist.SarResample):
 
         assert src_array.shape == (h, w), "source array is not of the expected shape"
 
-        phi = - self.previous_burst_resampler.get_phi_ramp_gridded(
-            np.arange(row, row + h), np.arange(col, col + w),
+        phi = -self.previous_burst_resampler.get_phi_ramp_gridded(
+            np.arange(row, row + h),
+            np.arange(col, col + w),
             self.previous_burst_resampler.src_roi_in_burst.get_origin(),
-            matrix_to_doppler_frame_roi=self.previous_burst_resampler.matrix)
+            matrix_to_doppler_frame_roi=self.previous_burst_resampler.matrix,
+        )
 
         deramping_func = np.exp(1j * phi, dtype=np.complex64)
 
@@ -568,30 +652,36 @@ class ResampledBurstResampler(regist.SarResample):
             Reramped array.
 
         """
-        assert dst_array.shape == self.dst_shape, "destination array is not of the expected shape"
+        assert (
+            dst_array.shape == self.dst_shape
+        ), "destination array is not of the expected shape"
 
         # All of the work is in the matrix to doppler params
         # self.matrix takes from dst to src
         # a translation must be added to go the dst roi of the previous resampler
         # then previous resampler matrix should be enough
         matrix_to_doppler_frame_roi = self.previous_burst_resampler.matrix.dot(
-            regist.translation_matrix(*self.src_roi_within_dst_roi.get_origin())).dot(
-                self.matrix)
+            regist.translation_matrix(*self.src_roi_within_dst_roi.get_origin())
+        ).dot(self.matrix)
 
         phi = self.previous_burst_resampler.get_phi_ramp_gridded(
-            np.arange(self.dst_shape[0]), np.arange(self.dst_shape[1]),
+            np.arange(self.dst_shape[0]),
+            np.arange(self.dst_shape[1]),
             self.previous_burst_resampler.src_roi_in_burst.get_origin(),
-            matrix_to_doppler_frame_roi=matrix_to_doppler_frame_roi)
+            matrix_to_doppler_frame_roi=matrix_to_doppler_frame_roi,
+        )
 
         reramping_func = np.exp(1j * phi, dtype=np.complex64)
 
         return dst_array * reramping_func.reshape(self.dst_shape)
 
 
-def get_read_roi_src_and_resampler(resampler: Sentinel1BurstResample,
-                                   dst_roi_in_burst: roi.Roi,
-                                   burst_orig_src_in_tiff: tuple[int, int],
-                                   margin: int = 5) -> tuple[roi.Roi, Sentinel1BurstResample]:
+def get_read_roi_src_and_resampler(
+    resampler: Sentinel1BurstResample,
+    dst_roi_in_burst: roi.Roi,
+    burst_orig_src_in_tiff: tuple[int, int],
+    margin: int = 5,
+) -> tuple[roi.Roi, Sentinel1BurstResample]:
     """
     Use the resampler already set on the burst (containing burst resampling matrix)
     to get the roi in the source burst. Use burst_orig to get where we need to read.\
@@ -627,14 +717,21 @@ def get_read_roi_src_and_resampler(resampler: Sentinel1BurstResample,
     read_roi_src = src_roi_in_burst.translate_roi(col_src, row_src)
 
     # get the new resampler
-    resampler_on_roi = resampler.get_resampler_on_different_roi(dst_roi_in_burst,
-                                                                src_roi_in_burst)
+    resampler_on_roi = resampler.get_resampler_on_different_roi(
+        dst_roi_in_burst, src_roi_in_burst
+    )
     return read_roi_src, resampler_on_roi
 
 
-def warp_roi_read_resample(resampler, dst_roi_in_burst,
-                           burst_orig_src_in_tiff, image_reader, get_complex=True,
-                           margin=5, reramp=True):
+def warp_roi_read_resample(
+    resampler,
+    dst_roi_in_burst,
+    burst_orig_src_in_tiff,
+    image_reader,
+    get_complex=True,
+    margin=5,
+    reramp=True,
+):
     """
     Warp the roi to the source frame, read, then resample to the destination frame.
 
@@ -667,10 +764,10 @@ def warp_roi_read_resample(resampler, dst_roi_in_burst,
         Resampler that was applied on the array read using read_roi_src.
     """
     read_roi_src, resampler_on_roi = get_read_roi_src_and_resampler(
-        resampler, dst_roi_in_burst, burst_orig_src_in_tiff, margin)
+        resampler, dst_roi_in_burst, burst_orig_src_in_tiff, margin
+    )
 
-    padded_burst_array = io.read_window(
-        image_reader, read_roi_src, get_complex)
+    padded_burst_array = io.read_window(image_reader, read_roi_src, get_complex)
 
     burst_array_resamp = resampler_on_roi.resample(padded_burst_array, reramp=reramp)
 

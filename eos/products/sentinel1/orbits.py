@@ -1,21 +1,29 @@
-import os
-import io
-import glob
 import datetime
-import warnings
 import functools
+import glob
+import io
+import os
+import warnings
 from typing import Any, Optional, Sequence, Union
 
 from lxml import etree
 
 from eos.sar.orbit import StateVector
 
-from .metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata, isostring_to_timestamp
+from .metadata import (
+    Sentinel1BurstMetadata,
+    Sentinel1GRDMetadata,
+    isostring_to_timestamp,
+)
 
 
 def _string_to_timestamp(s):
     """Convert a string representing a date and time to a float number."""
-    return datetime.datetime.strptime(s, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc).timestamp()
+    return (
+        datetime.datetime.strptime(s, "%Y%m%dT%H%M%S")
+        .replace(tzinfo=datetime.timezone.utc)
+        .timestamp()
+    )
 
 
 def _parse_start_end_date_from_orbit_file(s):
@@ -29,8 +37,8 @@ def _parse_start_end_date_from_orbit_file(s):
     Return:
       start, end (str): two dates as string (20161012T225943 and 20161014T005943 in the example)
     """
-    start = s.split('_')[6][1:]
-    end = s.split('_')[7].split('.')[0]
+    start = s.split("_")[6][1:]
+    end = s.split("_")[7].split(".")[0]
     return start, end
 
 
@@ -42,7 +50,7 @@ def select_orbit_files_from_filelist(files, date, missionid):
     for file in files:
         filename = os.path.basename(file)
 
-        if filename[:len(missionid)].lower() != missionid:
+        if filename[: len(missionid)].lower() != missionid:
             continue
 
         s, e = _parse_start_end_date_from_orbit_file(filename)
@@ -60,31 +68,39 @@ def select_orbit_files_from_filelist(files, date, missionid):
     if candidates:
         return sorted(candidates)
 
-    raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
+    raise FileNotFoundError(
+        f"could not find an orbit file for date={date} mission={missionid}"
+    )
 
 
-def retrieve_new_statevectors_to_slc_burst(xml_content, burst: Sentinel1BurstMetadata) -> list[StateVector]:
+def retrieve_new_statevectors_to_slc_burst(
+    xml_content, burst: Sentinel1BurstMetadata
+) -> list[StateVector]:
     return retrieve_new_statevectors_to_slc_bursts(xml_content, [burst])
 
 
-def retrieve_new_statevectors_to_slc_bursts(xml_content: Union[str, bytes, io.BytesIO],
-                                            bursts: Sequence[Sentinel1BurstMetadata]) -> list[StateVector]:
+def retrieve_new_statevectors_to_slc_bursts(
+    xml_content: Union[str, bytes, io.BytesIO], bursts: Sequence[Sentinel1BurstMetadata]
+) -> list[StateVector]:
     return get_new_list_of_statevectors(xml_content, [b.state_vectors for b in bursts])
 
 
-def retrieve_new_statevectors_to_grd_meta(xml_content: Union[str, bytes, io.BytesIO],
-                                          meta: Sentinel1GRDMetadata) -> list[StateVector]:
+def retrieve_new_statevectors_to_grd_meta(
+    xml_content: Union[str, bytes, io.BytesIO], meta: Sentinel1GRDMetadata
+) -> list[StateVector]:
     return get_new_list_of_statevectors(xml_content, (meta.state_vectors,))
 
 
-def retrieve_new_statevectors_to_dict_meta(xml_content: Union[str, bytes, io.BytesIO],
-                                           meta: dict[str, Any]) -> list[StateVector]:
+def retrieve_new_statevectors_to_dict_meta(
+    xml_content: Union[str, bytes, io.BytesIO], meta: dict[str, Any]
+) -> list[StateVector]:
     return get_new_list_of_statevectors(xml_content, (meta["state_vectors"],))
 
 
-def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
-                                 statevectors_list: Sequence[Sequence[StateVector]]
-                                 ) -> list[StateVector]:
+def get_new_list_of_statevectors(
+    xml_content: Union[str, bytes, io.BytesIO],
+    statevectors_list: Sequence[Sequence[StateVector]],
+) -> list[StateVector]:
     # compute the approximative middle time of the burst/product
     # we will extract all orbit data over a window of 3 minutes centered around this middle
     start = min([state_vectors[0].time for state_vectors in statevectors_list])
@@ -93,12 +109,12 @@ def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
 
     newsvs: list[StateVector] = []
 
-    if type(xml_content) == str:
-        xml_content = io.BytesIO(xml_content.encode('utf-8'))
+    if isinstance(xml_content, str):
+        xml_content = io.BytesIO(xml_content.encode("utf-8"))
 
-    context = etree.iterparse(xml_content, events=('end',), tag='OSV')
+    context = etree.iterparse(xml_content, events=("end",), tag="OSV")
     for _, element in context:
-        date = isostring_to_timestamp(element.findtext('UTC')[4:])
+        date = isostring_to_timestamp(element.findtext("UTC")[4:])
 
         if date < mid - 90:
             continue
@@ -111,11 +127,13 @@ def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
         vx = float(element.findtext("VX"))
         vy = float(element.findtext("VY"))
         vz = float(element.findtext("VZ"))
-        newsvs.append(StateVector(
-            time=date,
-            position=(x, y, z),
-            velocity=(vx, vy, vz),
-        ))
+        newsvs.append(
+            StateVector(
+                time=date,
+                position=(x, y, z),
+                velocity=(vx, vy, vz),
+            )
+        )
 
     return newsvs
 
@@ -123,7 +141,9 @@ def get_new_list_of_statevectors(xml_content: Union[str, bytes, io.BytesIO],
 def search_valid_orbit_files_from_local_folder(path, product_info, type):
     date, missionid = product_info
 
-    files = glob.glob(f'{path}/{missionid.upper()}_OPER_AUX_{type.upper()}ORB_OPOD_*.EOF')
+    files = glob.glob(
+        f"{path}/{missionid.upper()}_OPER_AUX_{type.upper()}ORB_OPOD_*.EOF"
+    )
     try:
         files = select_orbit_files_from_filelist(files, date, missionid)
     except FileNotFoundError:
@@ -132,7 +152,9 @@ def search_valid_orbit_files_from_local_folder(path, product_info, type):
     return files[-1]
 
 
-def _retrieve_statevectors_from_source(product_info, burst, *, force_type, source) -> tuple[list[StateVector], str]:
+def _retrieve_statevectors_from_source(
+    product_info, burst, *, force_type, source
+) -> tuple[list[StateVector], str]:
     if isinstance(product_info, tuple):
         # ('20210216T151206', 'S1A')
         date, missionid = product_info
@@ -147,7 +169,7 @@ def _retrieve_statevectors_from_source(product_info, burst, *, force_type, sourc
         if not xml:
             return None
 
-        orbtype = f'orb{type}'
+        orbtype = f"orb{type}"
         if isinstance(burst, Sentinel1BurstMetadata):
             statevectors = retrieve_new_statevectors_to_slc_burst(xml, burst)
         elif isinstance(burst, list) and isinstance(burst[0], Sentinel1BurstMetadata):
@@ -162,22 +184,21 @@ def _retrieve_statevectors_from_source(product_info, burst, *, force_type, sourc
         return statevectors, orbtype
 
     if force_type:
-        ret = try_for_orbit_type(force_type.replace('orb', ''))
+        ret = try_for_orbit_type(force_type.replace("orb", ""))
     else:
-        ret = try_for_orbit_type('poe') or try_for_orbit_type('res')
+        ret = try_for_orbit_type("poe") or try_for_orbit_type("res")
     if ret is not None:
         return ret
 
-    raise FileNotFoundError(f'could not find an orbit file for date={date} mission={missionid}')
+    raise FileNotFoundError(
+        f"could not find an orbit file for date={date} mission={missionid}"
+    )
 
 
-def retrieve_statevectors_using_local_folder(path,
-                                             product_info,
-                                             burst,
-                                             b,
-                                             force_type=None
-                                             ) -> tuple[list[StateVector], str]:
-    '''Retrieve the orbit statevectors of the given bursts using a local folder.
+def retrieve_statevectors_using_local_folder(
+    path, product_info, burst, b, force_type=None
+) -> tuple[list[StateVector], str]:
+    """Retrieve the orbit statevectors of the given bursts using a local folder.
 
     Args
         path: filesystem path to a folder containing .EOF files
@@ -192,18 +213,22 @@ def retrieve_statevectors_using_local_folder(path,
 
     Raises
         FileNotFoundError: if no orbit file is found for the product_info
-    '''
-    warnings.warn("the sentinel1.orbits module is deprecated, use sentinel1.orbit_catalog instead.",
-                  DeprecationWarning)
+    """
+    warnings.warn(
+        "the sentinel1.orbits module is deprecated, use sentinel1.orbit_catalog instead.",
+        DeprecationWarning,
+    )
 
     def source(date, missionid, type):
         file = search_valid_orbit_files_from_local_folder(path, (date, missionid), type)
         if not file:
             return None
 
-        return open(file, 'rb')
+        return open(file, "rb")
 
-    return _retrieve_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
+    return _retrieve_statevectors_from_source(
+        product_info, burst, force_type=force_type, source=source
+    )
 
 
 def retrieve_statevectors_using_phoenix(
@@ -212,9 +237,9 @@ def retrieve_statevectors_using_phoenix(
     burst,
     *,
     force_type=None,
-    phx_source="aws:proxima:kayrros-prod-sentinel-aux"
+    phx_source="aws:proxima:kayrros-prod-sentinel-aux",
 ) -> tuple[list[StateVector], str]:
-    '''Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
+    """Retrieve the orbit statevectors of the given bursts using the Phoenix catalog.
 
     Args
         phx_client: phoenix client
@@ -230,9 +255,11 @@ def retrieve_statevectors_using_phoenix(
 
     Raises
         FileNotFoundError: if no orbit file is found for the product_info
-    '''
-    warnings.warn("the sentinel1.orbits module is deprecated, use sentinel1.orbit_catalog instead.",
-                  DeprecationWarning)
+    """
+    warnings.warn(
+        "the sentinel1.orbits module is deprecated, use sentinel1.orbit_catalog instead.",
+        DeprecationWarning,
+    )
 
     import phoenix.catalog
 
@@ -241,6 +268,7 @@ def retrieve_statevectors_using_phoenix(
 
         platform = f"sentinel-{missionid[1:].lower()}"
         import dateutil.parser
+
         date_ = dateutil.parser.parse(date)
 
         filters = [
@@ -270,4 +298,6 @@ def retrieve_statevectors_using_phoenix(
         xml = io.BytesIO(item.assets.download_as_bytes("PRODUCT"))
         return xml
 
-    return _retrieve_statevectors_from_source(product_info, burst, force_type=force_type, source=source)
+    return _retrieve_statevectors_from_source(
+        product_info, burst, force_type=force_type, source=source
+    )

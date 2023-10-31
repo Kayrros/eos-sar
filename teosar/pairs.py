@@ -5,12 +5,12 @@ import datetime
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import eos.sar
 import numpy as np
-from eos.sar.model import SensorModel
-from eos.sar.roi import Roi
 from typing_extensions import TypeAlias, override
 
+import eos.sar
+from eos.sar.model import SensorModel
+from eos.sar.roi import Roi
 from teosar import inout
 from teosar.utils import pid2date
 
@@ -166,7 +166,7 @@ def compute_pairset(
 
     pairs: set[Pair] = set()
     for i, im1 in enumerate(images):
-        for im2 in images[i + 1:]:
+        for im2 in images[i + 1 :]:
             pair = Pair(
                 im1=im1,
                 im2=im2,

@@ -13,11 +13,10 @@ import json
 import os
 import shelve
 import typing
-from weakref import WeakValueDictionary
 from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Hashable, Optional, Type, TypeVar
+from weakref import WeakValueDictionary
 
-import numpy as np
 from typing_extensions import override
 
 T = TypeVar("T")
@@ -130,12 +129,18 @@ class Cache:
             origin = typing.get_origin(t)
             # if T is 'list[int]', then check origin = list
             # for non generic types, origin is None
-            if (origin is not None and not isinstance(a, origin)) or (origin is None and not isinstance(a, t)):
-                raise TypeError(f"object (value: {a}, type: {type(a)} is not of type {t}.")
+            if (origin is not None and not isinstance(a, origin)) or (
+                origin is None and not isinstance(a, t)
+            ):
+                raise TypeError(
+                    f"object (value: {a}, type: {type(a)} is not of type {t}."
+                )
 
         return a
 
-    def get_or_put(self, key: Hashable, t: Type[T], clb: Callable[..., T]) -> Optional[T]:
+    def get_or_put(
+        self, key: Hashable, t: Type[T], clb: Callable[..., T]
+    ) -> Optional[T]:
         if (value := self.get(key, t)) is None:
             value = clb()
             if value is not None:

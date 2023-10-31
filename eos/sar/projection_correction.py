@@ -1,5 +1,6 @@
 import abc
 from typing import Sequence
+
 import numpy as np
 import pyproj
 
@@ -8,6 +9,7 @@ from eos.sar import geoconfig
 
 class Points:
     """base class for a set of Points"""
+
     singleton: bool
 
     def _force_array(self, val):
@@ -42,7 +44,7 @@ class Points:
 
 
 class GeoPoints(Points):
-    ''' Geo Point for correction estimation '''
+    """Geo Point for correction estimation"""
 
     def __init__(self, gx, gy, gz):
         """
@@ -111,7 +113,8 @@ class GeoPoints(Points):
 
         """
         transformer = pyproj.Transformer.from_crs(
-            'epsg:4978', 'epsg:4979', always_xy=True)
+            "epsg:4978", "epsg:4979", always_xy=True
+        )
         lon, lat, alt = transformer.transform(self.gx, self.gy, self.gz)
 
         lon, lat, alt = self._get_vals([lon, lat, alt], squeeze)
@@ -221,7 +224,6 @@ class ImagePoints(Points):
 
 
 class GeoImagePoints(GeoPoints, ImagePoints):
-
     def __init__(self, gx, gy, gz, azt, rng):
         """
         Constructor.
@@ -269,7 +271,8 @@ class GeoImagePoints(GeoPoints, ImagePoints):
         """
         sat = orbit.evaluate(self.azt)
         cos_i, _ = geoconfig.compute_cosi_rng(
-            np.column_stack([self.gx, self.gy, self.gz]), sat)
+            np.column_stack([self.gx, self.gy, self.gz]), sat
+        )
 
         return self._get_val(cos_i, squeeze)
 
@@ -314,8 +317,9 @@ class GeoImagePoints(GeoPoints, ImagePoints):
             New Shifted GeoImagePoints.
 
         """
-        return GeoImagePoints(self.gx, self.gy, self.gz,
-                              *self._add_azt_rng_as_tuple(dazt, drng))
+        return GeoImagePoints(
+            self.gx, self.gy, self.gz, *self._add_azt_rng_as_tuple(dazt, drng)
+        )
 
 
 def invert_or_None(shift=None):
@@ -359,9 +363,11 @@ class GeoCorrection(abc.ABC):
         """
 
         if inverse:
-            return geo_pt.add_geo(invert_or_None(self.dgx),
-                                  invert_or_None(self.dgy),
-                                  invert_or_None(self.dgz))
+            return geo_pt.add_geo(
+                invert_or_None(self.dgx),
+                invert_or_None(self.dgy),
+                invert_or_None(self.dgz),
+            )
 
         return geo_pt.add_geo(self.dgx, self.dgy, self.dgz)
 
@@ -400,8 +406,9 @@ class ImageCorrection(abc.ABC):
         # here Coord correction will be applied
 
         if inverse:
-            return im_pt.add_azt_rng(invert_or_None(self.dazt),
-                                     invert_or_None(self.drng))
+            return im_pt.add_azt_rng(
+                invert_or_None(self.dazt), invert_or_None(self.drng)
+            )
 
         return im_pt.add_azt_rng(self.dazt, self.drng)
 

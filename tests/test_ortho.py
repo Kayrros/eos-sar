@@ -1,5 +1,3 @@
-import numpy as np
-
 import eos.dem
 from eos.products import sentinel1
 from eos.sar import ortho

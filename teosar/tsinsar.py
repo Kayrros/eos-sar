@@ -1,29 +1,28 @@
-from functools import partial
-import os
-import logging
 import concurrent.futures
+import logging
+import os
+from functools import partial
 from typing import Callable, Optional
+
+import phoenix.catalog
+import shapely.wkt
+import tqdm
+
+import eos.cache
+import eos.dem
+import eos.products.sentinel1
+import eos.products.sentinel1.catalog as s1_catalog
+import eos.sar
+from eos.cache import Cache
 from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo
-import tqdm
-import shapely.wkt
-import phoenix.catalog
-
-import eos.products.sentinel1
-import eos.sar
-import eos.dem
-import eos.products.sentinel1.catalog as s1_catalog
-import eos.cache
-from eos.cache import Cache
-
-from teosar import inout
+from teosar import inout, utils
 from teosar.workflow import (
-    PrimaryPipeline,
-    SecondaryPipeline,
     OvlPrimaryPipeline,
     OvlSecondaryPipeline,
+    PrimaryPipeline,
+    SecondaryPipeline,
 )
-from teosar import utils
 
 logger = logging.getLogger(__name__)
 
@@ -63,13 +62,13 @@ def remove_weird_products(
 ) -> list[list[str]]:
     def pid2datatake(pid: str) -> str:
         idx = len("S1A_IW_SLC__1SDV_20211202T173302_20211202T173329_040833_")
-        return pid[idx: idx + 6]
+        return pid[idx : idx + 6]
 
-    logger.info('getting bsids for products')
+    logger.info("getting bsids for products")
     bsids_per_pid = get_bsids_for_products(
         product_provider, polarization, list(sum(product_ids, []))
     )
-    logger.info('getting bsids for products, DONE')
+    logger.info("getting bsids for products, DONE")
 
     by_datatake: dict[str, list[str]] = {}
     for pid in [pid for pids in product_ids for pid in pids]:
@@ -82,7 +81,9 @@ def remove_weird_products(
         if len(bsids) == len(set(bsids)):
             good_datatakes.add(datatake)
         else:
-            logger.warn(f"{pids} have duplicated burst ids, datake {datatake} removed completely from the timeseries.")
+            logger.warn(
+                f"{pids} have duplicated burst ids, datake {datatake} removed completely from the timeseries."
+            )
 
     good_product_ids: list[list[str]] = []
     for pids in product_ids:
@@ -128,7 +129,7 @@ def main(
     product_provider: Optional[ProductProvider] = None,
     cache: Cache = eos.cache.no_cache(),
 ):
-    if type(geometry) == str:
+    if isinstance(geometry, str):
         geometry = shapely.wkt.loads(geometry)
 
     # query phoenix
@@ -144,20 +145,25 @@ def main(
     )
     logger.info("querying the catalog")
     pids_by_date = get_phx_catalog(cache).search_slc(query).product_ids_per_date
-    logger.info('catalog query done')
+    logger.info("catalog query done")
 
-    all_product_ids = [sorted(pids_by_date[date]) for date in sorted(pids_by_date.keys())]
+    all_product_ids = [
+        sorted(pids_by_date[date]) for date in sorted(pids_by_date.keys())
+    ]
 
     if product_provider is None:
         product_provider = (
             eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id
         )
 
-    logger.info('remove weird products...')
+    logger.info("remove weird products...")
     key = (all_product_ids, polarization)
-    product_ids = cache.get_or_put(key, list[list[str]],
-                                   lambda: remove_weird_products(product_provider, all_product_ids, polarization))
-    logger.info('remove weird products DONE')
+    product_ids = cache.get_or_put(
+        key,
+        list[list[str]],
+        lambda: remove_weird_products(product_provider, all_product_ids, polarization),
+    )
+    logger.info("remove weird products DONE")
 
     if last_n_prods is not None:
         product_ids = product_ids[-last_n_prods:]
@@ -184,7 +190,9 @@ def main(
     )
 
 
-def get_orbits(product_ids: list[list[str]], orbit_type, cache: Cache) -> orbit_catalog.Sentinel1OrbitCatalogResult:
+def get_orbits(
+    product_ids: list[list[str]], orbit_type, cache: Cache
+) -> orbit_catalog.Sentinel1OrbitCatalogResult:
     backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
         collection_source=phoenix.catalog.Client()
         .get_collection("esa-sentinel-1-csar-aux")
@@ -199,7 +207,9 @@ def get_orbits(product_ids: list[list[str]], orbit_type, cache: Cache) -> orbit_
         "orbpoe": [orbit_catalog.OrbitFileType.PRECISE],
         "orbres": [orbit_catalog.OrbitFileType.RESTITUTED],
     }[orbit_type]
-    query = orbit_catalog.Sentinel1OrbitCatalogQuery(product_ids=list(sum(product_ids, [])), quality=orbit_quality)
+    query = orbit_catalog.Sentinel1OrbitCatalogQuery(
+        product_ids=list(sum(product_ids, [])), quality=orbit_quality
+    )
     orbits = orbit_catalog.search(backend, query, cache=cache)
     return orbits
 
@@ -413,7 +423,7 @@ def main_ovl(
 
     n_products = len(product_ids_per_date)
     secondary_product_ids = (
-        product_ids_per_date[:primary_id] + product_ids_per_date[primary_id + 1:]
+        product_ids_per_date[:primary_id] + product_ids_per_date[primary_id + 1 :]
     )
     pipelines_map = map(process_product, secondary_product_ids)
 

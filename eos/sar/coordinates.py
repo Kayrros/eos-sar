@@ -3,6 +3,7 @@
 
 from dataclasses import dataclass
 from typing import Optional
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
@@ -14,7 +15,6 @@ Arrayf32 = NDArray[np.float32]
 
 @dataclass(frozen=True)
 class SLCCoordinate:
-
     first_row_time: float
     first_col_time: float
     azimuth_frequency: float
@@ -27,8 +27,11 @@ class SLCCoordinate:
 
     def to_rng(self, col: ArrayLike, azt: Optional[ArrayLike] = None) -> Arrayf32:
         col = np.asarray(col)
-        rng = (col / self.range_frequency + self.first_col_time) * \
-            const.LIGHT_SPEED_M_PER_SEC / 2
+        rng = (
+            (col / self.range_frequency + self.first_col_time)
+            * const.LIGHT_SPEED_M_PER_SEC
+            / 2
+        )
         return rng
 
     def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
@@ -43,8 +46,9 @@ class SLCCoordinate:
 
     def to_col(self, rng: ArrayLike, azt: Optional[ArrayLike] = None) -> Arrayf32:
         rng = np.asarray(rng)
-        col = (2 * rng / const.LIGHT_SPEED_M_PER_SEC - self.first_col_time) * \
-            self.range_frequency
+        col = (
+            2 * rng / const.LIGHT_SPEED_M_PER_SEC - self.first_col_time
+        ) * self.range_frequency
         return col
 
     def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:

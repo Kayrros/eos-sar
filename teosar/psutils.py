@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 import numpy as np
-from numpy.typing import NDArray
 import scipy
+from numpy.typing import NDArray
 
 
 def wrap(phi: NDArray[float]) -> NDArray[float]:

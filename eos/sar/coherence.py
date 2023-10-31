@@ -15,8 +15,8 @@ def _gaussian_spatial_filter(u, filter_size):
 
 
 SPATIAL_FILTERS = {
-    'uniform': _uniform_spatial_filter,
-    'gaussian': _gaussian_spatial_filter,
+    "uniform": _uniform_spatial_filter,
+    "gaussian": _gaussian_spatial_filter,
 }
 
 
@@ -30,42 +30,50 @@ def _modify_borders(coherence, filter_size):
     else:
         hs = (filter_size // 2, filter_size // 2)
     if hs[0]:
-        coherence[:hs[0], :] = np.nan
-        coherence[-hs[0]:, :] = np.nan
+        coherence[: hs[0], :] = np.nan
+        coherence[-hs[0] :, :] = np.nan
     if hs[1]:
-        coherence[:, :hs[1]] = np.nan
-        coherence[:, -hs[1]:] = np.nan
+        coherence[:, : hs[1]] = np.nan
+        coherence[:, -hs[1] :] = np.nan
 
 
-def on_pair(im1, im2, filter_size, eps=1e-10,
-            set_borders_to_nan=False,
-            might_contain_nans=False,
-            spatial_filter='uniform'):
+def on_pair(
+    im1,
+    im2,
+    filter_size,
+    eps=1e-10,
+    set_borders_to_nan=False,
+    might_contain_nans=False,
+    spatial_filter="uniform",
+):
     """
-        Compute the coherence on a pair of complex images.
+    Compute the coherence on a pair of complex images.
 
-        Parameters
-            im1, im2: complex array of type np.csingle (faster) or np.cdouble (slower).
-            filter_size (int or (height int, width int)): size of the spatial filter, should be odd
+    Parameters
+        im1, im2: complex array of type np.csingle (faster) or np.cdouble (slower).
+        filter_size (int or (height int, width int)): size of the spatial filter, should be odd
 
-            If one of the input images contains nans, make sure to set might_contain_nans to True
-            (or 'overwrite' to allow to overwrite your arrays).
-            The result will have nans set at the same positions, but values near the nans might be wrong.
-            If might_contain_nans is left to False, the result will be full of nans.
+        If one of the input images contains nans, make sure to set might_contain_nans to True
+        (or 'overwrite' to allow to overwrite your arrays).
+        The result will have nans set at the same positions, but values near the nans might be wrong.
+        If might_contain_nans is left to False, the result will be full of nans.
 
-            The borders in the resulting coherence map will be wrong, use set_borders_to_nan=True to set them to nan.
+        The borders in the resulting coherence map will be wrong, use set_borders_to_nan=True to set them to nan.
     """
     assert im1.dtype in (np.csingle, np.cdouble)
     assert im2.dtype in (np.csingle, np.cdouble)
-    assert (np.asarray(filter_size) % 2 == 1).all(), 'filter_size values should be odd'
-    assert np.asarray(filter_size).size in (1, 2), 'filter_size a floor or a tuple of two floats'
+    assert (np.asarray(filter_size) % 2 == 1).all(), "filter_size values should be odd"
+    assert np.asarray(filter_size).size in (
+        1,
+        2,
+    ), "filter_size a floor or a tuple of two floats"
 
     spatial_filter = SPATIAL_FILTERS[spatial_filter]
 
     mask = None
     if might_contain_nans:
         mask = np.isnan(im1) | np.isnan(im2)
-        if might_contain_nans != 'overwrite':
+        if might_contain_nans != "overwrite":
             im1 = im1.copy()
             im2 = im2.copy()
         im1[mask] = 0

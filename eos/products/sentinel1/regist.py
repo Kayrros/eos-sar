@@ -1,12 +1,18 @@
 import numpy as np
+
 import eos.sar
 from eos.products.sentinel1.proj_model import secondary_project_and_correct
 
 
-def get_burst_resampling_matrices(primary_cutter, secondary_cutter,
-                                  azt_no_correc, rng_no_correc,
-                                  azt_correc, rng_correc,
-                                  bsids):
+def get_burst_resampling_matrices(
+    primary_cutter,
+    secondary_cutter,
+    azt_no_correc,
+    rng_no_correc,
+    azt_correc,
+    rng_correc,
+    bsids,
+):
     """
     Compute the resampling matrix of two swath models burst by burst. This is\
     typically used between the ideal model (called no_correc) and the imperfect\
@@ -43,10 +49,12 @@ def get_burst_resampling_matrices(primary_cutter, secondary_cutter,
 
     burst_resampling_matrices = {}
     for bsid in bsids:
-        rows_primary, cols_primary = \
-            primary_cutter.to_row_col_in_burst(azt_no_correc[bsid], rng_no_correc[bsid], bsid)
-        rows_secondary, cols_secondary = \
-            secondary_cutter.to_row_col_in_burst(azt_correc[bsid], rng_correc[bsid], bsid)
+        rows_primary, cols_primary = primary_cutter.to_row_col_in_burst(
+            azt_no_correc[bsid], rng_no_correc[bsid], bsid
+        )
+        rows_secondary, cols_secondary = secondary_cutter.to_row_col_in_burst(
+            azt_correc[bsid], rng_correc[bsid], bsid
+        )
 
         pts_no_correc = np.column_stack([rows_primary, cols_primary])
         pts_correc = np.column_stack([rows_secondary, cols_secondary])
@@ -58,8 +66,19 @@ def get_burst_resampling_matrices(primary_cutter, secondary_cutter,
 
 
 def secondary_registration_estimation(
-        secondary_proj_model, secondary_cutter, secondary_correctors_per_bsid, x, y, alt, crs,
-        bsids, pts_in_burst_mask, primary_cutter, azt_no_correc, rng_no_correc):
+    secondary_proj_model,
+    secondary_cutter,
+    secondary_correctors_per_bsid,
+    x,
+    y,
+    alt,
+    crs,
+    bsids,
+    pts_in_burst_mask,
+    primary_cutter,
+    azt_no_correc,
+    rng_no_correc,
+):
     """
     Estimate the resampling matrices for a secondary img w.r.t. the ideal primary frame.
 
@@ -99,11 +118,24 @@ def secondary_registration_estimation(
 
     """
     _, _, azt_correc, rng_correc = secondary_project_and_correct(
-        secondary_proj_model, x, y, alt, crs,
-        bsids, secondary_correctors_per_bsid, pts_in_burst_mask)
+        secondary_proj_model,
+        x,
+        y,
+        alt,
+        crs,
+        bsids,
+        secondary_correctors_per_bsid,
+        pts_in_burst_mask,
+    )
 
     burst_resampling_matrices = get_burst_resampling_matrices(
-        primary_cutter, secondary_cutter, azt_no_correc, rng_no_correc,
-        azt_correc, rng_correc, bsids)
+        primary_cutter,
+        secondary_cutter,
+        azt_no_correc,
+        rng_no_correc,
+        azt_correc,
+        rng_correc,
+        bsids,
+    )
 
     return burst_resampling_matrices

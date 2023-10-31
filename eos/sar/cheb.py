@@ -10,6 +10,7 @@ The following does not assume the samples are equidistant in time. It may, or
 may not, be better... Usually, the best fit is performed at polynomial roots.
 """
 from typing import Sequence
+
 import numpy as np
 
 from eos.sar.orbit import StateVector
@@ -143,8 +144,7 @@ def matrix_C1(T, W, S):
     -------
     C1: ndarray
     """
-    return np.block([[T.T @ W @ T, S],
-                     [S.T, np.zeros((4, 4))]])
+    return np.block([[T.T @ W @ T, S], [S.T, np.zeros((4, 4))]])
 
 
 def matrix_C2(T, W, K):
@@ -168,8 +168,7 @@ def matrix_C2(T, W, K):
     U[-2, -2] = 1
     U[-1, -1] = 1
 
-    return np.block([[T.T @ W],
-                     [U]])
+    return np.block([[T.T @ W], [U]])
 
 
 def matrix_f(state_vectors: Sequence[StateVector]):
@@ -224,7 +223,7 @@ def matrix_A(C, f, N):
     A = np.zeros((N + 1, 3))
 
     for i in range(N + 1):
-        A[i, :] = C[i:i + 1, ...] @ f
+        A[i, :] = C[i : i + 1, ...] @ f
 
     return A
 
@@ -254,7 +253,7 @@ def poly_B(A, N):
         a_n = A[i, :][..., np.newaxis]
         coeffs_n = chebpolys[i][::-1][np.newaxis, ...]
 
-        coeffs[:i + 1, :] += (a_n @ coeffs_n).T
+        coeffs[: i + 1, :] += (a_n @ coeffs_n).T
 
     return coeffs
 
@@ -317,9 +316,7 @@ def evaluate_cheb_interp(t, coeffs, domain):
     t0, t1 = domain
 
     return np.polynomial.polynomial.polyval(
-        -1 + 2 * (t - t0) / (t1 - t0),
-        coeffs,
-        tensor=True
+        -1 + 2 * (t - t0) / (t1 - t0), coeffs, tensor=True
     ).T
 
 
@@ -340,5 +337,4 @@ def get_diff_coeffs(coeffs, domain, der):
     Coefficients for the polynomial of the derivative
     """
     t0, t1 = domain
-    return np.polynomial.polynomial.polyder(
-        coeffs, m=der, scl=2 / (t1 - t0))
+    return np.polynomial.polynomial.polyder(coeffs, m=der, scl=2 / (t1 - t0))

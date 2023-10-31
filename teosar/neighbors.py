@@ -1,8 +1,8 @@
-from numpy.typing import NDArray
-
 import numpy as np
 import scipy
 import scipy.sparse
+from numpy.typing import NDArray
+
 from teosar import psutils
 
 
@@ -34,7 +34,7 @@ def phi_ps_neighbors(phi_sparse, is_at_ok_distance):
     output = np.full(phi_sparse.shape, np.nan)
     for k in range(phi_sparse.shape[1]):
         neighbors = is_at_ok_distance.indices[
-            is_at_ok_distance.indptr[k]: is_at_ok_distance.indptr[k + 1]
+            is_at_ok_distance.indptr[k] : is_at_ok_distance.indptr[k + 1]
         ]
         phi_neighbors = phi_sparse[:, neighbors]
 

@@ -1,13 +1,13 @@
-import numpy as np
-import datetime
-import tifffile
+import functools
 import os
-from teosar import periodogram, psutils, neighbors, psc
-import scipy
 
+import numpy as np
+import scipy
 import tensorflow as tf
 import tensorflow_probability as tfp
-import functools
+import tifffile
+
+from teosar import neighbors, periodogram, psc, psutils
 
 tf.config.set_visible_devices([], "GPU")  # Do not use GPU if available
 
