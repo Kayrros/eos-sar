@@ -1,7 +1,9 @@
+import os
 import abc
 import datetime
 import io
 import logging
+import fnmatch
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Literal, Optional
@@ -211,6 +213,68 @@ def parse_statevectors(
     return newsvs
 
 
+def _parse_start_end_date_from_orbit_file(s) -> tuple[datetime.datetime, datetime.datetime]:
+    """
+    Extract start and end dates for an orbit file filename.
+
+    Args:
+      s (str): filename string, formatted as \
+      S1A_OPER_AUX_POEORB_OPOD_20161102T122427_V20161012T225943_20161014T005943.EOF
+
+    Return:
+      start, end (str): two dates as string (20161012T225943 and 20161014T005943 in the example)
+    """
+    start = s.split('_')[6][1:]
+    end = s.split('_')[7].split('.')[0]
+    start = datetime.datetime.strptime(start, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc)
+    end = datetime.datetime.strptime(end, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc)
+    return start, end
+
+
+def select_orbit_files_from_filelist(files: list[str], seg: QuerySegment) -> list[str]:
+    candidates = []
+    for file in files:
+        filename = os.path.basename(file)
+        s, e = _parse_start_end_date_from_orbit_file(filename)
+        if s < seg.start and e > seg.end:
+            candidates.append(file)
+    return sorted(candidates)
+
+
+@dataclass(frozen=True)
+class LocalFilesSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
+    paths: list[str]
+    """List of EOF files."""
+
+    @override
+    def search(self, query: BackendQuery) -> BackendResult:
+        statevectors_per_item: dict[QuerySegment, list[StateVector]] = {}
+
+        for seg in query.segments:
+            for qual in query.quality:
+                qualtype = qual.to_product_type()
+                files = [p for p in self.paths
+                         if fnmatch.fnmatch(os.path.basename(p),
+                                            f'{seg.platform.upper()}_OPER_AUX_{qualtype}_OPOD_*.EOF')]
+                files = select_orbit_files_from_filelist(files, seg)
+                if not files:
+                    continue
+
+                # the last one, because it might be from a reprocessing
+                file = files[-1]
+                break
+            else:
+                raise OrbitFileNotFound(f"for query {seg} {query.quality}")
+
+            with open(file, "rb") as f:
+                xml = f.read()
+            statevectors = parse_statevectors(xml, seg.start, seg.end)
+            assert len(statevectors) > 0, f"{seg} {query.quality} in {file}"
+            statevectors_per_item[seg] = statevectors
+
+        return BackendResult(statevectors_per_item=statevectors_per_item)
+
+
 try:
     import phoenix.catalog as phx
 except ImportError:
@@ -294,7 +358,7 @@ else:
                         elif future in futures2:
                             seg = futures2[future]
                             statevectors: list[StateVector] = future.result()  # type: ignore
-                            assert statevectors
+                            assert len(statevectors) > 0
                             statevectors_per_item[seg] = statevectors
 
             return BackendResult(statevectors_per_item=statevectors_per_item)
