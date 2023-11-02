@@ -442,7 +442,56 @@ def full_pipeline(
     threshold_q=0.7,
     threshold_v=0.1,
     first_gamma_threshold=0.8,
-    second_gamma_threshold=0.9,
+    second_gamma_threshold: float = 0.9,
+    wavelength=5.5465763 * 1e-2,
+    *,
+    use_tensorflow=True,
+):
+    (q, v, gammas, defo_nonlinear, defo_linear, atmos) = full_pipeline_nosparse(
+        amps,
+        phi_ts,
+        bperp,
+        inc,
+        rng,
+        dates,
+        da_threshold=da_threshold,
+        max_iterations=max_iterations,
+        threshold_q=threshold_q,
+        threshold_v=threshold_v,
+        first_gamma_threshold=first_gamma_threshold,
+        wavelength=wavelength,
+        use_tensorflow=use_tensorflow,
+    )
+
+    # keep only good ps
+    final_ps_mask = gammas > second_gamma_threshold
+
+    h, w = final_ps_mask.shape
+    col, row = np.meshgrid(np.arange(w), np.arange(h))
+
+    return (
+        q[final_ps_mask],
+        v[final_ps_mask],
+        gammas[final_ps_mask],
+        col[final_ps_mask],
+        row[final_ps_mask],
+        defo_nonlinear[:, final_ps_mask],
+        defo_linear[:, final_ps_mask],
+    )
+
+
+def full_pipeline_nosparse(
+    amps,
+    phi_ts,
+    bperp,
+    inc,
+    rng,
+    dates,
+    da_threshold=0.25,
+    max_iterations=10,
+    threshold_q=0.7,
+    threshold_v=0.1,
+    first_gamma_threshold=0.8,
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
@@ -515,15 +564,18 @@ def full_pipeline(
         use_tensorflow=use_tensorflow,
     )
 
-    # keep only good ps
-    final_ps_mask = gammas > second_gamma_threshold
+    def make_array(arr):
+        if arr.ndim == 2:
+            return np.asarray([make_array(a) for a in arr])
+        return psutils.sparse_data_to_raster(
+            arr, row, col, Delta_phi_against_ref[0].shape
+        )
 
     return (
-        q[final_ps_mask],
-        v[final_ps_mask],
-        gammas[final_ps_mask],
-        col[final_ps_mask],
-        row[final_ps_mask],
-        defo_nonlinear[:, final_ps_mask],
-        defo_linear[:, final_ps_mask],
+        make_array(q),
+        make_array(v),
+        make_array(gammas),
+        make_array(defo_nonlinear),
+        make_array(defo_linear),
+        atmos,
     )
