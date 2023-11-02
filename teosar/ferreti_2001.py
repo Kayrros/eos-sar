@@ -1,5 +1,6 @@
 import functools
 import os
+from dataclasses import dataclass
 
 import numpy as np
 import scipy
@@ -16,13 +17,55 @@ The work consists in:
  using the strong assumptions that the PS motion is linear with time,
  and that the APS is an affine plane for each image (thus the need
  for the area to be small)
----- end of what we implemented
----- the rest needs to be added
 . Extrapolate APS on the whole grid, taking into account residual
  errors in the estimation model (which we model as APS + random error)
  and smoothing spatially these errors
 . Use the periodogram to estimate new PS now that APS has been removed (threshold of 0.75)
 """
+
+
+@dataclass(frozen=True)
+class Ferreti2001Result:
+    """Periodogram model estimated by the Ferreti method.
+
+    The model is: (radians)
+        observed = (aps + q * Cq * bperp + v * Cv * years_since_ref + residuals) mod 2pi
+    """
+
+    observations: np.ndarray
+    """ (t, h, w), in radians; observed signal """
+    aps: np.ndarray
+    """ (t, h, w), in radians; atmosphere """
+    q: np.ndarray
+    """ (h, w), in m; refined topography """
+    v: np.ndarray
+    """ (h, w), in mm/year; linear deformation rate"""
+    bperp: np.ndarray
+    """ (t, h, w), in meters; normal baseline per date """
+    Cq: np.ndarray
+    """ (h, w), meters^2 to radians """
+    Cv: float
+    """ mm to radians """
+    gammas: np.ndarray
+    """ (h, w), temporal coherence (in [0,1]) """
+    years_since_ref: np.ndarray
+    """ (t), number of years since the reference date """
+
+    @property
+    def linear_deformation_in_mm(self) -> np.ndarray:
+        """(t, h, w), linear part of the deformation, in mm"""
+        return self.years_since_ref[:, None, None] * self.v[None, :]
+
+    @property
+    def residuals_in_mm(self) -> np.ndarray:
+        """(t, h, w), residual signal after removing the atmosphere, the topographic component and the linear deformation. in mm"""
+        in_radians = psutils.wrap(
+            self.observations
+            - self.aps
+            - self.Cq * self.bperp * self.q
+            - self.Cv * self.linear_deformation_in_mm
+        )
+        return in_radians / self.Cv
 
 
 def save_debug_image(
@@ -75,6 +118,7 @@ def iterative_alternate_periodogram(
 
     # some constants
     Cq = -4 * np.pi / (wavelength * rng_PS[np.newaxis, :] * np.sin(inc_PS))
+    Cq = Cq.flatten()
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
     num_dates = len(dates) - 1  # ignoring the reference
@@ -256,6 +300,7 @@ def velo_topo_periodogram(
         # but then is much faster. We have a lot of variables to minimize, thus it makes sense.
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
 
+        Cq = Cq[None, :]
         def periodogram_to_optimize(x):
             res = 0
             q = x[0:num_PS]
@@ -307,7 +352,7 @@ def velo_topo_periodogram(
         )
         for h in range(num_PS):
             topo_model = periodogram.LinearTermModel(
-                Cq[0, h], date_normal_baseline[:, h], q_test
+                Cq[h], date_normal_baseline[:, h], q_test
             )
             defo_topo_model = periodogram.CompoundModel([lin_defo_model, topo_model])
             defo_topo_grid = defo_topo_model.predict_grid()
@@ -385,51 +430,35 @@ def final_periodogram(
     *,
     use_tensorflow=True,
 ):
+    n, h, w = phi_ts_raster.shape
     times_differences_against_ref = [
         (d - dates[0]).days / 365.25 for d in dates[1:]
     ]  # total_seconds() to get seconds
     times_differences_against_ref = np.array(times_differences_against_ref)
 
     phi_no_atmo = psutils.wrap(phi_ts_raster - atmos)
-    mask = ~np.isnan(phi_no_atmo[0])
-    mask_sparse = scipy.sparse.coo_array(mask)
-    row = mask_sparse.row
-    col = mask_sparse.col
-    phi_no_atmo_sparse = phi_no_atmo[:, row, col]
-
-    rng_PS = rng[col]
-    inc_PS = inc[row, col]
-    date_normal_baseline = bperp[:, row, col]
 
     # some constants
-    Cq = -4 * np.pi / (wavelength * rng_PS[np.newaxis, :] * np.sin(inc_PS))
+    Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
+    Cq = Cq.reshape((-1))
+    phi_no_atmo = phi_no_atmo.reshape((n, -1))
+    bperp = bperp.reshape((n, -1))
+
     q, v, gammas = velo_topo_periodogram(
-        phi_no_atmo_sparse,
+        phi_no_atmo,
         Cq,
-        date_normal_baseline,
+        bperp,
         Cv,
         times_differences_against_ref,
         use_tensorflow=use_tensorflow,
     )
-    phi_residual = get_phi_no_q_v_estimation(
-        phi_no_atmo_sparse,
-        Cq,
-        date_normal_baseline,
-        q,
-        Cv,
-        times_differences_against_ref,
-        v,
-    )
-    # assume wrapped is good estimation
-    phi_residual = psutils.wrap(phi_residual)  # non linear deformation phase
-    # now add back linear trend deformation
-    defo_nonlinear = phi_residual / Cv  # (mm)
-    defo_linear = (
-        times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
-    )  # (mm)
-    return q, v, gammas, col, row, defo_nonlinear, defo_linear
+
+    q = q.reshape((h, w))
+    v = v.reshape((h, w))
+    gammas = gammas.reshape((h, w))
+    return q, v, gammas
 
 
 def get_phi_no_q_v_estimation(
@@ -437,7 +466,7 @@ def get_phi_no_q_v_estimation(
 ):
     phi_no_q_v_estimation = (
         phi_ps_mat
-        - Cq * date_normal_baseline * q[np.newaxis, :]
+        - Cq[np.newaxis, :] * date_normal_baseline * q[np.newaxis, :]
         - Cv * times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
     )
     return phi_no_q_v_estimation
@@ -457,13 +486,70 @@ def full_pipeline(
     threshold_q=0.7,
     threshold_v=0.1,
     first_gamma_threshold=0.8,
-    second_gamma_threshold=0.9,
+    second_gamma_threshold: float = 0.9,
     distance_threshold=300,
     interpolation_method="cubic",
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
-):  # no clean, some things hardcoded
+):
+    result = run(
+        amps,
+        phi_ts,
+        bperp,
+        inc,
+        rng,
+        dates,
+        resolution_x,
+        resolution_y,
+        da_threshold=da_threshold,
+        max_iterations=max_iterations,
+        threshold_q=threshold_q,
+        threshold_v=threshold_v,
+        first_gamma_threshold=first_gamma_threshold,
+        wavelength=wavelength,
+        distance_threshold=distance_threshold,
+        interpolation_method=interpolation_method,
+        use_tensorflow=use_tensorflow,
+    )
+
+    # keep only good ps
+    final_ps_mask = result.gammas > second_gamma_threshold
+
+    h, w = final_ps_mask.shape
+    col, row = np.meshgrid(np.arange(w), np.arange(h))
+
+    return (
+        result.q[final_ps_mask],
+        result.v[final_ps_mask],
+        result.gammas[final_ps_mask],
+        col[final_ps_mask],
+        row[final_ps_mask],
+        result.residuals_in_mm[:, final_ps_mask],
+        result.linear_deformation_in_mm[:, final_ps_mask],
+    )
+
+
+def run(
+    amps,
+    phi_ts,
+    bperp,
+    inc,
+    rng,
+    dates,
+    resolution_x,
+    resolution_y,
+    da_threshold=0.25,
+    max_iterations=10,
+    threshold_q=0.7,
+    threshold_v=0.1,
+    first_gamma_threshold=0.8,
+    distance_threshold=300,
+    interpolation_method="cubic",
+    wavelength=5.5465763 * 1e-2,
+    *,
+    use_tensorflow=True,
+) -> Ferreti2001Result:
     print("ps candidates selection")
     # ps candidates
     _, PS_candidates_basic, PS_candidates_mask = psc.get_PS_candidates_DA(
@@ -524,7 +610,7 @@ def full_pipeline(
 
     print("final periodogram")
     # do final periodogram
-    q, v, gammas, col, row, defo_nonlinear, defo_linear = final_periodogram(
+    q, v, gammas = final_periodogram(
         Delta_phi_against_ref,
         atmos,
         dates,
@@ -535,15 +621,19 @@ def full_pipeline(
         use_tensorflow=use_tensorflow,
     )
 
-    # keep only good ps
-    final_ps_mask = gammas > second_gamma_threshold
+    years_since_ref = [(d - dates[0]).days / 365.25 for d in dates[1:]]
+    years_since_ref = np.array(years_since_ref)
+    Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
+    Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
-    return (
-        q[final_ps_mask],
-        v[final_ps_mask],
-        gammas[final_ps_mask],
-        col[final_ps_mask],
-        row[final_ps_mask],
-        defo_nonlinear[:, final_ps_mask],
-        defo_linear[:, final_ps_mask],
+    return Ferreti2001Result(
+        observations=Delta_phi_against_ref,
+        aps=atmos,
+        q=q,
+        v=v,
+        gammas=gammas,
+        years_since_ref=years_since_ref,
+        bperp=bperp,
+        Cq=Cq,
+        Cv=Cv,
     )
