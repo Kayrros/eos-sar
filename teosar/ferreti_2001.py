@@ -1,13 +1,15 @@
 import functools
 import os
+from typing import Optional
 
 import numpy as np
 import scipy
 import tensorflow as tf
 import tensorflow_probability as tfp
 import tifffile
+from numpy.typing import NDArray
 
-from teosar import neighbors, periodogram, psc, psutils
+from teosar import periodogram, psc, psutils
 
 tf.config.set_visible_devices([], "GPU")  # Do not use GPU if available
 
@@ -165,31 +167,32 @@ def iterative_alternate_periodogram(
 
         if debug_path is not None:
             os.makedirs(debug_path, exist_ok=True)
-            parent_shape = Delta_phi_against_ref[0].shape
             # Save debug infos for last image of the serie
+            i = Delta_phi_against_ref.shape[0] - 1
+            parent_shape = Delta_phi_against_ref[0].shape
             save_debug_image(
-                os.path.join(debug_path, "APS_%d.tiff" % iteration),
+                os.path.join(debug_path, f"APS_{iteration}_{i}.tiff"),
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
-                APS_estimated[-1, :],
+                APS_estimated[i, :],
             )
             save_debug_image(
-                os.path.join(debug_path, "DPHI_NOMVT_NOTOPO_%d.tiff" % iteration),
+                os.path.join(debug_path, f"DPHI_NOMVT_NOTOPO_{iteration}_{i}.tiff"),
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
-                Delta_phi_no_q_v_estimation[-1, :],
+                Delta_phi_no_q_v_estimation[i, :],
             )
             save_debug_image(
-                os.path.join(debug_path, "DPHI_TOPO_%d.tiff" % iteration),
+                os.path.join(debug_path, f"DPHI_TOPO_{iteration}_{i}.tiff"),
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
-                (-Cq * date_normal_baseline * q_estimation[np.newaxis, :])[-1, :],
+                (-Cq * date_normal_baseline * q_estimation[np.newaxis, :])[i, :],
             )
             save_debug_image(
-                os.path.join(debug_path, "DPHI_MVT_%d.tiff" % iteration),
+                os.path.join(debug_path, f"DPHI_MVT_{iteration}_{i}.tiff"),
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
@@ -197,14 +200,16 @@ def iterative_alternate_periodogram(
                     Cv
                     * times_differences_against_ref[:, np.newaxis]
                     * v_estimation[np.newaxis, :]
-                )[-1, :],
+                )[i, :],
             )
             save_debug_image(
-                os.path.join(debug_path, "DPHI_NOAPS_NOMVT_NOTOPO_%d.tiff" % iteration),
+                os.path.join(
+                    debug_path, f"DPHI_NOAPS_NOMVT_NOTOPO_{iteration}_{i}.tiff"
+                ),
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
-                Delta_phi_estimation_noplane[-1, :],
+                Delta_phi_estimation_noplane[i, :],
             )
 
         # (f) Extract velocity and altitude residuals
@@ -329,36 +334,16 @@ def spatial_low_pass_interpolate_atmo(
     residual,
     PS_X_coordinates,
     PS_Y_coordinates,
-    resolution_x,
-    resolution_y,
     parent_shape,
-    distance_threshold=100,
-    interpolation_method="cubic",
+    weights: Optional[NDArray] = None,
 ):
-    # low pass spatially
-    phi_low_pass = neighbors.compute_phi_neighbors(
-        PS_X_coordinates,
-        PS_Y_coordinates,
-        residual,
-        resolution_x,
-        resolution_y,
-        distance_threshold=distance_threshold,
-    )
-    # add ps phase
-    phi_low_pass = np.angle(np.exp(1j * phi_low_pass) + np.exp(1j * residual))
-
-    interpolated = []
     h, w = parent_shape
-    for i, phi_nei in enumerate(phi_low_pass):
-        # interpolate
-        interp = scipy.interpolate.griddata(
-            (PS_X_coordinates, PS_Y_coordinates),
-            phi_nei,
-            (np.arange(w)[None, :], np.arange(h)[:, None]),
-            method=interpolation_method,
-            fill_value=np.nan,
-            rescale=False,
+    interpolated = []
+    for res in residual:
+        tck = scipy.interpolate.bisplrep(
+            PS_Y_coordinates, PS_X_coordinates, res, weights
         )
+        interp = scipy.interpolate.bisplev(np.arange(h), np.arange(w), tck)
         interpolated.append(interp)
     return interpolated
 
@@ -452,16 +437,12 @@ def full_pipeline(
     inc,
     rng,
     dates,
-    resolution_x,
-    resolution_y,
     da_threshold=0.25,
     max_iterations=10,
     threshold_q=0.7,
     threshold_v=0.1,
     first_gamma_threshold=0.8,
     second_gamma_threshold=0.9,
-    distance_threshold=300,
-    interpolation_method="cubic",
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
@@ -507,16 +488,13 @@ def full_pipeline(
 
     print("interpolate atmo")
     # interpolate atmosphere in residual to a regular grid,
-    # interpolated will contain nans outside PS mesh
+    # it uses the coherence (gamma) as weights for the spline fitting
     interpolated = spatial_low_pass_interpolate_atmo(
         residual[:, good_ps],
         PS_X_coordinates[good_ps],
         PS_Y_coordinates[good_ps],
-        resolution_x,
-        resolution_y,
         parent_shape=Delta_phi_against_ref[0].shape,
-        distance_threshold=distance_threshold,
-        interpolation_method=interpolation_method,
+        weights=gammas_approx[good_ps],
     )
 
     # add affine planes to interpolated to get the full atmo
