@@ -1,5 +1,5 @@
-from typing import Any
 import pytest
+
 from eos.products import sentinel1
 from eos.products.sentinel1.metadata import T_orb
 from eos.sar import range_doppler
@@ -42,7 +42,9 @@ def test_deprecation():
     xml = open(
         "./tests/data/S1A_IW_SLC__1SDV_20230109T171148_20230109T171218_046710_059965_97A3-002.xml"
     ).read()
-    svs: list[StateVector] = sentinel1.metadata.extract_burst_metadata(xml, burst_id=1).state_vectors
+    svs: list[StateVector] = sentinel1.metadata.extract_burst_metadata(
+        xml, burst_id=1
+    ).state_vectors
     with pytest.warns(DeprecationWarning):
         Orbit([s.to_dict() for s in svs])  # type: ignore
     Orbit(svs)

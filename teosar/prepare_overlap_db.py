@@ -1,9 +1,7 @@
 import numpy as np
 
 from eos.sar.utils import write_array
-
-from teosar import inout
-from teosar import tsinsar
+from teosar import inout, tsinsar
 from teosar.utils import OvlIfg
 
 

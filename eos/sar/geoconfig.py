@@ -1,6 +1,8 @@
 from typing import Sequence
+
 import numpy as np
 import pyproj
+
 from eos.sar import poly
 from eos.sar.model import SensorModel
 
@@ -35,10 +37,10 @@ def compute_cosi_rng(points, sat):
 
 
 def normalize(vec):
-    '''
+    """
     normalize vec so that norm(Vec) = 1
     vec (n, 3)
-    '''
+    """
     norm = np.linalg.norm(vec, axis=1).reshape(-1, 1)
     norm[norm == 0] = 1
     return vec / norm
@@ -75,7 +77,7 @@ def compute_baseline(prim, sec, points, speed):
     points = points.reshape(-1, 3)
     speed = speed.reshape(-1, 3)
     baseline = sec - prim  # baseline vec
-    line_of_sight = (points - prim)
+    line_of_sight = points - prim
     # construct basis
     line_of_sight = normalize(line_of_sight)
     speed = normalize(speed)
@@ -133,11 +135,13 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
     return col, row
 
 
-def get_geom_config(primary_model: SensorModel,
-                    secondary_models: Sequence[SensorModel],
-                    grid_size_col: int = 20,
-                    grid_size_row: int = 20,
-                    train: bool = True):
+def get_geom_config(
+    primary_model: SensorModel,
+    secondary_models: Sequence[SensorModel],
+    grid_size_col: int = 20,
+    grid_size_row: int = 20,
+    train: bool = True,
+):
     """Get the geometric configuration at a meshgrid train/test set.
 
 
@@ -167,8 +171,9 @@ def get_geom_config(primary_model: SensorModel,
 
     """
     # construct grid on which we estimate each parameter
-    col, row = get_grid(primary_model.w, primary_model.h, grid_size_col,
-                        grid_size_row, train=train)
+    col, row = get_grid(
+        primary_model.w, primary_model.h, grid_size_col, grid_size_row, train=train
+    )
     rows = row.ravel()
     cols = col.ravel()
     points = np.column_stack([cols, rows])
@@ -180,12 +185,10 @@ def get_geom_config(primary_model: SensorModel,
     # geometric config parameters estim start
     # localize points on ellipsoid
     alts = [0 for i in range(num_points)]
-    lons, lats, _ = primary_model.localization(
-        rows, cols, alts)
+    lons, lats, _ = primary_model.localization(rows, cols, alts)
 
     # convert to geocentric cartesian
-    to_gxyz = pyproj.Transformer.from_crs(
-        'epsg:4326', 'epsg:4978', always_xy=True)
+    to_gxyz = pyproj.Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
     gx, gy, gz = to_gxyz.transform(lons, lats, alts)
     points_3D = np.column_stack([gx, gy, gz])
 
@@ -211,7 +214,8 @@ def get_geom_config(primary_model: SensorModel,
 
         # Calculation of baseline for each defined pixel
         _, _perp_baseline, _ = compute_baseline(
-            sat_pos_prim, sat_pos_sec, points_3D, sat_speed_prim)
+            sat_pos_prim, sat_pos_sec, points_3D, sat_speed_prim
+        )
         perp_baseline[sid] = _perp_baseline
         delta_r[sid] = ps.ravel() - ps_sec.ravel()
 
@@ -219,15 +223,17 @@ def get_geom_config(primary_model: SensorModel,
 
 
 class GeometryPredictor:
-    '''
+    """
     Used to predict the geometry (baselines, incidence angles)
-    '''
+    """
 
-    def __init__(self,
-                 primary_model: SensorModel,
-                 secondary_models: Sequence[SensorModel],
-                 grid_size: int = 20,
-                 degree: int = 7):
+    def __init__(
+        self,
+        primary_model: SensorModel,
+        secondary_models: Sequence[SensorModel],
+        grid_size: int = 20,
+        degree: int = 7,
+    ):
         """
 
 
@@ -254,21 +260,30 @@ class GeometryPredictor:
         self.degree = degree
 
         # training set to fit the geometric config
-        points_train, theta_inc_train, perp_baseline_train, delta_r_train = get_geom_config(
-            primary_model, secondary_models, grid_size_col=grid_size,
-            grid_size_row=grid_size, train=True)
+        (
+            points_train,
+            theta_inc_train,
+            perp_baseline_train,
+            delta_r_train,
+        ) = get_geom_config(
+            primary_model,
+            secondary_models,
+            grid_size_col=grid_size,
+            grid_size_row=grid_size,
+            train=True,
+        )
 
         # fit a 2d polynomial of degree
         polynom = poly.polymodel(degree)
         ztrue = np.column_stack(
-            [perp_baseline_train.T, delta_r_train.T, theta_inc_train])
+            [perp_baseline_train.T, delta_r_train.T, theta_inc_train]
+        )
 
         polynom.fit_poly(points_train[:, 0], points_train[:, 1], ztrue)
         self.polynom = polynom
 
     def check_ids(self, ids):
-        """ Check that the ids are coherent with the secondary models list
-        """
+        """Check that the ids are coherent with the secondary models list"""
         if ids is None:
             ids = np.arange(self.len_secon)
         else:
@@ -302,9 +317,7 @@ class GeometryPredictor:
 
         """
         secondary_ids = self.check_ids(secondary_ids)
-        return self.polynom.eval_poly(cols, rows,
-                                      secondary_ids,
-                                      grid_eval)
+        return self.polynom.eval_poly(cols, rows, secondary_ids, grid_eval)
 
     def predict_par_baseline(self, rows, cols, secondary_ids=None, grid_eval=False):
         """Compute the parallel baseline on a set of debursted points.
@@ -333,9 +346,9 @@ class GeometryPredictor:
 
         """
         secondary_ids = self.check_ids(secondary_ids)
-        return self.polynom.eval_poly(cols, rows,
-                                      self.len_secon + np.array(secondary_ids),
-                                      grid_eval)
+        return self.polynom.eval_poly(
+            cols, rows, self.len_secon + np.array(secondary_ids), grid_eval
+        )
 
     def predict_incidence(self, rows, cols, grid_eval=False):
         """Compute the incidence angle for a set of debursted points.
@@ -358,5 +371,4 @@ class GeometryPredictor:
             Incidence angle for each point on the primary reference frame.
 
         """
-        return self.polynom.eval_poly(cols, rows, [-1],
-                                      grid_eval).reshape(-1, 1)
+        return self.polynom.eval_poly(cols, rows, [-1], grid_eval).reshape(-1, 1)

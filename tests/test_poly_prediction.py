@@ -1,14 +1,16 @@
-import numpy as np
 import os
-from eos.sar import poly, io, geoconfig
+
+import numpy as np
+
 import eos.products.sentinel1 as s1
+from eos.sar import geoconfig, io, poly
 from eos.sar.orbit import Orbit
 
 
 def get_normalization(vec):
-    '''
+    """
     normalize between -2 & 2
-    '''
+    """
     a = np.amin(vec, axis=0)
     b = np.amax(vec, axis=0)
     off = (b + a) / 2
@@ -36,14 +38,18 @@ def test_poly():
     fitted.fit_poly(x, y, z)
     np.testing.assert_allclose(gt_coeffs, fitted.coeffs)
     zeval = fitted.eval_poly(x, y)
-    rmse = np.sqrt(np.mean((zeval - z)**2))
+    rmse = np.sqrt(np.mean((zeval - z) ** 2))
     np.testing.assert_allclose(rmse, 0, atol=1e-3)
 
 
 def test_baseline_predictions():
-    xml_folder = 's3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation'
-    xml_basenames = ['s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml',
-                     's1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml']
+    xml_folder = (
+        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
+    )
+    xml_basenames = [
+        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml",
+        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml",
+    ]
     # list of our xmls
     xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
     # read the xmls as strings
@@ -52,21 +58,24 @@ def test_baseline_predictions():
         xml_content.append(io.read_xml_file(xml_path))
 
     # Now extract the needed metadata
-    primary_bursts_meta = s1.metadata.extract_bursts_metadata(
-        xml_content[0])
-    secondary_bursts_meta = s1.metadata.extract_bursts_metadata(
-        xml_content[1])
+    primary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[0])
+    secondary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[1])
 
     primary_orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
     primary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-        primary_bursts_meta, primary_orbit)
+        primary_bursts_meta, primary_orbit
+    )
 
-    secondary_orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta))
+    secondary_orbit = Orbit(
+        s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta)
+    )
     secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(
-        secondary_bursts_meta, secondary_orbit)
+        secondary_bursts_meta, secondary_orbit
+    )
 
-    pred = geoconfig.GeometryPredictor(primary_swath_model, [secondary_swath_model],
-                                       grid_size=20, degree=7)
+    pred = geoconfig.GeometryPredictor(
+        primary_swath_model, [secondary_swath_model], grid_size=20, degree=7
+    )
 
     npts = 50
     rows = np.random.uniform(0, primary_swath_model.h, size=npts)

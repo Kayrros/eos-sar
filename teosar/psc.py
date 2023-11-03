@@ -47,9 +47,9 @@ def get_local_min(array: NDArray) -> NDArray:
 
     for i, pos in enumerate(pos_list):
         shifted[
-            i, max(0, pos[0]): min(h, h + pos[0]), max(0, pos[1]): min(w, w + pos[1])
+            i, max(0, pos[0]) : min(h, h + pos[0]), max(0, pos[1]) : min(w, w + pos[1])
         ] = array[
-            max(0, -pos[0]): min(h, h - pos[0]), max(0, -pos[1]): min(w, w - pos[1])
+            max(0, -pos[0]) : min(h, h - pos[0]), max(0, -pos[1]) : min(w, w - pos[1])
         ]
 
     local_minimum = np.min(shifted, axis=0)

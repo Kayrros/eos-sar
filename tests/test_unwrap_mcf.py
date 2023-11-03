@@ -1,11 +1,14 @@
-import pytest
 import numpy as np
+import pytest
+
 from eos.sar import unwrapping
 from eos.sar.utils import wrap
 
 
 @pytest.mark.parametrize("dtype,atol", [(np.float32, 1e-4), (np.float64, 1e-10)])
-@pytest.mark.parametrize("mcf_solver", [unwrapping.MCFSolver.SMCF, unwrapping.MCFSolver.SCIPY])
+@pytest.mark.parametrize(
+    "mcf_solver", [unwrapping.MCFSolver.SMCF, unwrapping.MCFSolver.SCIPY]
+)
 def test_unwrap(dtype, atol: float, mcf_solver: unwrapping.MCFSolver):
     h, w = 50, 100
 

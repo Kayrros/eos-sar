@@ -1,21 +1,25 @@
 from typing import Sequence
+
 import numpy as np
+
+from eos.sar import roi, utils
 from eos.sar.geoconfig import GeometryPredictor
-from eos.sar import utils, roi
 from eos.sar.model import SensorModel
 
 
 class TopoCorrection:
-    '''
+    """
     class to predict the Topographic and the Flatearth component
     for a set of models
-    '''
+    """
 
-    def __init__(self,
-                 primary_model: SensorModel,
-                 secondary_models: Sequence[SensorModel],
-                 grid_size: int = 50,
-                 degree: int = 7):
+    def __init__(
+        self,
+        primary_model: SensorModel,
+        secondary_models: Sequence[SensorModel],
+        grid_size: int = 50,
+        degree: int = 7,
+    ):
         """
         Constructor.
 
@@ -40,15 +44,14 @@ class TopoCorrection:
 
         """
         # set a geometry predictor object (predicts baselines, incidence) on swath
-        self.geom_pred = GeometryPredictor(primary_model, secondary_models,
-                                           grid_size=grid_size,
-                                           degree=degree)
+        self.geom_pred = GeometryPredictor(
+            primary_model, secondary_models, grid_size=grid_size, degree=degree
+        )
 
         self.wavelength = primary_model.wavelength
         self.primary_model = primary_model
 
-    def __flat_earth(self, rows, cols, grid_eval,
-                     secondary_ids=None, wrapped=False):
+    def __flat_earth(self, rows, cols, grid_eval, secondary_ids=None, wrapped=False):
         """internal flat_earth prediction helper func
 
         Parameters
@@ -75,16 +78,14 @@ class TopoCorrection:
 
         """
         par_baseline = self.geom_pred.predict_par_baseline(
-            rows, cols,
-            secondary_ids,
-            grid_eval).T
+            rows, cols, secondary_ids, grid_eval
+        ).T
         phase = -4 * np.pi * par_baseline / self.wavelength
         if wrapped:
             phase = utils.wrap(phase)
         return phase
 
-    def sparse_flat_earth(self, rows, cols,
-                          secondary_ids=None, wrapped=False):
+    def sparse_flat_earth(self, rows, cols, secondary_ids=None, wrapped=False):
         """
         Predict the flat earth phase on a sparse set of points.
 
@@ -107,12 +108,11 @@ class TopoCorrection:
             Flat earth phase per secondary image and per point.
 
         """
-        return self.__flat_earth(rows, cols, grid_eval=False,
-                                 secondary_ids=secondary_ids,
-                                 wrapped=wrapped)
+        return self.__flat_earth(
+            rows, cols, grid_eval=False, secondary_ids=secondary_ids, wrapped=wrapped
+        )
 
-    def flat_earth_image(self, primary_roi=None, secondary_ids=None,
-                         wrapped=False):
+    def flat_earth_image(self, primary_roi=None, secondary_ids=None, wrapped=False):
         """
         Flat earth prediction on image.
 
@@ -138,13 +138,18 @@ class TopoCorrection:
         if primary_roi is None:
             primary_roi = roi.Roi(0, 0, self.primary_model.w, self.primary_model.h)
         col, row, w, h = primary_roi.to_roi()
-        flat_earth = self.__flat_earth(np.arange(row, row + h), np.arange(col, col + w),
-                                       grid_eval=True, secondary_ids=secondary_ids,
-                                       wrapped=wrapped)
+        flat_earth = self.__flat_earth(
+            np.arange(row, row + h),
+            np.arange(col, col + w),
+            grid_eval=True,
+            secondary_ids=secondary_ids,
+            wrapped=wrapped,
+        )
         return flat_earth.reshape(flat_earth.shape[0], h, w)
 
-    def topo_phase_image(self, heights, primary_roi=None, secondary_ids=None,
-                         wrapped=False):
+    def topo_phase_image(
+        self, heights, primary_roi=None, secondary_ids=None, wrapped=False
+    ):
         """
         Computes the topographic phase for an image.
 
@@ -173,17 +178,23 @@ class TopoCorrection:
             primary_roi = roi.Roi(0, 0, self.primary_model.w, self.primary_model.h)
         col, row, w, h = primary_roi.to_roi()
 
-        assert heights.shape == (h, w), "heights array is not consistent with primary_roi"
+        assert heights.shape == (
+            h,
+            w,
+        ), "heights array is not consistent with primary_roi"
 
         # perp_baseline prediction
         perp_baseline = self.geom_pred.predict_perp_baseline(
-            np.arange(row, row + h), np.arange(col, col + w),
+            np.arange(row, row + h),
+            np.arange(col, col + w),
             grid_eval=True,
-            secondary_ids=secondary_ids).T.reshape(-1, h, w)  # N, h, w
+            secondary_ids=secondary_ids,
+        ).T.reshape(-1, h, w)  # N, h, w
 
         # incidence prediction
         incidence = self.geom_pred.predict_incidence(
-            np.arange(row, row + h), np.arange(col, col + w),
+            np.arange(row, row + h),
+            np.arange(col, col + w),
             grid_eval=True,
         ).reshape(h, w)  # (h, w)
 
@@ -214,15 +225,14 @@ class TopoCorrection:
             Topographic phase.
 
         """
-        phase = - 4 * np.pi / self.wavelength
+        phase = -4 * np.pi / self.wavelength
         phase *= heights / (rng * np.sin(incidence))
         phase = phase * perp_baseline
         if wrapped:
             phase = utils.wrap(phase)
         return phase
 
-    def sparse_topo_phase(self, heights, rows, cols,
-                          secondary_ids=None, wrapped=False):
+    def sparse_topo_phase(self, heights, rows, cols, secondary_ids=None, wrapped=False):
         """
         Topographic phase on a set of sparse points (not on a regular grid).
 
@@ -249,13 +259,13 @@ class TopoCorrection:
         """
         # perp_baseline prediction
         perp_baseline = self.geom_pred.predict_perp_baseline(
-            rows, cols,
-            grid_eval=False,
-            secondary_ids=secondary_ids).T  # nImgs, npts
+            rows, cols, grid_eval=False, secondary_ids=secondary_ids
+        ).T  # nImgs, npts
 
         # incidence prediction
         incidence = self.geom_pred.predict_incidence(
-            rows, cols,
+            rows,
+            cols,
             grid_eval=False,
         ).ravel()  # (npts, )
 

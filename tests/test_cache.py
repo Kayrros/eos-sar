@@ -1,7 +1,7 @@
-from dataclasses import dataclass
 import datetime
 import json
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import pytest

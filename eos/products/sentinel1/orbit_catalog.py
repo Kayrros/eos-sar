@@ -1,9 +1,9 @@
-import os
 import abc
 import datetime
+import fnmatch
 import io
 import logging
-import fnmatch
+import os
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Literal, Optional
@@ -107,7 +107,7 @@ class Sentinel1OrbitCatalogBackend(abc.ABC):
 
 def _datatake_of(pid: str) -> str:
     idx = len("S1A_IW_SLC__1SDV_20211202T173302_20211202T173329_040833_")
-    return pid[idx: idx + 6]
+    return pid[idx : idx + 6]
 
 
 def _platform_of(pid: str) -> Literal["S1A", "S1B", "S1C", "S1D"]:
@@ -213,7 +213,9 @@ def parse_statevectors(
     return newsvs
 
 
-def _parse_start_end_date_from_orbit_file(s) -> tuple[datetime.datetime, datetime.datetime]:
+def _parse_start_end_date_from_orbit_file(
+    s
+) -> tuple[datetime.datetime, datetime.datetime]:
     """
     Extract start and end dates for an orbit file filename.
 
@@ -224,10 +226,14 @@ def _parse_start_end_date_from_orbit_file(s) -> tuple[datetime.datetime, datetim
     Return:
       start, end (str): two dates as string (20161012T225943 and 20161014T005943 in the example)
     """
-    start = s.split('_')[6][1:]
-    end = s.split('_')[7].split('.')[0]
-    start = datetime.datetime.strptime(start, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc)
-    end = datetime.datetime.strptime(end, "%Y%m%dT%H%M%S").replace(tzinfo=datetime.timezone.utc)
+    start = s.split("_")[6][1:]
+    end = s.split("_")[7].split(".")[0]
+    start = datetime.datetime.strptime(start, "%Y%m%dT%H%M%S").replace(
+        tzinfo=datetime.timezone.utc
+    )
+    end = datetime.datetime.strptime(end, "%Y%m%dT%H%M%S").replace(
+        tzinfo=datetime.timezone.utc
+    )
     return start, end
 
 
@@ -253,9 +259,14 @@ class LocalFilesSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
         for seg in query.segments:
             for qual in query.quality:
                 qualtype = qual.to_product_type()
-                files = [p for p in self.paths
-                         if fnmatch.fnmatch(os.path.basename(p),
-                                            f'{seg.platform.upper()}_OPER_AUX_{qualtype}_OPOD_*.EOF')]
+                files = [
+                    p
+                    for p in self.paths
+                    if fnmatch.fnmatch(
+                        os.path.basename(p),
+                        f"{seg.platform.upper()}_OPER_AUX_{qualtype}_OPOD_*.EOF",
+                    )
+                ]
                 files = select_orbit_files_from_filelist(files, seg)
                 if not files:
                     continue
@@ -313,9 +324,12 @@ else:
         @override
         def search(self, query: BackendQuery) -> BackendResult:
             import concurrent.futures
-            from concurrent.futures import (FIRST_COMPLETED, Future,
-                                            ProcessPoolExecutor,
-                                            ThreadPoolExecutor)
+            from concurrent.futures import (
+                FIRST_COMPLETED,
+                Future,
+                ProcessPoolExecutor,
+                ThreadPoolExecutor,
+            )
 
             statevectors_per_item: dict[QuerySegment, list[StateVector]] = {}
 

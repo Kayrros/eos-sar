@@ -76,14 +76,13 @@ class polymodel:
         ypowers = self._get_powers(y, self.d)
         design_mat = np.zeros((len(x), self.num_coeffs))
         for i in range(self.num_coeffs):
-            design_mat[:, i] = xpowers[:, self.pow_x[i]] * \
-                ypowers[:, self.pow_y[i]]
+            design_mat[:, i] = xpowers[:, self.pow_x[i]] * ypowers[:, self.pow_y[i]]
         return design_mat
 
     def _normalization(self, vec):
-        '''
+        """
         normalize between -2 & 2
-        '''
+        """
         a = np.amin(vec, axis=0)
         b = np.amax(vec, axis=0)
         off = (b + a) / 2
@@ -91,18 +90,17 @@ class polymodel:
         return off, scale
 
     def set_normalization(self, x, y, z):
-        '''Initialize the normalization offset and scale;
-        '''
+        """Initialize the normalization offset and scale;"""
         self.xoff, self.xscale = self._normalization(x)
         self.yoff, self.yscale = self._normalization(y)
         self.zoff, self.zscale = self._normalization(z)
 
     def _normalize(self, vec, off, scale):
-        '''normalize the vector with offset and scale '''
+        """normalize the vector with offset and scale"""
         return (vec - off) / scale
 
     def _unnormalize(self, vec, off, scale, indices=None):
-        '''un-normalize vector with offset and scale '''
+        """un-normalize vector with offset and scale"""
         if indices is None:
             indices = np.arange(scale.shape[1])
         return vec * scale[indices] + off[indices]
@@ -126,7 +124,7 @@ class polymodel:
         None.
 
         """
-        assert (len(x) > self.num_coeffs), 'unsufficient points for fit'
+        assert len(x) > self.num_coeffs, "unsufficient points for fit"
         self.set_normalization(x, y, z)
         x = self._normalize(x, self.xoff, self.xscale)
         y = self._normalize(y, self.yoff, self.yscale)
@@ -189,7 +187,7 @@ class polymodel:
             if grid_eval=True, nresutl = n x n'
 
         """
-        assert hasattr(self, 'coeffs'), 'not fitted yet'
+        assert hasattr(self, "coeffs"), "not fitted yet"
         if zindices is None:
             zindices = np.arange(self.coeffs.shape[1])
         x = self._normalize(x, self.xoff, self.xscale)
@@ -200,8 +198,9 @@ class polymodel:
         if grid_eval:
             znormed = np.polynomial.polynomial.polygrid2d(x, y, c)
             # shape is now (num_pred, len(x), len(y))
-            znormed = np.transpose(znormed, (2, 1, 0)).reshape((len(y) * len(x),
-                                                                c.shape[2]))
+            znormed = np.transpose(znormed, (2, 1, 0)).reshape(
+                (len(y) * len(x), c.shape[2])
+            )
         else:
             znormed = np.polynomial.polynomial.polyval2d(x, y, c).T
 

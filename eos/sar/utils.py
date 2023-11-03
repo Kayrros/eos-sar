@@ -1,4 +1,5 @@
 import numpy as np
+
 import eos.sar
 
 
@@ -110,8 +111,7 @@ def raster_xy_grid(raster_shape, transform, px_is_area=True):
 
     """
     # get dem points in crs
-    col, row = np.meshgrid(
-        np.arange(raster_shape[1]), np.arange(raster_shape[0]))
+    col, row = np.meshgrid(np.arange(raster_shape[1]), np.arange(raster_shape[0]))
     col = col.ravel()
     row = row.ravel()
 
@@ -129,16 +129,16 @@ def raster_xy_grid(raster_shape, transform, px_is_area=True):
 
 
 def compare(phi1, phi2):
-    ''' Compare two phases by their coherence'''
+    """Compare two phases by their coherence"""
     return np.abs(np.sum(np.exp(1j * (phi1 - phi2)))) / phi1.size
 
 
 def wrap(phi):
-    ''' Wrap phi to [-pi, pi]'''
+    """Wrap phi to [-pi, pi]"""
     return (phi + np.pi) % (2 * np.pi) - np.pi
 
 
-def check_input_len(input_var, out_len, error_msg='shape mismatch'):
+def check_input_len(input_var, out_len, error_msg="shape mismatch"):
     """Check that the length of the input array is compatible with a certain\
         desired length. If a scalar is given, create a constant array with\
         desired length."""
@@ -224,10 +224,12 @@ def stitch_arrays(iter, out_shape, out=None):
         if out is None:
             out = np.full(out_shape, np.nan, dtype=arr.dtype)
 
-        assert arr.shape == write_roi.get_shape(), "array shape must match write roi shape"
+        assert (
+            arr.shape == write_roi.get_shape()
+        ), "array shape must match write roi shape"
         write_roi.assert_valid(out_shape)
         col_min, row_min, w, h = write_roi.to_roi()
-        out[row_min:row_min + h, col_min:col_min + w] = arr
+        out[row_min : row_min + h, col_min : col_min + w] = arr
 
     return out
 

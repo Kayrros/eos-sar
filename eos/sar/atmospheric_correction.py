@@ -1,13 +1,13 @@
-from eos.sar.projection_correction import ImageCorrection, GeoImagePoints
 from eos.sar.orbit import Orbit
+from eos.sar.projection_correction import GeoImagePoints, ImageCorrection
 
 
 class ApdCorrection(ImageCorrection):
-    '''
+    """
     Atmospheric path delay correction based on the empriric model\
     as described by Jehle et al in “Estimation of Atmospheric Path Delays\
     in TerraSAR-X Data using Models vs Measurements. Sensors 8, 8479-8491 (2008)”
-    '''
+    """
 
     def __init__(self, orbit: Orbit):
         """

@@ -1,22 +1,25 @@
-import numpy as np
-import pyproj
 import os
 
+import numpy as np
+import pyproj
 import pytest
 
+import eos.dem
+import eos.sar
 from eos.products import sentinel1
 from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.coordinate_correction import FullBistaticReference
-from eos.products.sentinel1.orbit_catalog import BestEffort, PhoenixSentinel1OrbitCatalogBackend, Sentinel1OrbitCatalogQuery
-import eos.sar
-import eos.dem
+from eos.products.sentinel1.orbit_catalog import (
+    BestEffort,
+    PhoenixSentinel1OrbitCatalogBackend,
+    Sentinel1OrbitCatalogQuery,
+)
 from eos.sar import range_doppler
 from eos.sar.orbit import Orbit
 
 
 def test_projection():
-    xml_path =\
-        './tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
+    xml_path = "./tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
     with open(xml_path) as f:
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
@@ -27,14 +30,23 @@ def test_projection():
     doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
     # create a corrector
     corrector = sentinel1.coordinate_correction.s1_corrector_from_meta(
-        burst_meta, orbit, doppler, apd=True, bistatic=True, intra_pulse=True,
-        alt_fm_mismatch=True)
+        burst_meta,
+        orbit,
+        doppler,
+        apd=True,
+        bistatic=True,
+        intra_pulse=True,
+        alt_fm_mismatch=True,
+    )
 
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(
-        burst_meta, orbit, corrector)
+        burst_meta, orbit, corrector
+    )
     # create a grid of points
-    cols_grid, rows_grid = np.meshgrid(np.linspace(0, bmod.w - 1, 10), np.linspace(0, bmod.h - 1, 10))
+    cols_grid, rows_grid = np.meshgrid(
+        np.linspace(0, bmod.w - 1, 10), np.linspace(0, bmod.h - 1, 10)
+    )
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 
@@ -54,42 +66,45 @@ def test_projection():
     # check ability to query one point
     ptlon, ptlat, ptalt = bmod.localization(rows[0], cols[0], alts[0])
     assert isinstance(
-        ptlon, float), "vectorized localization func failed on scalar input"
+        ptlon, float
+    ), "vectorized localization func failed on scalar input"
 
     # check ability to query one point
     ptrow, ptcol, pti = bmod.projection(lon[0], lat[0], alt[0])
-    assert isinstance(
-        ptrow, float), "vectorized projection func failed on scalar input"
+    assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
 
     # check iterative_projection
-    transform = pyproj.Transformer.from_crs(
-        'epsg:4326', 'epsg:4978', always_xy=True)
+    transform = pyproj.Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
     gx, gy, gz = transform.transform(lon, lat, alt)
     azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx, gy, gz)
     assert isinstance(
-        azt, np.ndarray), "vectorized iterative projection func failed on array input"
+        azt, np.ndarray
+    ), "vectorized iterative projection func failed on array input"
 
-    gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng,
-                                                      np.zeros_like(alt),
-                                                      (gx + 10, gy + 2, gz + 3))
-    assert isinstance(gx, np.ndarray), \
-        "vectorized iterative localization func failed on array input"
+    gx, gy, gz = range_doppler.iterative_localization(
+        bmod.orbit, azt, rng, np.zeros_like(alt), (gx + 10, gy + 2, gz + 3)
+    )
+    assert isinstance(
+        gx, np.ndarray
+    ), "vectorized iterative localization func failed on array input"
 
-    azt, rng, i = range_doppler.iterative_projection(bmod.orbit,
-                                                     gx[0], gy[0], gz[0])
-    assert isinstance(azt, float),\
-        "vectorized iterative projection func failed on scalar input"
+    azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
+    assert isinstance(
+        azt, float
+    ), "vectorized iterative projection func failed on scalar input"
 
     init_gxyz = (gx[0] + 10, gy[0] + 2, gz[0] + 3)
 
-    gx, gy, gz = range_doppler.iterative_localization(bmod.orbit, azt, rng, 0,
-                                                      init_gxyz)
+    gx, gy, gz = range_doppler.iterative_localization(
+        bmod.orbit, azt, rng, 0, init_gxyz
+    )
     assert isinstance(
-        gx, float), "vectorized iterative localization func failed on scalar input"
+        gx, float
+    ), "vectorized iterative localization func failed on scalar input"
 
 
 def test_projection_grd():
-    xml_path = './tests/data/S1A_IW_GRDH_1SDV_20220609T022354_20220609T022419_043580_053410_DF62-vv-annotation.xml'
+    xml_path = "./tests/data/S1A_IW_GRDH_1SDV_20220609T022354_20220609T022419_043580_053410_DF62-vv-annotation.xml"
     with open(xml_path) as f:
         xml_content = f.read()
     meta = sentinel1.metadata.extract_grd_metadata(xml_content)
@@ -103,8 +118,10 @@ def test_projection_grd():
     proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit, corrector)
 
     # create a grid of points
-    cols_grid, rows_grid = np.meshgrid(np.linspace(-1000, proj_model.w + 1000, 100),
-                                       np.linspace(-1000, proj_model.h + 1000, 100))
+    cols_grid, rows_grid = np.meshgrid(
+        np.linspace(-1000, proj_model.w + 1000, 100),
+        np.linspace(-1000, proj_model.h + 1000, 100),
+    )
     cols, rows = cols_grid.ravel(), rows_grid.ravel()
     alts = np.zeros_like(cols)
 
@@ -123,7 +140,9 @@ def test_projection_grd():
 
     # check ability to query one point
     ptlon, ptlat, ptalt = proj_model.localization(rows[0], cols[0], alts[0])
-    assert isinstance(ptlon, float), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptlon, float
+    ), "vectorized localization func failed on scalar input"
 
     # check ability to query one point
     ptrow, ptcol, pti = proj_model.projection(lon[0], lat[0], alt[0])
@@ -131,41 +150,47 @@ def test_projection_grd():
 
 
 def test_projection_corner_reflectors():
+    from math import ceil, floor
 
-    from math import floor, ceil
     from eos.sar import fourier_zoom, max_finding
 
     # subset of corner reflectors that give a mosaic of reasonable size
     # to understand why we picked those,
     # just do plt.scatter(lons, lats)
-    cr_ids = [0, 1, 2, 7, 8,
-              10, 11, 14, 15, 18, 19, 24,
-              29, 30, 31, 32
-              ]
+    cr_ids = [0, 1, 2, 7, 8, 10, 11, 14, 15, 18, 19, 24, 29, 30, 31, 32]
     # coordinates of corner reflectors
     coords = np.loadtxt(
         "./tests/data/QLD_corner_reflector_positions_GDA2020.txt",
-        skiprows=1, usecols=range(1, 7))[cr_ids]
+        skiprows=1,
+        usecols=range(1, 7),
+    )[cr_ids]
 
     lats, lons, alts, gx, gy, gz = coords.T
 
     # products near 2020, 1, 1 in which we have the coordinates, otherwise the
     # velocity of deformation in the file needs to be used to get coordinates at date
-    s3_bucket = 's3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/corner_reflectors_australia'
-    safes = ['S1A_IW_SLC__1SSH_20200103T083235_20200103T083305_030633_03829E_71AD.SAFE',
-             'S1A_IW_SLC__1SSH_20200103T083303_20200103T083331_030633_03829E_9342.SAFE']
+    s3_bucket = "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/corner_reflectors_australia"
+    safes = [
+        "S1A_IW_SLC__1SSH_20200103T083235_20200103T083305_030633_03829E_71AD.SAFE",
+        "S1A_IW_SLC__1SSH_20200103T083303_20200103T083331_030633_03829E_9342.SAFE",
+    ]
 
-    products = [sentinel1.product.SafeSentinel1ProductInfo(os.path.join(s3_bucket, safe)) for safe in safes]
+    products = [
+        sentinel1.product.SafeSentinel1ProductInfo(os.path.join(s3_bucket, safe))
+        for safe in safes
+    ]
 
     pol = "HH"
-    swaths = ('iw1', 'iw2')
+    swaths = ("iw1", "iw2")
     calibration = "sigma"
     crop_size = 32
     zoom_factor = 32
 
     import phoenix.catalog
-    query = Sentinel1OrbitCatalogQuery(product_ids=[f.rstrip(".SAFE") for f in safes],
-                                       quality=BestEffort)
+
+    query = Sentinel1OrbitCatalogQuery(
+        product_ids=[f.rstrip(".SAFE") for f in safes], quality=BestEffort
+    )
     backend = PhoenixSentinel1OrbitCatalogBackend(
         collection_source=phoenix.catalog.Client()
         .get_collection("esa-sentinel-1-csar-aux")
@@ -174,17 +199,22 @@ def test_projection_corner_reflectors():
     statevectors = orbit_catalog.search(backend, query).single()
 
     asm = sentinel1.assembler.Sentinel1Assembler.from_products(
-        products, pol, statevectors, swaths=swaths)
+        products, pol, statevectors, swaths=swaths
+    )
 
     # do a model for a mosaic that contains all CRS
     # just for the estimation of resampling matrices
     # then do a small crop (mosaic) per CR
     mosaic_model = asm.get_mosaic_model()
 
-    rows, cols, _ = mosaic_model.projection(gx, gy, gz, crs='epsg:4978')
+    rows, cols, _ = mosaic_model.projection(gx, gy, gz, crs="epsg:4978")
 
-    roi_all = eos.sar.roi.Roi.from_bounds_tuple(eos.sar.roi.Roi.points_to_bbox(rows, cols))
-    roi_all.add_margin(2 * crop_size, inplace=True).make_valid((mosaic_model.h, mosaic_model.w), inplace=True)
+    roi_all = eos.sar.roi.Roi.from_bounds_tuple(
+        eos.sar.roi.Roi.points_to_bbox(rows, cols)
+    )
+    roi_all.add_margin(2 * crop_size, inplace=True).make_valid(
+        (mosaic_model.h, mosaic_model.w), inplace=True
+    )
 
     # get affected bsids
     primary_cutter = asm.get_primary_cutter()
@@ -194,17 +224,22 @@ def test_projection_corner_reflectors():
     dem = mosaic_model.fetch_dem(dem_source, roi_all)
     # get registration dem pts
     x, y, alt, crs = eos.sar.regist.get_registration_dem_pts(
-        mosaic_model, roi=roi_all, dem=dem, sampling_ratio=1)
+        mosaic_model, roi=roi_all, dem=dem, sampling_ratio=1
+    )
 
     # project in the mosaic
-    azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(x, y, alt, crs=crs, as_azt_rng=True)
+    azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(
+        x, y, alt, crs=crs, as_azt_rng=True
+    )
 
     pts_in_burst_mask = {}
     azt_primary = {}
     rng_primary = {}
 
     for bsid in all_bsids:
-        burst_mask = primary_cutter.mask_pts_in_burst(bsid, azt_primary_flat, rng_primary_flat)
+        burst_mask = primary_cutter.mask_pts_in_burst(
+            bsid, azt_primary_flat, rng_primary_flat
+        )
         pts_in_burst_mask[bsid] = burst_mask
         azt_primary[bsid] = azt_primary_flat[burst_mask]
         rng_primary[bsid] = rng_primary_flat[burst_mask]
@@ -214,7 +249,7 @@ def test_projection_corner_reflectors():
         full_bistatic=True,
         apd=True,
         intra_pulse=True,
-        alt_fm_mismatch=True
+        alt_fm_mismatch=True,
     )
 
     corrector_per_bsid = asm.get_corrector_per_bsid(all_bsids, **corrections)
@@ -223,8 +258,19 @@ def test_projection_corner_reflectors():
     # in theory, for the primary image, we could have avoided re-projection, but for
     # keeping the code simple, we use this function here
     burst_resampling_matrices = sentinel1.regist.secondary_registration_estimation(
-        mosaic_model, primary_cutter, corrector_per_bsid, x, y, alt, crs,
-        all_bsids, pts_in_burst_mask, primary_cutter, azt_primary, rng_primary)
+        mosaic_model,
+        primary_cutter,
+        corrector_per_bsid,
+        x,
+        y,
+        alt,
+        crs,
+        all_bsids,
+        pts_in_burst_mask,
+        primary_cutter,
+        azt_primary,
+        rng_primary,
+    )
 
     readers = asm.get_image_readers(products, all_bsids, pol, calibration)
 
@@ -235,7 +281,6 @@ def test_projection_corner_reflectors():
     rows_meas = np.zeros_like(cols)
 
     for idx, (r, c) in enumerate(zip(rows, cols)):
-
         col = round(c) - crop_size // 2
         row = round(r) - crop_size // 2
 
@@ -261,14 +306,24 @@ def test_projection_corner_reflectors():
             bsid: asm.get_burst_resampler(
                 bsid,
                 primary_cutter.get_burst_outer_roi_in_tiff(bsid).get_shape(),
-                burst_resampling_matrices[bsid]) for bsid in bsids
+                burst_resampling_matrices[bsid],
+            )
+            for bsid in bsids
         }
 
         # read, resample, but do not reramp
         sentinel1.deburst.warp_rois_read_resample_deburst(
-            bsids, resamplers, within_burst_rois, primary_cutter,
-            readers, write_rois, out_shape, out,
-            get_complex=True, reramp=False)
+            bsids,
+            resamplers,
+            within_burst_rois,
+            primary_cutter,
+            readers,
+            write_rois,
+            out_shape,
+            out,
+            get_complex=True,
+            reramp=False,
+        )
 
         # zoom
         zoomed = fourier_zoom.fourier_zoom(out, z=zoom_factor)
@@ -276,23 +331,33 @@ def test_projection_corner_reflectors():
 
         # Now find the max of the amplitude and compare with prediction
         search_roi = eos.sar.roi.Roi.from_bounds_tuple(
-            (floor(col_pred - 1), floor(row_pred - 1), ceil(col_pred + 1), ceil(row_pred + 1))
+            (
+                floor(col_pred - 1),
+                floor(row_pred - 1),
+                ceil(col_pred + 1),
+                ceil(row_pred + 1),
+            )
         )
 
-        subpix_max_measured, _ = max_finding.sub_pixel_maxima(amp_zoomed, search_roi,
-                                                              zoom_factor=zoom_factor)
+        subpix_max_measured, _ = max_finding.sub_pixel_maxima(
+            amp_zoomed, search_roi, zoom_factor=zoom_factor
+        )
 
         assert len(subpix_max_measured), "No local max found in search region"
 
         # then just take the most significant maximum
         (row_measured, col_measured), _ = subpix_max_measured[0]
 
-        assert row_measured is not None, "Quadratic polynomial fitting failed around prediction"
+        assert (
+            row_measured is not None
+        ), "Quadratic polynomial fitting failed around prediction"
 
         rows_meas[idx] = row_measured
         cols_meas[idx] = col_measured
 
-    np.testing.assert_allclose(cols_pred, cols_meas, rtol=0, atol=.5)  # atol high bcz there is a bias in range
+    np.testing.assert_allclose(
+        cols_pred, cols_meas, rtol=0, atol=0.5
+    )  # atol high bcz there is a bias in range
     # apd being imperfect, and other corrections (ionosphere, tides...)
 
     np.testing.assert_allclose(rows_pred, rows_meas, rtol=0, atol=1e-1)
@@ -301,12 +366,16 @@ def test_projection_corner_reflectors():
     # note: the bias is actually not as high as the tol that was set
 
     # however, the standard deviation of the error is low
-    assert (cols_pred - cols_meas).std() < 0.03, "Col standard deviation higher than expected"
-    assert (rows_pred - rows_meas).std() < 0.03, "Row standard deviation higher than expected"
+    assert (
+        cols_pred - cols_meas
+    ).std() < 0.03, "Col standard deviation higher than expected"
+    assert (
+        rows_pred - rows_meas
+    ).std() < 0.03, "Row standard deviation higher than expected"
 
 
 def test_deprecated_dict():
-    xml_path = './tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml'
+    xml_path = "./tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
     with open(xml_path) as f:
         xml_content = f.read()
     burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)

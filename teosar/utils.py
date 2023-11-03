@@ -1,21 +1,20 @@
 import abc
+import cProfile
+import pstats
+import tempfile
 from typing import Optional
-from eos.dem import DEM, DEMSource
-from eos.sar.model import SensorModel
+
 import numpy as np
+import pyproj
 import rasterio
 import scipy.ndimage as ndimage
-import pyproj
 import shapely
 
 import eos.products.sentinel1
 import eos.sar
+from eos.dem import DEM, DEMSource
 from eos.sar import goldstein_filter
-
-import cProfile
-import pstats
-import tempfile
-
+from eos.sar.model import SensorModel
 from eos.sar.roi import Roi
 
 

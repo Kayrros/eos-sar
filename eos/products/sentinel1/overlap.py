@@ -1,5 +1,5 @@
-from eos.sar import utils
 from eos.products.sentinel1 import burst_resamp
+from eos.sar import utils
 
 # TODO refactor Bsint and Osid into dataclass
 
@@ -54,7 +54,7 @@ class Bsint:
             Deduced Bsint instance.
 
         """
-        bsids = bsint_string.split('-')
+        bsids = bsint_string.split("-")
         return Bsint(bsids)
 
     def bsids(self):
@@ -110,7 +110,9 @@ class Osid:
         """
         self.bsint = bsint
         self.curr_bsid = curr_bsid
-        assert self.curr_bsid in self.bsint.bsids(), "Current burst should be among all overlapping bursts"
+        assert (
+            self.curr_bsid in self.bsint.bsids()
+        ), "Current burst should be among all overlapping bursts"
 
     def __str__(self):
         repr_str = f"{self.curr_bsid}__{str(self.bsint)}"
@@ -142,7 +144,7 @@ class Osid:
             Deduced Osid instance.
 
         """
-        splitted = osid_string.split('__')
+        splitted = osid_string.split("__")
         curr_bsid = splitted[0]
         bsint = Bsint.from_str(splitted[1])
         return Osid(bsint, curr_bsid)
@@ -174,10 +176,18 @@ class Osid:
         return self.curr_bsid
 
 
-def warp_rois_read_resample_ovl(osids, burst_resamplers, within_burst_rois_no_correc,
-                                secondary_cutter, image_readers,
-                                write_rois, out_shape, get_complex=True,
-                                margin=5, reramp=True):
+def warp_rois_read_resample_ovl(
+    osids,
+    burst_resamplers,
+    within_burst_rois_no_correc,
+    secondary_cutter,
+    image_readers,
+    write_rois,
+    out_shape,
+    get_complex=True,
+    margin=5,
+    reramp=True,
+):
     """
     Warp overlap rois, read, resample.
 
@@ -225,12 +235,26 @@ def warp_rois_read_resample_ovl(osids, burst_resamplers, within_burst_rois_no_co
         dst_roi_in_burst = within_burst_rois_no_correc[osid]
         bsid = osid.bsid()
 
-        burst_orig_src_in_tiff = secondary_cutter.get_burst_outer_roi_in_tiff(bsid).get_origin()
+        burst_orig_src_in_tiff = secondary_cutter.get_burst_outer_roi_in_tiff(
+            bsid
+        ).get_origin()
 
-        burst_array_resamp, read_rois_correc[osid], resamplers_on_roi[osid] = burst_resamp.warp_roi_read_resample(
-            burst_resamplers[bsid], dst_roi_in_burst, burst_orig_src_in_tiff,
-            image_readers[bsid], get_complex, margin, reramp)
+        (
+            burst_array_resamp,
+            read_rois_correc[osid],
+            resamplers_on_roi[osid],
+        ) = burst_resamp.warp_roi_read_resample(
+            burst_resamplers[bsid],
+            dst_roi_in_burst,
+            burst_orig_src_in_tiff,
+            image_readers[bsid],
+            get_complex,
+            margin,
+            reramp,
+        )
 
-        burst_arrays_resamp[osid] = utils.write_array(burst_array_resamp, write_rois[osid], out_shape[osid])
+        burst_arrays_resamp[osid] = utils.write_array(
+            burst_array_resamp, write_rois[osid], out_shape[osid]
+        )
 
     return burst_arrays_resamp, read_rois_correc, resamplers_on_roi

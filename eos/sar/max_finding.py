@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import least_squares
+
 from eos.sar import regist
 
 
@@ -45,7 +46,7 @@ def get_local_maxima(array, *, sort=True):
     out = []
     for i in range(1, array.shape[0] - 1):
         for j in range(1, array.shape[1] - 1):
-            window = array[i - 1:i + 2, j - 1:j + 2]
+            window = array[i - 1 : i + 2, j - 1 : j + 2]
             if max_2d(window) == (1, 1):
                 out.append(((i, j), window[1, 1]))
     if sort:
@@ -94,21 +95,22 @@ def interpolate_window(image):
     cols = np.arange(image.shape[1])
 
     def parse_coefs(c):
-        '''Parse bivariate second-order polynomial coefficients into a
+        """Parse bivariate second-order polynomial coefficients into a
         matrix which can be passed to np.polynomial.polynomial functions.
         Args:
             c (list): Coefficients to parse.
                 c must be of length 6 of the form: [A, B, C, D, E, F] where
                 P = Ax**2 + By**2 + Cx + Dy + Exy + F
-        '''
+        """
         A, B, C, D, E, F = c
         return np.array([F, D, B, C, E, 0, A, 0, 0]).reshape(3, 3)
 
     def objective_function(coefs):
-        return (np.polynomial.polynomial.polygrid2d(rows, cols, parse_coefs(coefs))
-                - image).ravel()
+        return (
+            np.polynomial.polynomial.polygrid2d(rows, cols, parse_coefs(coefs)) - image
+        ).ravel()
 
-    c = least_squares(objective_function, [1, 1, 1, 1, 1, 1], method='lm')
+    c = least_squares(objective_function, [1, 1, 1, 1, 1, 1], method="lm")
 
     if not c.success:
         # Polynomial fitting failed
@@ -122,14 +124,16 @@ def interpolate_window(image):
     # eigen values of the hessian matrix
     # both should be strictly negative
 
-    delta = (A - B) ** 2 + E ** 2
+    delta = (A - B) ** 2 + E**2
     sqrt_delta = np.sqrt(delta)
     e1 = (A + B) + sqrt_delta
     e2 = (A + B) - sqrt_delta
 
     if e1 >= 0 or e2 >= 0:
         # Not possible to find maxium with polynomial
-        raise NoSolutionError("Problem has no solution: Not possible to find maximum with polynomial")
+        raise NoSolutionError(
+            "Problem has no solution: Not possible to find maximum with polynomial"
+        )
 
     denum = 4 * A * B - E**2
 
@@ -140,8 +144,7 @@ def interpolate_window(image):
     return (row_max, col_max), intensity
 
 
-def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
-                     zoom_factor=1):
+def sub_pixel_maxima(zoomed_image, search_roi_in_original_image, zoom_factor=1):
     """
     Finds all local maxima in a rectangular section of an image and calculate
     their sub-pixel coordinates. The returned values are in the orginal (not zoomed)
@@ -182,10 +185,7 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
 
     for (row_dis, col_dis), i_dis in maxima:
         # crop again around each local maximum and do quadratic max finding
-        window = search_array[
-            row_dis - 1:row_dis + 2,
-            col_dis - 1:col_dis + 2
-        ]
+        window = search_array[row_dis - 1 : row_dis + 2, col_dis - 1 : col_dis + 2]
 
         dis_col_max = (col_dis + search_roi_orig[0]) / zoom_factor
         dis_row_max = (row_dis + search_roi_orig[1]) / zoom_factor
@@ -196,7 +196,7 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
             (row_max, col_max), intensity = interpolate_window(window)
 
         except (NoConvergenceError, NoSolutionError):
-            subpix_max.append(((None, None), float('-inf')))
+            subpix_max.append(((None, None), float("-inf")))
             continue
 
         # Now that we have the coords of the max relative to the subwindow "window", we have to get them back in image coordinates.
@@ -213,6 +213,8 @@ def sub_pixel_maxima(zoomed_image, search_roi_in_original_image,
         subpix_max.append(((row_max, col_max), intensity))
 
     # at this stage, we sort
-    subpix_max, discrete_max = zip(*sorted(zip(subpix_max, discrete_max), key=lambda x: x[0][1], reverse=True))
+    subpix_max, discrete_max = zip(
+        *sorted(zip(subpix_max, discrete_max), key=lambda x: x[0][1], reverse=True)
+    )
 
     return list(subpix_max), list(discrete_max)

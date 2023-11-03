@@ -2,7 +2,7 @@ import abc
 import datetime
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Literal
+from typing import Any, Iterable, Literal
 
 import requests
 import shapely
@@ -97,8 +97,11 @@ else:
             ]
 
             orbit = query.relative_orbit_number
+
             # look at neighbouring orbits because of its loose definition around the equator
-            validate: Callable[[int], int] = lambda o: (o - 1 + 175) % 175 + 1
+            def validate(o: int) -> int:
+                return (o - 1 + 175) % 175 + 1
+
             orbits = (validate(orbit - 1), orbit, validate(orbit + 1))
             filters.append(phx.Field("sentinel1:relative_orbit_number").is_in(*orbits))
 
