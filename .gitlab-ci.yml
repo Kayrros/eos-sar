@@ -23,7 +23,7 @@ test:
 checkstyle:
   stage: test
   before_script:
-    - pip install ruff~=0.1.3
+    - pip install ruff==0.1.4
   script:
     - ruff check .
     - ruff format --check .
