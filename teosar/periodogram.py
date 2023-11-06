@@ -6,8 +6,9 @@ from typing import Optional
 
 import numpy as np
 import tqdm
-from numpy.typing import NDArray
+from numpy.typing import ArrayLike, NDArray
 from scipy.optimize import minimize
+from typing_extensions import override
 
 from teosar import psutils
 
@@ -29,14 +30,43 @@ class BaseModel(ABC):
         return len(self.get_theta_list())
 
     @abstractmethod
-    def get_theta_list(self):
-        pass
+    def get_theta_list(self) -> list[NDArray]:
+        ...
 
     def get_theta_from_indices(self, indices: list[int]):
         assert (
             len(indices) == self.get_dimension()
         ), "Should provide one index per element in theta_list"
         return [theta[idx] for idx, theta in zip(indices, self.get_theta_list())]
+
+    @abstractmethod
+    def predict_grid(self) -> Grid:
+        """
+        Predicts the model for a meshgrid defined by each value taken in theta_list
+        and each value of the feature observation.
+
+        Returns
+        -------
+        Grid.
+
+        """
+        ...
+
+    @abstractmethod
+    def predict_single(self, theta_single: list[float]):
+        """
+        Predicts the model for a single value per theta
+
+        Parameters
+        ----------
+        theta_single: list[float]
+                    d float elements
+
+        Returns
+        -------
+        prediction: (Nobs,)
+        """
+        ...
 
 
 @dataclass
@@ -56,36 +86,10 @@ class Model(BaseModel):
 
     const: list[float]
     feat: NDArray[np.float64]
-    theta_list: list[list[float]]
+    theta_list: list[NDArray]
 
-    def predict_grid(self):
-        """
-        Predicts the model for a meshgrid defined by each value taken in theta_list
-        and each value of the feature observation.
-
-        Returns
-        -------
-        Grid.
-
-        """
-        raise NotImplementedError
-
-    def predict_single(self, theta_single: list[float]):
-        """
-        Predicts the model for a single value per theta
-
-        Parameters
-        ----------
-        theta_single: list[float]
-                    d float elements
-
-        Returns
-        -------
-        prediction: (Nobs,)
-        """
-        raise NotImplementedError
-
-    def get_theta_list(self):
+    @override
+    def get_theta_list(self) -> list[NDArray]:
         return self.theta_list
 
 
@@ -98,10 +102,13 @@ class SeasonalModel(Model):
     """
 
     def __init__(self, C: float, Ti: NDArray[np.float64], S, T, T0):
-        super().__init__([C], Ti[None, :], [S, T, T0])
+        theta_list = [S, T, T0]
+        super().__init__([C], Ti[None, :], theta_list)
 
-    def predict_grid(self):
+    @override
+    def predict_grid(self) -> Grid:
         S, T, T0 = self.theta_list
+        T = np.asarray(T)
         Ti = self.feat[0]
         res = -2 * np.pi * np.subtract.outer(T0, Ti)  # len(T0) x Nobs
         res = np.sin(np.multiply.outer(1 / T, res))  # len(T) x len(T0) x Nobs
@@ -111,6 +118,7 @@ class SeasonalModel(Model):
         grid = Grid(res, self)
         return grid
 
+    @override
     def predict_single(self, theta_single: list[float]):
         assert len(theta_single) == 3, "Expected 3 values as theta"
         S, T, T0 = theta_single
@@ -128,16 +136,19 @@ class LinearTermModel(Model):
         self,
         const: float,
         feat: NDArray[np.float64],
-        theta: list[float],  # Nobs
+        theta: ArrayLike,  # Nobs
     ):
-        super().__init__([const], feat[None, :], [theta])
+        theta_list = [np.asarray(theta)]
+        super().__init__([const], feat[None, :], theta_list)
 
-    def predict_grid(self):
+    @override
+    def predict_grid(self) -> Grid:
         # len(theta) x Nobs
         res = self.const[0] * np.multiply.outer(self.theta_list[0], self.feat[0])
         grid = Grid(res, self)
         return grid
 
+    @override
     def predict_single(self, theta_single: list[float]):
         assert len(theta_single) == 1, "Expected single element in list"
 
@@ -150,18 +161,21 @@ def expand_dims(array, pos, d, total_dims):
 
 
 class CompoundModel(BaseModel):
-    def __init__(self, models: list[Model]):
+    def __init__(self, models: list[BaseModel]):
         self.models = models
         self.dims = [mod.get_dimension() for mod in self.models]
         self.begin_positions = np.cumsum([0] + self.dims[:-1])
         self.d = np.sum(self.dims)
 
-    def predict_grid(self):
+    @override
+    def predict_grid(self) -> Grid:
         pred = 0
         for mod, pos, d in zip(self.models, self.begin_positions, self.dims):
             pred = pred + expand_dims(mod.predict_grid().get_values(), pos, d, self.d)
+        assert isinstance(pred, np.ndarray)
         return Grid(pred, self)
 
+    @override
     def predict_single(self, theta_single: list[float]):
         assert (
             len(theta_single) == self.d
@@ -175,29 +189,31 @@ class CompoundModel(BaseModel):
     def get_dimension(self):
         return self.d
 
-    def get_theta_list(self):
+    @override
+    def get_theta_list(self) -> list[NDArray]:
         theta_list = []
         for mod in self.models:
-            theta_list += mod.theta_list
+            theta_list += mod.get_theta_list()
         return theta_list
 
 
 @dataclass
 class ExhaustiveGamma:
     abs_gamma: NDArray[np.float32]
-    max_indices: tuple[int]
+    max_indices: list[int]
     max_theta: list[float]
     max_gamma_abs: float
     max_gamma_angle: float
 
-    def get_bounds(self, theta_list: list[list[float]]) -> list[tuple[float]]:
+    def get_bounds(
+        self, theta_list: list[NDArray]
+    ) -> list[tuple[Optional[float], Optional[float]]]:
         # bounds
-        bounds = []
+        bounds: list[tuple[Optional[float], Optional[float]]] = []
         assert len(self.max_indices) == len(
             theta_list
         ), "theta_list must have same size as max_indices"
         for m, theta in zip(self.max_indices, theta_list):
-            l = theta[m - 1] if m > 0 else None
             if m > 0:
                 l = theta[m - 1]
             else:
@@ -214,8 +230,8 @@ class ExhaustiveGamma:
 
 @dataclass
 class Periodogram:
-    phi_wrapped: list[float]  # N obs
-    weights: Optional[list[float]] = None  # N obs
+    phi_wrapped: NDArray[np.float64]  # N obs
+    weights: Optional[NDArray[np.float64]] = None  # N obs
 
     def __init__(self, phi_wrapped: list[float], weights: Optional[list[float]] = None):
         nan_mask = np.isnan(phi_wrapped)
@@ -225,12 +241,13 @@ class Periodogram:
         # replace nan with arbitrary value, weight=à will eliminate this from sum
         self.phi_wrapped = np.array(np.nan_to_num(phi_wrapped))
 
-        if weights is not None:
-            weights = np.array(weights)
-        else:
-            weights = np.ones(
-                (len(self.phi_wrapped),),
-            )
+        # if weights is not None:
+        # weights = np.array(weights)
+        # else:
+        # weights = np.ones((len(self.phi_wrapped),))
+        weights = (
+            np.ones((len(self.phi_wrapped),)) if weights is None else np.array(weights)
+        )
 
         # put nan value weights to zero
         weights[nan_mask] = 0
@@ -244,29 +261,32 @@ class Periodogram:
         ), "Grid last dimension size should match phase array size"
 
         tmp = np.exp(1j * (-grid.get_values() + self.phi_wrapped))
-
         cmpx_gamma = np.sum(tmp * self.weights, axis=-1)
-
         del tmp
+
         abs_gamma = np.abs(cmpx_gamma)
         max_indices = np.unravel_index(np.argmax(abs_gamma), abs_gamma.shape)
         max_gamma_angle = np.angle(cmpx_gamma[max_indices])
         del cmpx_gamma
-        max_theta = grid.parent_model.get_theta_from_indices(max_indices)
+        max_theta = grid.parent_model.get_theta_from_indices(max_indices)  # type: ignore
         max_gamma_abs = abs_gamma[max_indices]
 
         return ExhaustiveGamma(
-            abs_gamma, max_indices, max_theta, max_gamma_abs, max_gamma_angle
+            abs_gamma,
+            max_indices,  # type: ignore
+            max_theta,
+            max_gamma_abs,
+            max_gamma_angle,
         )
 
-    def get_gamma_single(self, model: Model, theta_single: list[float]):
+    def get_gamma_single(self, model: BaseModel, theta_single: list[float]):
         pred_per_obs = model.predict_single(theta_single)
         tmp = np.exp(1j * (self.phi_wrapped - pred_per_obs))
         gamma = np.sum(tmp * self.weights)
         return gamma
 
     def refinement(
-        self, model: Model, exhaustive_gamma: ExhaustiveGamma, no_failure=False
+        self, model: BaseModel, exhaustive_gamma: ExhaustiveGamma, no_failure=False
     ):
         estimated = exhaustive_gamma.max_theta
         bounds = exhaustive_gamma.get_bounds(model.get_theta_list())
@@ -317,13 +337,13 @@ def get_planar_model(xx, yy, max_slopes=(5e-2, 0.2), min_half_samples=10):
 @dataclass(frozen=True)
 class PlanarPeriodogramResult:
     exhaustive_gamma: ExhaustiveGamma
-    slopes: list[float, float]
+    slopes: tuple[float, float]
     bias: float
     gamma_opt: float
 
 
 def planar_periodogram(
-    model: CompoundModel, phi_wrapped_ts: list[list[float]], no_failure=False
+    model: BaseModel, phi_wrapped_ts: np.ndarray, no_failure=False
 ) -> list[PlanarPeriodogramResult]:
     grid = model.predict_grid()
     results = []
@@ -333,7 +353,11 @@ def planar_periodogram(
         slopes, gamma_opt = period.refinement(
             model, exhaustive_gamma, no_failure=no_failure
         )
-        cmpx_gamma_opt = period.get_gamma_single(model, slopes)
+        assert isinstance(slopes, tuple)
+        assert len(slopes) == 2
+        slopes: tuple[float, float]
+
+        cmpx_gamma_opt = period.get_gamma_single(model, list(slopes))
         bias = np.angle(cmpx_gamma_opt)
         diff = abs(gamma_opt - np.abs(cmpx_gamma_opt))
         threshold = 0.01
@@ -341,7 +365,7 @@ def planar_periodogram(
             diff < threshold
         ), f"something wrong with gamma opt, {diff} greater than {threshold} "
         results.append(
-            PlanarPeriodogramResult(exhaustive_gamma, list(slopes), bias, gamma_opt)
+            PlanarPeriodogramResult(exhaustive_gamma, slopes, bias, gamma_opt)
         )
 
     return results

@@ -70,11 +70,11 @@ def main(
         primary_id,
         osids_of_interest=osids_of_interest,
     )
+    assert len(pipelines) == 2, "The code below works only on two dates for now"
 
     # TODO all of theses can be should be read from the log, proc and meta files
-    dates = [p.date for p in pipelines]
+    dates = (pipelines[0].date, pipelines[1].date)
     # the code below works on two dates only for now
-    assert len(dates) == 2, "The code below works only on two dates for now"
     dir_builder = inout.OvlDirectoryBuilder(dstdir)
     dir_reader = inout.OvlDirectoryReader(dir_builder)
     primary_pipeline = pipelines[primary_id]
