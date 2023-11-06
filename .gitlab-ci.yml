@@ -34,7 +34,7 @@ mypy:
     - pip install mypy~=1.6.0 cython numpy
     - pip install -e ".[test]"
   script:
-    - mypy --non-interactive eos/ tests/ usage/
+    - mypy --non-interactive eos/ teosar/ tests/ usage/
 
 fakedeploy:
   stage: test
