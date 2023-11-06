@@ -474,7 +474,7 @@ def full_pipeline(
     *,
     use_tensorflow=True,
 ):
-    result = full_pipeline_nosparse(
+    result = run(
         amps,
         phi_ts,
         bperp,
@@ -507,7 +507,7 @@ def full_pipeline(
     )
 
 
-def full_pipeline_nosparse(
+def run(
     amps,
     phi_ts,
     bperp,
