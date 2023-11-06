@@ -412,9 +412,8 @@ def final_periodogram(
     # now add back linear trend deformation
     defo_nonlinear = phi_residual / Cv  # (mm)
     defo_linear = (
-        Cv * times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
-        + Cq * date_normal_baseline * q[np.newaxis, :]
-    )  # (radians)
+        times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
+    )  # (mm)
     return q, v, gammas, col, row, defo_nonlinear, defo_linear
 
 
