@@ -337,8 +337,8 @@ class OvlPrimaryPipeline(Pipeline):
             bounds = (
                 np.amin(coords[:, 0], axis=0),
                 np.amin(coords[:, 1], axis=0),
-                np.amin(coords[:, 2], axis=0),
-                np.amin(coords[:, 3], axis=0),
+                np.amax(coords[:, 2], axis=0),
+                np.amax(coords[:, 3], axis=0),
             )
             roi_for_dem = eos.sar.roi.Roi.from_bounds_tuple(bounds)
             self.registrator_per_swath[swath] = utils.Registrator(
