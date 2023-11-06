@@ -10,9 +10,9 @@ from teosar import periodogram, psutils
 
 @dataclass(frozen=True)
 class MaskedPS:
-    ps_in: NDArray[bool]
-    ps_bw: NDArray[bool]
-    ps_out: NDArray[bool]
+    ps_in: NDArray[np.bool_]
+    ps_bw: NDArray[np.bool_]
+    ps_out: NDArray[np.bool_]
 
 
 def get_ps_masks_on_win(search_window, guard_window, ps_candidates_full_array):

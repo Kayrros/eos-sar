@@ -8,6 +8,7 @@ import numpy as np
 import tqdm
 from numpy.typing import NDArray
 from scipy.optimize import minimize
+from typing_extensions import override
 
 from teosar import psutils
 
@@ -29,8 +30,8 @@ class BaseModel(ABC):
         return len(self.get_theta_list())
 
     @abstractmethod
-    def get_theta_list(self):
-        pass
+    def get_theta_list(self) -> list[list[float]]:
+        ...
 
     def get_theta_from_indices(self, indices: list[int]):
         assert (
@@ -85,7 +86,8 @@ class Model(BaseModel):
         """
         raise NotImplementedError
 
-    def get_theta_list(self):
+    @override
+    def get_theta_list(self) -> list[list[float]]:
         return self.theta_list
 
 
@@ -102,6 +104,7 @@ class SeasonalModel(Model):
 
     def predict_grid(self):
         S, T, T0 = self.theta_list
+        T = np.asarray(T)
         Ti = self.feat[0]
         res = -2 * np.pi * np.subtract.outer(T0, Ti)  # len(T0) x Nobs
         res = np.sin(np.multiply.outer(1 / T, res))  # len(T) x len(T0) x Nobs
@@ -160,6 +163,7 @@ class CompoundModel(BaseModel):
         pred = 0
         for mod, pos, d in zip(self.models, self.begin_positions, self.dims):
             pred = pred + expand_dims(mod.predict_grid().get_values(), pos, d, self.d)
+        assert isinstance(pred, np.ndarray)
         return Grid(pred, self)
 
     def predict_single(self, theta_single: list[float]):
@@ -175,7 +179,8 @@ class CompoundModel(BaseModel):
     def get_dimension(self):
         return self.d
 
-    def get_theta_list(self):
+    @override
+    def get_theta_list(self) -> list[list[float]]:
         theta_list = []
         for mod in self.models:
             theta_list += mod.theta_list
@@ -190,9 +195,11 @@ class ExhaustiveGamma:
     max_gamma_abs: float
     max_gamma_angle: float
 
-    def get_bounds(self, theta_list: list[list[float]]) -> list[tuple[float]]:
+    def get_bounds(
+        self, theta_list: list[list[float]]
+    ) -> list[tuple[Optional[float], Optional[float]]]:
         # bounds
-        bounds = []
+        bounds: list[tuple[Optional[float], Optional[float]]] = []
         assert len(self.max_indices) == len(
             theta_list
         ), "theta_list must have same size as max_indices"
@@ -214,8 +221,8 @@ class ExhaustiveGamma:
 
 @dataclass
 class Periodogram:
-    phi_wrapped: list[float]  # N obs
-    weights: Optional[list[float]] = None  # N obs
+    phi_wrapped: NDArray[np.float64]  # N obs
+    weights: Optional[NDArray[np.float64]] = None  # N obs
 
     def __init__(self, phi_wrapped: list[float], weights: Optional[list[float]] = None):
         nan_mask = np.isnan(phi_wrapped)
@@ -225,12 +232,13 @@ class Periodogram:
         # replace nan with arbitrary value, weight=à will eliminate this from sum
         self.phi_wrapped = np.array(np.nan_to_num(phi_wrapped))
 
-        if weights is not None:
-            weights = np.array(weights)
-        else:
-            weights = np.ones(
-                (len(self.phi_wrapped),),
-            )
+        # if weights is not None:
+        # weights = np.array(weights)
+        # else:
+        # weights = np.ones((len(self.phi_wrapped),))
+        weights = (
+            np.ones((len(self.phi_wrapped),)) if weights is None else np.array(weights)
+        )
 
         # put nan value weights to zero
         weights[nan_mask] = 0
@@ -244,10 +252,9 @@ class Periodogram:
         ), "Grid last dimension size should match phase array size"
 
         tmp = np.exp(1j * (-grid.get_values() + self.phi_wrapped))
-
         cmpx_gamma = np.sum(tmp * self.weights, axis=-1)
-
         del tmp
+
         abs_gamma = np.abs(cmpx_gamma)
         max_indices = np.unravel_index(np.argmax(abs_gamma), abs_gamma.shape)
         max_gamma_angle = np.angle(cmpx_gamma[max_indices])
@@ -317,7 +324,7 @@ def get_planar_model(xx, yy, max_slopes=(5e-2, 0.2), min_half_samples=10):
 @dataclass(frozen=True)
 class PlanarPeriodogramResult:
     exhaustive_gamma: ExhaustiveGamma
-    slopes: list[float, float]
+    slopes: tuple[float, float]
     bias: float
     gamma_opt: float
 
