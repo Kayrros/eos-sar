@@ -4,14 +4,10 @@ from typing import Optional
 
 import numpy as np
 import scipy
-import tensorflow as tf
-import tensorflow_probability as tfp
 import tifffile
 from numpy.typing import NDArray
 
 from teosar import periodogram, psc, psutils
-
-tf.config.set_visible_devices([], "GPU")  # Do not use GPU if available
 
 """
 Ferreti 2001
@@ -40,14 +36,6 @@ def save_debug_image(
     if as_complex:
         data_full = np.exp(1j * data_full).astype(np.complex64)
     tifffile.imwrite(path, data_full)
-
-
-def make_val_and_grad_fn(value_fn):
-    @functools.wraps(value_fn)
-    def val_and_grad(x):
-        return tfp.math.value_and_gradient(value_fn, x)
-
-    return val_and_grad
 
 
 def iterative_alternate_periodogram(
@@ -259,6 +247,9 @@ def velo_topo_periodogram(
     num_dates, num_PS = phi_ps_mat.shape
 
     if use_tensorflow:
+        import tensorflow as tf
+        import tensorflow_probability as tfp
+
         if weights_per_date is None:
             weights_per_date = np.ones((num_dates,), dtype=np.float64) / num_dates
         else:
@@ -287,6 +278,13 @@ def velo_topo_periodogram(
                     )
                 )
             return res
+
+        def make_val_and_grad_fn(value_fn):
+            @functools.wraps(value_fn)
+            def val_and_grad(x):
+                return tfp.math.value_and_gradient(value_fn, x)
+
+            return val_and_grad
 
         @make_val_and_grad_fn
         def loss(x):
