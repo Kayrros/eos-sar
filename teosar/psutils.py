@@ -7,7 +7,7 @@ import scipy
 from numpy.typing import NDArray
 
 
-def wrap(phi: NDArray[float]) -> NDArray[float]:
+def wrap(phi: NDArray) -> NDArray:
     return (phi + np.pi) % (2 * np.pi) - np.pi
 
 

@@ -1,5 +1,6 @@
 import functools
 import os
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -25,6 +26,50 @@ The work consists in:
  and smoothing spatially these errors
 . Use the periodogram to estimate new PS now that APS has been removed (threshold of 0.75)
 """
+
+
+@dataclass(frozen=True)
+class Ferreti2001Result:
+    """Periodogram model estimated by the Ferreti method.
+
+    The model is: (radians)
+        observed = (aps + q * Cq * bperp + v * Cv * years_since_ref + residuals) mod 2pi
+    """
+
+    observations: np.ndarray
+    """ (t, h, w), in radians; observed signal """
+    aps: np.ndarray
+    """ (t, h, w), in radians; atmosphere """
+    q: np.ndarray
+    """ (h, w), in m; refined topography """
+    v: np.ndarray
+    """ (t, h, w), in mm/year; linear deformation"""
+    bperp: np.ndarray
+    """ (t, h, w), in meters; normal baseline per date """
+    Cq: float
+    """ (h, w), meters to radians """
+    Cv: float
+    """ mm/year to radians """
+    gammas: np.ndarray
+    """ (h, w), temporal coherence (in [0,1]) """
+    years_since_ref: np.ndarray
+    """ (t), number of years since the reference date """
+
+    @property
+    def linear_deformation_in_mm(self) -> np.ndarray:
+        """(t, h, w), linear part of the deformation, in mm"""
+        return self.years_since_ref[:, None, None] * self.v[None, :]
+
+    @property
+    def residuals_in_mm(self) -> np.ndarray:
+        """(t, h, w), residual signal after removing the atmosphere, the topographic component and the linear deformation. in mm"""
+        in_radians = psutils.wrap(
+            self.observations
+            - self.aps
+            - self.Cq * self.bperp * self.q
+            - self.Cv * self.linear_deformation_in_mm
+        )
+        return in_radians / self.Cv
 
 
 def save_debug_image(
@@ -398,23 +443,7 @@ def final_periodogram(
         times_differences_against_ref,
         use_tensorflow=use_tensorflow,
     )
-    phi_residual = get_phi_no_q_v_estimation(
-        phi_no_atmo_sparse,
-        Cq,
-        date_normal_baseline,
-        q,
-        Cv,
-        times_differences_against_ref,
-        v,
-    )
-    # assume wrapped is good estimation
-    phi_residual = psutils.wrap(phi_residual)  # non linear deformation phase
-    # now add back linear trend deformation
-    defo_nonlinear = phi_residual / Cv  # (mm)
-    defo_linear = (
-        times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
-    )  # (mm)
-    return q, v, gammas, col, row, defo_nonlinear, defo_linear
+    return q, v, gammas
 
 
 def get_phi_no_q_v_estimation(
@@ -445,7 +474,7 @@ def full_pipeline(
     *,
     use_tensorflow=True,
 ):
-    (q, v, gammas, defo_nonlinear, defo_linear, atmos) = full_pipeline_nosparse(
+    result = full_pipeline_nosparse(
         amps,
         phi_ts,
         bperp,
@@ -462,19 +491,19 @@ def full_pipeline(
     )
 
     # keep only good ps
-    final_ps_mask = gammas > second_gamma_threshold
+    final_ps_mask = result.gammas > second_gamma_threshold
 
     h, w = final_ps_mask.shape
     col, row = np.meshgrid(np.arange(w), np.arange(h))
 
     return (
-        q[final_ps_mask],
-        v[final_ps_mask],
-        gammas[final_ps_mask],
+        result.q[final_ps_mask],
+        result.v[final_ps_mask],
+        result.gammas[final_ps_mask],
         col[final_ps_mask],
         row[final_ps_mask],
-        defo_nonlinear[:, final_ps_mask],
-        defo_linear[:, final_ps_mask],
+        result.residuals_in_mm[:, final_ps_mask],
+        result.linear_deformation_in_mm[:, final_ps_mask],
     )
 
 
@@ -493,7 +522,7 @@ def full_pipeline_nosparse(
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
-):  # no clean, some things hardcoded
+) -> Ferreti2001Result:
     print("ps candidates selection")
     # ps candidates
     _, PS_candidates_basic, PS_candidates_mask = psc.get_PS_candidates_DA(
@@ -551,7 +580,7 @@ def full_pipeline_nosparse(
 
     print("final periodogram")
     # do final periodogram
-    q, v, gammas, col, row, defo_nonlinear, defo_linear = final_periodogram(
+    q, v, gammas = final_periodogram(
         Delta_phi_against_ref,
         atmos,
         dates,
@@ -562,18 +591,24 @@ def full_pipeline_nosparse(
         use_tensorflow=use_tensorflow,
     )
 
-    def make_array(arr):
-        if arr.ndim == 2:
-            return np.asarray([make_array(a) for a in arr])
-        return psutils.sparse_data_to_raster(
-            arr, row, col, Delta_phi_against_ref[0].shape
-        )
+    _, h, w = Delta_phi_against_ref.shape
+    q = q.reshape((h, w))
+    v = v.reshape((h, w))
+    gammas = gammas.reshape((h, w))
 
-    return (
-        make_array(q),
-        make_array(v),
-        make_array(gammas),
-        make_array(defo_nonlinear),
-        make_array(defo_linear),
-        atmos,
+    years_since_ref = [(d - dates[0]).days / 365.25 for d in dates[1:]]
+    years_since_ref = np.array(years_since_ref)
+    Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
+    Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
+
+    return Ferreti2001Result(
+        observations=Delta_phi_against_ref,
+        aps=atmos,
+        q=q,
+        v=v,
+        gammas=gammas,
+        years_since_ref=years_since_ref,
+        bperp=bperp,
+        Cq=Cq,
+        Cv=Cv,
     )
