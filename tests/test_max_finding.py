@@ -183,9 +183,12 @@ def simulate_set_of_maximas(h, w, step=3, p=0.1):
     # sort by descending intensities
     sorting_indices = np.argsort(intensities)[::-1]
 
-    return simulated_image, mrs[sorting_indices], mcs[sorting_indices], intensities[
-        sorting_indices
-    ]
+    return (
+        simulated_image,
+        mrs[sorting_indices],
+        mcs[sorting_indices],
+        intensities[sorting_indices],
+    )
 
 
 def test_sub_pixel_max():
