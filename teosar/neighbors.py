@@ -7,12 +7,12 @@ from teosar import psutils
 
 
 def get_neighbors(
-    ps_col: NDArray[int],
-    ps_row: NDArray[int],
+    ps_col: NDArray[np.int32],
+    ps_row: NDArray[np.int32],
     distance_threshold: float,
     resolution_x: float,
     resolution_y: float,
-) -> NDArray[bool]:
+) -> NDArray[np.bool_]:
     num_PS = len(ps_col)
     # find neighbors
     distance_x = np.abs(ps_col.reshape([1, -1]) - ps_col.reshape([-1, 1]))

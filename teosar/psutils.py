@@ -24,10 +24,10 @@ class Window:
     def row_slice(self) -> slice:
         return slice(self.row, self.row + self.h)
 
-    def get_slices(self) -> tuple[slice]:
+    def get_slices(self) -> tuple[slice, slice]:
         return self.row_slice(), self.col_slice()
 
-    def get_mask(self, parent_shape: tuple[int]) -> NDArray[bool]:
+    def get_mask(self, parent_shape: tuple[int]) -> NDArray[np.bool_]:
         mask = np.zeros(parent_shape, dtype=bool)
         mask[self.get_slices()] = True
         return mask
@@ -44,7 +44,7 @@ class Window:
         col_max = self.col + self.w - 1
         row_min = self.row
         row_max = self.row + self.h - 1
-        corners = [
+        corners: list[list[float]] = [
             [col_min, row_min],
             [col_max, row_min],
             [col_max, row_max],
@@ -55,7 +55,7 @@ class Window:
             corners.append(corners[0])
         return corners
 
-    def make_valid(self, parent_shape: tuple[int]) -> Window:
+    def make_valid(self, parent_shape: tuple[int, int]) -> Window:
         p_h, p_w = parent_shape
         col = max(self.col, 0)
         row = max(self.row, 0)

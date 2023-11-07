@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 def get_PS_candidates_DA(
     amplitudes: NDArray, threshold: float = 0.25
-) -> tuple[NDArray[float], NDArray[bool], NDArray[bool]]:
+) -> tuple[NDArray[np.float64], NDArray[np.bool_], NDArray[np.bool_]]:
     """
     Compute DA = sigma_A / mean_A, A being the amplitude.
     Threshold

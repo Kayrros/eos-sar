@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import cProfile
 import pstats
@@ -9,10 +11,14 @@ import pyproj
 import rasterio
 import scipy.ndimage as ndimage
 import shapely
+from numpy.typing import NDArray
+from typing_extensions import override
 
 import eos.products.sentinel1
 import eos.sar
 from eos.dem import DEM, DEMSource
+from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter
+from eos.products.sentinel1.overlap import Bsint
 from eos.sar import goldstein_filter
 from eos.sar.model import SensorModel
 from eos.sar.roi import Roi
@@ -72,7 +78,9 @@ def geometry_to_roi(geom_coords, proj_model, dem: DEM, min_width=1024, min_heigh
 
 class RoiProvider(abc.ABC):
     @abc.abstractmethod
-    def get_roi(self, proj_model, dem_source):
+    def get_roi(
+        self, proj_model: SensorModel, dem_source: DEMSource
+    ) -> tuple[Roi, NDArray, NDArray]:
         ...
 
 
@@ -89,7 +97,10 @@ class GeometryRoiProvider(RoiProvider):
         self.min_width = min_width
         self.min_height = min_height
 
-    def get_roi(self, proj_model: SensorModel, dem_source: DEMSource):
+    @override
+    def get_roi(
+        self, proj_model: SensorModel, dem_source: DEMSource
+    ) -> tuple[Roi, NDArray, NDArray]:
         dem_bounds = self.geometry.buffer(self.dem_fetch_buffer).bounds
         dem = dem_source.fetch_dem(dem_bounds)
 
@@ -120,7 +131,10 @@ class CentroidRoiProvider(RoiProvider):
         self.h = h
         self.dem_fetch_buffer_round_point = dem_fetch_buffer_round_point
 
-    def get_roi(self, proj_model: SensorModel, dem_source: DEMSource):
+    @override
+    def get_roi(
+        self, proj_model: SensorModel, dem_source: DEMSource
+    ) -> tuple[Roi, NDArray, NDArray]:
         dem_bounds = (
             shapely.Point(*self.point).buffer(self.dem_fetch_buffer_round_point).bounds
         )
@@ -140,7 +154,10 @@ class PrescribedRoiProvider(RoiProvider):
         self.roi = roi
         self.make_valid = make_valid
 
-    def get_roi(self, proj_model: SensorModel, dem_source: DEMSource):
+    @override
+    def get_roi(
+        self, proj_model: SensorModel, dem_source: DEMSource
+    ) -> tuple[Roi, NDArray, NDArray]:
         parent_shape = proj_model.h, proj_model.w
         if self.roi is None:
             roi = Roi(0, 0, parent_shape[1], parent_shape[0])
@@ -171,7 +188,9 @@ class RoiCuttingInfo:
         self.roi = roi
 
     @staticmethod
-    def from_cutter_roi(primary_cutter, roi=None):
+    def from_cutter_roi(
+        primary_cutter: PrimarySentinel1AcquisitionCutter, roi: Optional[Roi] = None
+    ) -> RoiCuttingInfo:
         if roi is None:
             roi = eos.sar.roi.Roi(0, 0, primary_cutter.w, primary_cutter.h)
         # get affected bsids and their within_burst/write rois
@@ -599,9 +618,9 @@ class OvlIfg(Ifg):
 # unused for now
 
 
-def group_per_bsint(dict_per_osid):
+def group_per_bsint(dict_per_osid) -> dict[Bsint, list[Bsint]]:
     sorted_osids = sorted(list(dict_per_osid.keys()), key=lambda x: x.bsid())
-    dict_per_bsint = {}
+    dict_per_bsint: dict[Bsint, list[Bsint]] = {}
     for osid in sorted_osids:
         list_per_bsint = dict_per_bsint.get(osid.bsint, [])
         list_per_bsint.append(dict_per_osid[osid])

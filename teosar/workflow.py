@@ -1,10 +1,14 @@
 from typing import Optional
 
+import numpy as np
 import tifffile
 
 import eos.dem
 import eos.products.sentinel1
 import eos.sar
+from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
+from eos.products.sentinel1.overlap import Bsint, Osid
+from eos.products.sentinel1.proj_model import Sentinel1SwathModel
 from eos.sar.orbit import StateVector
 from teosar import inout, utils
 from teosar.overlap_utils import OverlapResampler, OverlapRoiInfo
@@ -234,19 +238,19 @@ class OvlPrimaryPipeline(Pipeline):
         super().__init__(product_ids, dir_builder)
         self.dem_source = dem_source
 
-        self.swath_models_per_swath = {}
-        self.overlap_resamplers_per_swath = {}
+        self.swath_models_per_swath: dict[str, Sentinel1SwathModel] = {}
+        self.overlap_resamplers_per_swath: dict[str, OverlapResampler] = {}
 
-        self.osids_of_interest_per_swath = {}
-        self.bsint_of_interest_per_swath = {}
-        self.bsids_of_interest_per_swath = {}
+        self.osids_of_interest_per_swath: dict[str, list[Osid]] = {}
+        self.bsint_of_interest_per_swath: dict[str, list[Bsint]] = {}
+        self.bsids_of_interest_per_swath: dict[str, set[str]] = {}
 
         # for Doppler centroid computation
-        self.resampler_per_osid = {}
-        self.burst_resampling_matrices = {}
+        self.resampler_per_osid: dict[Osid, Sentinel1BurstResample] = {}
+        self.burst_resampling_matrices: dict[str, np.ndarray] = {}
 
     def set_all_osids(self, swaths):
-        all_osids = set()
+        all_osids: set[Osid] = set()
         self.ovl_roi_info_per_swath = {}
         for swath in swaths:
             swath_model = self.asm.get_swath_model(swath)
@@ -255,7 +259,7 @@ class OvlPrimaryPipeline(Pipeline):
             all_osids = all_osids.union(swath_model.osids)
             self.ovl_roi_info_per_swath[swath] = OverlapRoiInfo.from_model(swath_model)
 
-        self.all_osids = all_osids
+        self.all_osids: set[Osid] = all_osids
 
     def set_osids_of_interest(self, osids_of_interest=None):
         if osids_of_interest is None:
@@ -332,8 +336,11 @@ class OvlPrimaryPipeline(Pipeline):
                 coords.append(ovl_roi.to_bounds())
 
             coords = np.array(coords)
-            bounds = tuple(np.amin(coords[:, 0:2], axis=0)) + tuple(
-                np.amax(coords[:, 2:4], axis=0)
+            bounds = (
+                np.amin(coords[:, 0], axis=0),
+                np.amin(coords[:, 1], axis=0),
+                np.amax(coords[:, 2], axis=0),
+                np.amax(coords[:, 3], axis=0),
             )
             roi_for_dem = eos.sar.roi.Roi.from_bounds_tuple(bounds)
             self.registrator_per_swath[swath] = utils.Registrator(
@@ -462,7 +469,7 @@ class OvlSecondaryPipeline(Pipeline):
         self.secondary_burst_resampling_matrices = {}
 
     def set_all_osids(self):
-        all_osids = set()
+        all_osids: set[Osid] = set()
         for swath in ("iw1", "iw2", "iw3"):
             swath_model = self.asm.get_swath_model(swath)
             self.swath_models_per_swath[swath] = swath_model
