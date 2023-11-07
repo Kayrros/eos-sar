@@ -1,10 +1,12 @@
 from typing import Optional
 
+import numpy as np
 import tifffile
 
 import eos.dem
 import eos.products.sentinel1
 import eos.sar
+from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
 from eos.products.sentinel1.overlap import Bsint, Osid
 from eos.products.sentinel1.proj_model import Sentinel1SwathModel
 from eos.sar.orbit import StateVector
@@ -244,8 +246,8 @@ class OvlPrimaryPipeline(Pipeline):
         self.bsids_of_interest_per_swath: dict[str, set[str]] = {}
 
         # for Doppler centroid computation
-        self.resampler_per_osid = {}
-        self.burst_resampling_matrices = {}
+        self.resampler_per_osid: dict[Osid, Sentinel1BurstResample] = {}
+        self.burst_resampling_matrices: dict[str, np.ndarray] = {}
 
     def set_all_osids(self, swaths):
         all_osids: set[Osid] = set()

@@ -39,6 +39,35 @@ class BaseModel(ABC):
         ), "Should provide one index per element in theta_list"
         return [theta[idx] for idx, theta in zip(indices, self.get_theta_list())]
 
+    @abstractmethod
+    def predict_grid(self):
+        """
+        Predicts the model for a meshgrid defined by each value taken in theta_list
+        and each value of the feature observation.
+
+        Returns
+        -------
+        Grid.
+
+        """
+        ...
+
+    @abstractmethod
+    def predict_single(self, theta_single: list[float]):
+        """
+        Predicts the model for a single value per theta
+
+        Parameters
+        ----------
+        theta_single: list[float]
+                    d float elements
+
+        Returns
+        -------
+        prediction: (Nobs,)
+        """
+        ...
+
 
 @dataclass
 class Model(BaseModel):
@@ -190,7 +219,7 @@ class CompoundModel(BaseModel):
 @dataclass
 class ExhaustiveGamma:
     abs_gamma: NDArray[np.float32]
-    max_indices: tuple[int]
+    max_indices: list[int]
     max_theta: list[float]
     max_gamma_abs: float
     max_gamma_angle: float
@@ -259,21 +288,25 @@ class Periodogram:
         max_indices = np.unravel_index(np.argmax(abs_gamma), abs_gamma.shape)
         max_gamma_angle = np.angle(cmpx_gamma[max_indices])
         del cmpx_gamma
-        max_theta = grid.parent_model.get_theta_from_indices(max_indices)
+        max_theta = grid.parent_model.get_theta_from_indices(max_indices)  # type: ignore
         max_gamma_abs = abs_gamma[max_indices]
 
         return ExhaustiveGamma(
-            abs_gamma, max_indices, max_theta, max_gamma_abs, max_gamma_angle
+            abs_gamma,
+            max_indices,  # type: ignore
+            max_theta,
+            max_gamma_abs,
+            max_gamma_angle,
         )
 
-    def get_gamma_single(self, model: Model, theta_single: list[float]):
+    def get_gamma_single(self, model: BaseModel, theta_single: list[float]):
         pred_per_obs = model.predict_single(theta_single)
         tmp = np.exp(1j * (self.phi_wrapped - pred_per_obs))
         gamma = np.sum(tmp * self.weights)
         return gamma
 
     def refinement(
-        self, model: Model, exhaustive_gamma: ExhaustiveGamma, no_failure=False
+        self, model: BaseModel, exhaustive_gamma: ExhaustiveGamma, no_failure=False
     ):
         estimated = exhaustive_gamma.max_theta
         bounds = exhaustive_gamma.get_bounds(model.get_theta_list())
@@ -330,7 +363,7 @@ class PlanarPeriodogramResult:
 
 
 def planar_periodogram(
-    model: CompoundModel, phi_wrapped_ts: list[list[float]], no_failure=False
+    model: BaseModel, phi_wrapped_ts: np.ndarray, no_failure=False
 ) -> list[PlanarPeriodogramResult]:
     grid = model.predict_grid()
     results = []
@@ -340,7 +373,11 @@ def planar_periodogram(
         slopes, gamma_opt = period.refinement(
             model, exhaustive_gamma, no_failure=no_failure
         )
-        cmpx_gamma_opt = period.get_gamma_single(model, slopes)
+        assert isinstance(slopes, tuple)
+        assert len(slopes) == 2
+        slopes: tuple[float, float]
+
+        cmpx_gamma_opt = period.get_gamma_single(model, list(slopes))
         bias = np.angle(cmpx_gamma_opt)
         diff = abs(gamma_opt - np.abs(cmpx_gamma_opt))
         threshold = 0.01
@@ -348,7 +385,7 @@ def planar_periodogram(
             diff < threshold
         ), f"something wrong with gamma opt, {diff} greater than {threshold} "
         results.append(
-            PlanarPeriodogramResult(exhaustive_gamma, list(slopes), bias, gamma_opt)
+            PlanarPeriodogramResult(exhaustive_gamma, slopes, bias, gamma_opt)
         )
 
     return results

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import cProfile
 import pstats
@@ -13,10 +15,10 @@ from numpy.typing import NDArray
 from typing_extensions import override
 
 import eos.products.sentinel1
-from eos.products.sentinel1.overlap import Bsint
 import eos.sar
 from eos.dem import DEM, DEMSource
 from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter
+from eos.products.sentinel1.overlap import Bsint
 from eos.sar import goldstein_filter
 from eos.sar.model import SensorModel
 from eos.sar.roi import Roi

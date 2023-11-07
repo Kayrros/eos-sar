@@ -129,13 +129,13 @@ def iterative_alternate_periodogram(
     # init variables
     q_estimation = np.zeros([num_PS], dtype=np.float32)  # constant dem error
     v_estimation = np.zeros([num_PS], dtype=np.float32)  # constant velocity
-    delta_q = delta_v = 0
+    delta_q = delta_v = np.array([])
 
     APS_dzeta_model = periodogram.LinearTermModel(
-        1.0, PS_Y_coordinates, np.linspace(-0.1, 0.1, 11)
+        1.0, PS_Y_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
     )  # odd boundaries to have 0. tested
     APS_eta_model = periodogram.LinearTermModel(
-        1.0, PS_X_coordinates, np.linspace(-0.1, 0.1, 11)
+        1.0, PS_X_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
     )
     atmo_model = periodogram.CompoundModel([APS_dzeta_model, APS_eta_model])
     atmo_grid = atmo_model.predict_grid()

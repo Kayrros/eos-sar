@@ -2,7 +2,7 @@ import concurrent.futures
 import logging
 import os
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional, Union
 
 import phoenix.catalog
 import shapely.wkt
@@ -164,7 +164,11 @@ def main(
     product_ids = cache.get_or_put(
         key,
         list[list[str]],
-        lambda: remove_weird_products(product_provider, all_product_ids, polarization),
+        lambda: remove_weird_products(
+            product_provider,  # type: ignore
+            all_product_ids,
+            polarization,
+        ),
     )
     assert product_ids is not None
     logger.info("remove weird products DONE")
@@ -204,7 +208,7 @@ def get_orbits(
     )
 
     assert orbit_type in (True, False, None, "orbpoe", "orbres")
-    orbit_quality: list[orbit_catalog.OrbitFileType] = {
+    orbit_quality: list[orbit_catalog.OrbitFileType] = {  # type: ignore
         True: orbit_catalog.BestEffort,
         False: [],
         None: [],
@@ -298,6 +302,7 @@ def run_ts_on_prods(
         )
         return secondary_pipeline
 
+    pipelines_map: Iterator[SecondaryPipeline]
     if ncpu == 1:
         pipelines_map = map(process_product, product_ids[1:])
     else:
@@ -329,7 +334,7 @@ def main_ovl(
     dem_source: Optional[eos.dem.DEMSource] = None,
     product_provider: Optional[ProductProvider] = None,
     cache: Cache = eos.cache.no_cache(),
-):
+) -> list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]]:
     # destination path
     os.makedirs(dstdir, exist_ok=True)
     directory_builder = inout.OvlDirectoryBuilder(dstdir)
@@ -432,7 +437,9 @@ def main_ovl(
     )
     pipelines_map = map(process_product, secondary_product_ids)
 
-    pipelines = [primary_pipeline]
+    pipelines: list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]] = [
+        primary_pipeline
+    ]
     for pipeline in tqdm.tqdm(pipelines_map, total=n_products - 1):
         pipelines.append(pipeline)
 
