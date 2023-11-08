@@ -42,6 +42,8 @@ class Ferreti2001Result:
     """ (h, w), in m; refined topography """
     v: np.ndarray
     """ (h, w), in mm/year; linear deformation rate"""
+    c0: np.ndarray
+    """(h, w), in radians, constant per pixel to have a centered model"""
     bperp: np.ndarray
     """ (t, h, w), in meters; normal baseline per date """
     Cq: np.ndarray
@@ -59,13 +61,19 @@ class Ferreti2001Result:
         return self.years_since_ref[:, None, None] * self.v[None, :]
 
     @property
+    def affine_deformation_in_mm(self) -> np.ndarray:
+        """(t, h, w), affine part of the deformation, in mm"""
+        return self.c0 / self.Cv + self.years_since_ref[:, None, None] * self.v[None, :]
+
+    @property
     def residuals_in_mm(self) -> np.ndarray:
-        """(t, h, w), residual signal after removing the atmosphere, the topographic component and the linear deformation. in mm"""
+        """(t, h, w), residual signal after removing the atmosphere, the topographic component and the affine deformation. in mm"""
         in_radians = psutils.wrap(
             self.observations
             - self.aps
             - self.Cq * self.bperp * self.q
             - self.Cv * self.linear_deformation_in_mm
+            - self.c0
         )
         return in_radians / self.Cv
 
@@ -303,6 +311,7 @@ def velo_topo_periodogram(
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
 
         Cq = Cq[None, :]
+
         def periodogram_to_optimize(x):
             res = 0
             q = x[0:num_PS]
@@ -593,11 +602,21 @@ def run(
     Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
+    # compute c0 such that the periodogram is centered on 0
+    per = (
+        Delta_phi_against_ref
+        - atmos
+        - Cq * bperp * q
+        - Cv * years_since_ref[:, None, None] * v[None, :]
+    )
+    c0 = np.angle(np.mean(np.exp(1j * per), axis=0))
+
     return Ferreti2001Result(
         observations=Delta_phi_against_ref,
         aps=atmos,
         q=q,
         v=v,
+        c0=c0,
         gammas=gammas,
         years_since_ref=years_since_ref,
         bperp=bperp,
