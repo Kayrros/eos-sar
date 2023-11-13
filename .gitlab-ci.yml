@@ -23,7 +23,7 @@ test:
 checkstyle:
   stage: test
   before_script:
-    - pip install ruff==0.1.4
+    - pip install ruff==0.1.5
   script:
     - ruff check .
     - ruff format --check .
@@ -31,7 +31,7 @@ checkstyle:
 mypy:
   stage: test
   before_script:
-    - pip install mypy~=1.6.0 cython numpy
+    - pip install mypy==1.7.0 cython numpy
     - pip install -e ".[test]"
   script:
     - mypy --non-interactive eos/ teosar/ tests/ usage/
