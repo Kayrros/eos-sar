@@ -50,14 +50,24 @@ def get_bsids_for_product(
 
 def get_bsids_for_products(
     product_provider: ProductProvider, polarization: str, product_ids: list[str]
-) -> dict[str, list[str]]:
-    # NOTE: this function could be a lot faster if we used the slc_bsid phoenix plugin
-
+) -> tuple[dict[str, list[str]], dict[str, Exception]]:
+    get = partial(get_bsids_for_product, product_provider, polarization)
+    bsids: dict[str, list[str]] = {}
+    errors: dict[str, Exception] = {}
     with concurrent.futures.ProcessPoolExecutor() as pool:
-        get = partial(get_bsids_for_product, product_provider, polarization)
-        all_bsids = pool.map(get, product_ids)
+        futures: dict[str, concurrent.futures.Future] = {}
+        for pid in product_ids:
+            future = pool.submit(get, pid)
+            futures[pid] = future
+        for pid in product_ids:
+            try:
+                result = futures[pid].result()
+            except Exception as e:
+                errors[pid] = e
+            else:
+                bsids[pid] = result
 
-    return {pid: bsids for pid, bsids in zip(product_ids, all_bsids)}
+    return bsids, errors
 
 
 def remove_weird_products(
@@ -68,10 +78,12 @@ def remove_weird_products(
         return pid[idx : idx + 6]
 
     logger.info("getting bsids for products")
-    bsids_per_pid = get_bsids_for_products(
+    bsids_per_pid, errored = get_bsids_for_products(
         product_provider, polarization, list(sum(product_ids, []))
     )
     logger.info("getting bsids for products, DONE")
+    for pid, exception in errored.items():
+        logger.info(f"skipped product {pid} ({exception})")
 
     by_datatake: dict[str, list[str]] = {}
     for pid in [pid for pids in product_ids for pid in pids]:
@@ -79,6 +91,13 @@ def remove_weird_products(
 
     good_datatakes: set[str] = set()
     for datatake, pids in by_datatake.items():
+        all_valid = all(pid not in errored for pid in pids)
+        if not all_valid:
+            logger.info(
+                f"skipped datatake {datatake} because one of its product has errored"
+            )
+            continue
+
         # check whether some bsids are duplicated in list of products
         bsids: list[str] = sum((bsids_per_pid[pid] for pid in pids), [])
         if len(bsids) == len(set(bsids)):
