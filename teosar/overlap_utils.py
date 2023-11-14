@@ -1,5 +1,5 @@
 import eos.products.sentinel1 as s1
-from eos.products.sentinel1.overlap import Osid
+from eos.products.sentinel1.overlap import Bsint, Osid
 from eos.sar.roi import Roi
 
 
@@ -20,7 +20,7 @@ class OverlapRoiInfo:
 
     def get_swath_rois_per_bsint(self):
         if not hasattr(self, "swath_rois_per_bsint"):
-            self.swath_rois_per_bsint = {}
+            self.swath_rois_per_bsint: dict[Bsint, Roi] = {}
             for osid, roi in self.all_within_swath_rois.items():
                 bsint = osid.bsint
                 if bsint not in self.swath_rois_per_bsint.keys():

@@ -28,4 +28,6 @@ extend-include = ["*.ipynb"]
 install_types = true
 ignore_missing_imports = true
 check_untyped_defs = true
+allow_redefinition = true
+pretty = true
 python_version = "3.9"

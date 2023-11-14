@@ -2,7 +2,7 @@ import concurrent.futures
 import logging
 import os
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional, Union
 
 import phoenix.catalog
 import shapely.wkt
@@ -15,11 +15,14 @@ import eos.products.sentinel1.catalog as s1_catalog
 import eos.sar
 from eos.cache import Cache
 from eos.products.sentinel1 import orbit_catalog
+from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from eos.products.sentinel1.overlap import Bsint, Osid
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo
 from teosar import inout, utils
 from teosar.workflow import (
     OvlPrimaryPipeline,
     OvlSecondaryPipeline,
+    Pipeline,
     PrimaryPipeline,
     SecondaryPipeline,
 )
@@ -37,7 +40,7 @@ def get_bsids_for_product(
         product.get_xml_annotation(swath=swath, pol=polarization)
         for swath in ("IW1", "IW2", "IW3")
     ]
-    bursts = sum(
+    bursts: list[Sentinel1BurstMetadata] = sum(
         [eos.products.sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls],
         start=[],
     )
@@ -77,7 +80,7 @@ def remove_weird_products(
     good_datatakes: set[str] = set()
     for datatake, pids in by_datatake.items():
         # check whether some bsids are duplicated in list of products
-        bsids = sum((bsids_per_pid[pid] for pid in pids), [])
+        bsids: list[str] = sum((bsids_per_pid[pid] for pid in pids), [])
         if len(bsids) == len(set(bsids)):
             good_datatakes.add(datatake)
         else:
@@ -141,7 +144,7 @@ def main(
         start_date=startdate,
         end_date=enddate,
         relative_orbit_number=orbit,
-        polarization=prod_pol,
+        polarization=prod_pol,  # type: ignore
     )
     logger.info("querying the catalog")
     pids_by_date = get_phx_catalog(cache).search_slc(query).product_ids_per_date
@@ -161,8 +164,13 @@ def main(
     product_ids = cache.get_or_put(
         key,
         list[list[str]],
-        lambda: remove_weird_products(product_provider, all_product_ids, polarization),
+        lambda: remove_weird_products(
+            product_provider,  # type: ignore
+            all_product_ids,
+            polarization,
+        ),
     )
+    assert product_ids is not None
     logger.info("remove weird products DONE")
 
     if last_n_prods is not None:
@@ -200,7 +208,7 @@ def get_orbits(
     )
 
     assert orbit_type in (True, False, None, "orbpoe", "orbres")
-    orbit_quality = {
+    orbit_quality: list[orbit_catalog.OrbitFileType] = {  # type: ignore
         True: orbit_catalog.BestEffort,
         False: [],
         None: [],
@@ -233,7 +241,7 @@ def run_ts_on_prods(
     *,
     product_provider: ProductProvider,
     cache: Cache,
-):
+) -> list[Pipeline]:
     # destination path
     os.makedirs(dstdir, exist_ok=True)
     directory_builder = inout.DirectoryBuilder(dstdir)
@@ -294,13 +302,14 @@ def run_ts_on_prods(
         )
         return secondary_pipeline
 
+    pipelines_map: Iterator[SecondaryPipeline]
     if ncpu == 1:
         pipelines_map = map(process_product, product_ids[1:])
     else:
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=ncpu)
         pipelines_map = pool.map(process_product, product_ids[1:])
 
-    pipelines = [primary_pipeline]
+    pipelines: list[Pipeline] = [primary_pipeline]
     for pipeline in tqdm.tqdm(pipelines_map, total=len(product_ids) - 1):
         pipelines.append(pipeline)
 
@@ -324,7 +333,8 @@ def main_ovl(
     osids_of_interest=None,
     dem_source: Optional[eos.dem.DEMSource] = None,
     product_provider: Optional[ProductProvider] = None,
-):
+    cache: Cache = eos.cache.no_cache(),
+) -> list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]]:
     # destination path
     os.makedirs(dstdir, exist_ok=True)
     directory_builder = inout.OvlDirectoryBuilder(dstdir)
@@ -341,7 +351,7 @@ def main_ovl(
             eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id
         )
     # Necessary to get the ephemerides (orbits)
-    orbits = get_orbits(product_ids_per_date, orbit_type)
+    orbits = get_orbits(product_ids_per_date, orbit_type, cache=cache)
 
     primary_pipeline.execute(
         product_provider,
@@ -360,7 +370,7 @@ def main_ovl(
     )
 
     ovl_roi_in_swath_per_bsint = {}
-    all_bsint_of_interest = set()
+    all_bsint_of_interest: set[Bsint] = set()
     for (
         swath,
         bsint_of_interest,
@@ -373,7 +383,7 @@ def main_ovl(
         )
         all_bsint_of_interest = all_bsint_of_interest.union(bsint_of_interest)
 
-    all_osids_of_interest = set()
+    all_osids_of_interest: set[Osid] = set()
     for (
         swath,
         osids_of_interest,
@@ -427,7 +437,9 @@ def main_ovl(
     )
     pipelines_map = map(process_product, secondary_product_ids)
 
-    pipelines = [primary_pipeline]
+    pipelines: list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]] = [
+        primary_pipeline
+    ]
     for pipeline in tqdm.tqdm(pipelines_map, total=n_products - 1):
         pipelines.append(pipeline)
 
