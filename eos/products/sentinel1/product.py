@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import abc
 import dataclasses
 import logging
 import os
@@ -9,13 +10,15 @@ from typing import Any, Optional
 
 import rasterio
 import rasterio.session
+from typing_extensions import override
 
+import eos.sar.io
 from eos.products.sentinel1 import metadata
 from eos.products.sentinel1.catalog import (
     CDSESentinel1GRDCatalogBackend,
     CDSESentinel1SLCCatalogBackend,
 )
-from eos.sar import io
+from eos.sar.io import ImageOpener, ImageReader
 
 logger = logging.Logger(__name__)
 
@@ -63,55 +66,61 @@ class SafeFormat:
         raise FileNotFoundError
 
 
-class Sentinel1SLCProductInfo:
+@dataclass
+class Sentinel1SLCProductInfo(abc.ABC):
     product_id: str
 
-    def __init__(self, product_id: str):
-        self.product_id = product_id
+    @abc.abstractmethod
+    def get_image_reader(self, swath: str, pol: str) -> ImageReader:
+        ...
 
-    def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
-        raise NotImplementedError
-
+    @abc.abstractmethod
     def get_xml_annotation(self, swath: str, pol: str) -> str:
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def get_xml_calibration(self, swath: str, pol: str) -> str:
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def get_xml_noise(self, swath: str, pol: str) -> str:
-        raise NotImplementedError
+        ...
 
-    def __repr__(self) -> str:
-        name = self.__class__.__name__
-        return f'{name}(product_id="{self.product_id}")'
+    @abc.abstractmethod
+    def get_manifest(self) -> str:
+        ...
 
 
-class Sentinel1GRDProductInfo:
+
+@dataclass
+class Sentinel1GRDProductInfo(abc.ABC):
     product_id: str
 
-    def __init__(self, product_id: str):
-        self.product_id = product_id
+    @abc.abstractmethod
+    def get_image_reader(self, pol: str) -> ImageReader:
+        ...
 
-    def get_image_reader(self, pol: str) -> io.ImageReader:
-        raise NotImplementedError
-
+    @abc.abstractmethod
     def get_xml_annotation(self, pol: str) -> str:
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def get_xml_calibration(self, pol: str) -> str:
-        raise NotImplementedError
+        ...
 
+    @abc.abstractmethod
     def get_xml_noise(self, pol: str) -> str:
-        raise NotImplementedError
+        ...
 
-    def __repr__(self) -> str:
-        name = self.__class__.__name__
-        return f'{name}(product_id="{self.product_id}")'
+    @abc.abstractmethod
+    def get_manifest(self) -> str:
+        ...
 
 
 class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
     safe_path: str
     safe_format: SafeFormat
+    manifest_content: str
 
     def __init__(self, safe_path: str):
         """
@@ -133,36 +142,44 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
         self.safe_path = safe_path
 
         prod_id = os.path.splitext(os.path.basename(safe_path))[0]
-        manifest_content = io.read_xml_file(
+        self.manifest_content = eos.sar.io.read_xml_file(
             os.path.join(self.safe_path, "manifest.safe")
         )
-        self.safe_format = SafeFormat.from_manifest(prod_id, manifest_content)
+        self.safe_format = SafeFormat.from_manifest(prod_id, self.manifest_content)
 
         super().__init__(prod_id)
 
-    def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
+    @override
+    def get_image_reader(self, swath: str, pol: str) -> ImageReader:
         tiff_path = self.safe_format.search(swath, pol, "measurement/")
         tiff_path = os.path.join(self.safe_path, tiff_path)
-        return io.open_image(tiff_path)
+        return eos.sar.io.open_image(tiff_path)
 
+    @override
     def get_xml_annotation(self, swath: str, pol: str) -> str:
         xml_path = self.safe_format.search(swath, pol, "annotation/")
         xml_path = os.path.join(self.safe_path, xml_path)
-        return io.read_xml_file(xml_path)
+        return eos.sar.io.read_xml_file(xml_path)
 
+    @override
     def get_xml_calibration(self, swath: str, pol: str) -> str:
         calibration_xml_path = self.safe_format.search(
             swath, pol, "annotation/calibration/calibration-"
         )
         calibration_xml_path = os.path.join(self.safe_path, calibration_xml_path)
-        return io.read_xml_file(calibration_xml_path)
+        return eos.sar.io.read_xml_file(calibration_xml_path)
 
+    @override
     def get_xml_noise(self, swath: str, pol: str) -> str:
         noise_xml_path = self.safe_format.search(
             swath, pol, "annotation/calibration/noise-"
         )
         noise_xml_path = os.path.join(self.safe_path, noise_xml_path)
-        return io.read_xml_file(noise_xml_path)
+        return eos.sar.io.read_xml_file(noise_xml_path)
+
+    @override
+    def get_manifest(self) -> str:
+        return self.manifest_content
 
 
 try:
@@ -187,9 +204,11 @@ else:
                 if index:
                     self.burstem.index()
 
-            def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
+            @override
+            def get_image_reader(self, swath: str, pol: str) -> ImageReader:
                 return BursterSwathReader(self.burstem, swath, pol)  # type: ignore
 
+            @override
             def get_xml_annotation(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f"{swath.upper()}_{pol.upper()}_ANNOTATION_XML"
                 content: str = self.burstem.download_as_bytes(
@@ -197,6 +216,7 @@ else:
                 ).decode("utf-8")
                 return content
 
+            @override
             def get_xml_calibration(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f"{swath.upper()}_{pol.upper()}_CALIBRATION_XML"
                 content: str = self.burstem.download_as_bytes(
@@ -204,11 +224,19 @@ else:
                 ).decode("utf-8")
                 return content
 
+            @override
             def get_xml_noise(self, swath: str, pol: str) -> str:
                 xml_annotation_key = f"{swath.upper()}_{pol.upper()}_NOISE_XML"
                 content: str = self.burstem.download_as_bytes(
                     xml_annotation_key
                 ).decode("utf-8")
+                return content
+
+            @override
+            def get_manifest(self) -> str:
+                content: str = self.burstem.download_as_bytes("MANIFEST").decode(
+                    "utf-8"
+                )
                 return content
 
             @staticmethod
@@ -232,16 +260,18 @@ else:
                 return PhoenixSentinel1ProductInfo(item, index=index)
 
     class PhoenixSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
-        def __init__(self, item: Any, image_opener: io.ImageOpener):
+        def __init__(self, item: Any, image_opener: ImageOpener):
             super().__init__(item.id)
             self.item = item
             self.image_opener = image_opener
 
-        def get_image_reader(self, pol: str) -> io.ImageReader:
+        @override
+        def get_image_reader(self, pol: str) -> ImageReader:
             key = pol.upper()
             uri = self.item.assets.uri(key)
             return self.image_opener(uri)
 
+        @override
         def get_xml_annotation(self, pol: str) -> str:
             xml_annotation_key = f"{pol.upper()}_ANNOTATION"
             content: str = self.item.assets.download_as_bytes(
@@ -249,6 +279,7 @@ else:
             ).decode("utf-8")
             return content
 
+        @override
         def get_xml_calibration(self, pol: str) -> str:
             xml_annotation_key = f"{pol.upper()}_CALIBRATION"
             content: str = self.item.assets.download_as_bytes(
@@ -256,6 +287,7 @@ else:
             ).decode("utf-8")
             return content
 
+        @override
         def get_xml_noise(self, pol: str) -> str:
             xml_annotation_key = f"{pol.upper()}_NOISE"
             content: str = self.item.assets.download_as_bytes(
@@ -263,10 +295,15 @@ else:
             ).decode("utf-8")
             return content
 
+        @override
+        def get_manifest(self) -> str:
+            # TODO: this is not yet available in the phoenix collection
+            raise NotImplementedError
+
         @staticmethod
         def from_product_id(
             product_id: str,
-            image_opener: io.ImageOpener = io.open_image,
+            image_opener: ImageOpener = eos.sar.io.open_image,
             collection: Optional[Any] = None,
             source: Optional[str] = None,
         ) -> PhoenixSentinel1GRDProductInfo:
@@ -295,19 +332,23 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
     """ boto3 session with credentials to access the CDSE. Requests will be made with requester_pays=True """
     safe_format: SafeFormat = dataclasses.field(init=False)
     s3_client: Any = dataclasses.field(init=False)
+    manifest_content: str = dataclasses.field(init=False)
 
     def __post_init__(self) -> None:
         self.s3_client = self.s3_session.client(
             "s3", endpoint_url="https://s3.dataspace.copernicus.eu"
         )
-        manifest_content = io.read_xml_file(
+        self.manifest_content = eos.sar.io.read_xml_file(
             os.path.join(self.s3_path, "manifest.safe"),
             s3_client=self.s3_client,
             requester_pays=True,
         )
-        self.safe_format = SafeFormat.from_manifest(self.product_id, manifest_content)
+        self.safe_format = SafeFormat.from_manifest(
+            self.product_id, self.manifest_content
+        )
 
-    def get_image_reader(self, swath: str, pol: str) -> io.ImageReader:
+    @override
+    def get_image_reader(self, swath: str, pol: str) -> ImageReader:
         tiff_path = self.safe_format.search(swath, pol, "measurement/")
         tiff_path = os.path.join(self.s3_path, tiff_path)
         with rasterio.Env(
@@ -318,28 +359,37 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
         ):
             return rasterio.open(tiff_path)  # type: ignore
 
+    @override
     def get_xml_annotation(self, swath: str, pol: str) -> str:
         xml_path = self.safe_format.search(swath, pol, "annotation/")
         xml_path = os.path.join(self.s3_path, xml_path)
-        return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=True)
+        return eos.sar.io.read_xml_file(
+            xml_path, s3_client=self.s3_client, requester_pays=True
+        )
 
+    @override
     def get_xml_calibration(self, swath: str, pol: str) -> str:
         calibration_xml_path = self.safe_format.search(
             swath, pol, "annotation/calibration/calibration-"
         )
         calibration_xml_path = os.path.join(self.s3_path, calibration_xml_path)
-        return io.read_xml_file(
+        return eos.sar.io.read_xml_file(
             calibration_xml_path, s3_client=self.s3_client, requester_pays=True
         )
 
+    @override
     def get_xml_noise(self, swath: str, pol: str) -> str:
         noise_xml_path = self.safe_format.search(
             swath, pol, "annotation/calibration/noise-"
         )
         noise_xml_path = os.path.join(self.s3_path, noise_xml_path)
-        return io.read_xml_file(
+        return eos.sar.io.read_xml_file(
             noise_xml_path, s3_client=self.s3_client, requester_pays=True
         )
+
+    @override
+    def get_manifest(self) -> str:
+        return self.manifest_content
 
     @staticmethod
     def from_product_id(
@@ -368,14 +418,17 @@ class CDSEUnzippedSafeSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
         self.s3_client = self.s3_session.client(
             "s3", endpoint_url="https://s3.dataspace.copernicus.eu"
         )
-        manifest_content = io.read_xml_file(
+        self.manifest_content = eos.sar.io.read_xml_file(
             os.path.join(self.s3_path, "manifest.safe"),
             s3_client=self.s3_client,
             requester_pays=True,
         )
-        self.safe_format = SafeFormat.from_manifest(self.product_id, manifest_content)
+        self.safe_format = SafeFormat.from_manifest(
+            self.product_id, self.manifest_content
+        )
 
-    def get_image_reader(self, pol: str) -> io.ImageReader:
+    @override
+    def get_image_reader(self, pol: str) -> ImageReader:
         tiff_path = self.safe_format.search("", pol, "measurement/")
         tiff_path = os.path.join(self.s3_path, tiff_path)
         with rasterio.Env(
@@ -388,28 +441,37 @@ class CDSEUnzippedSafeSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
             # because rasterio does not keep track of the endpoint url
             return rasterio.open(tiff_path)  # type: ignore
 
+    @override
     def get_xml_annotation(self, pol: str) -> str:
         xml_path = self.safe_format.search("", pol, "annotation/")
         xml_path = os.path.join(self.s3_path, xml_path)
-        return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=True)
+        return eos.sar.io.read_xml_file(
+            xml_path, s3_client=self.s3_client, requester_pays=True
+        )
 
+    @override
     def get_xml_calibration(self, pol: str) -> str:
         calibration_xml_path = self.safe_format.search(
             "", pol, "annotation/calibration/calibration-"
         )
         calibration_xml_path = os.path.join(self.s3_path, calibration_xml_path)
-        return io.read_xml_file(
+        return eos.sar.io.read_xml_file(
             calibration_xml_path, s3_client=self.s3_client, requester_pays=True
         )
 
+    @override
     def get_xml_noise(self, pol: str) -> str:
         noise_xml_path = self.safe_format.search(
             "", pol, "annotation/calibration/noise-"
         )
         noise_xml_path = os.path.join(self.s3_path, noise_xml_path)
-        return io.read_xml_file(
+        return eos.sar.io.read_xml_file(
             noise_xml_path, s3_client=self.s3_client, requester_pays=True
         )
+
+    @override
+    def get_manifest(self) -> str:
+        return self.manifest_content
 
     @staticmethod
     def from_product_id(
