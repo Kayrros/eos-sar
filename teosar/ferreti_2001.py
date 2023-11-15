@@ -136,7 +136,7 @@ def iterative_alternate_periodogram(
     # init variables
     q_estimation = np.zeros([num_PS], dtype=np.float32)  # constant dem error
     v_estimation = np.zeros([num_PS], dtype=np.float32)  # constant velocity
-    delta_q = delta_v = np.array([])
+    delta_q = delta_v = None
 
     APS_dzeta_model = periodogram.LinearTermModel(
         1.0, PS_Y_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
@@ -148,17 +148,17 @@ def iterative_alternate_periodogram(
     atmo_grid = atmo_model.predict_grid()
 
     for iteration in range(max_iterations):
-        # (a) Update estimation of altitude and velocity with estimated residuals
-        q_estimation += np.asarray(delta_q)  # error in altitude estimation
-        v_estimation += np.asarray(delta_v)  # linear slant range velocities
+        if iteration > 1:
+            assert delta_q is not None
+            assert delta_v is not None
 
-        # (b) Ferreti 2001 does stop automatically if there are no more changes
-        if (
-            iteration > 1
-            and max(abs(delta_q)) < threshold_q
-            and max(abs(delta_v)) < threshold_v
-        ):
-            break
+            # (a) Update estimation of altitude and velocity with estimated residuals
+            q_estimation += np.asarray(delta_q)  # error in altitude estimation
+            v_estimation += np.asarray(delta_v)  # linear slant range velocities
+
+            # (b) Ferreti 2001 does stop automatically if there are no more changes
+            if max(abs(delta_q)) < threshold_q and max(abs(delta_v)) < threshold_v:
+                break
 
         # (c) Update Zero-Baseline Steering (Delta_phi)
         # Note: In the original paper date_normal_baseline is supposed constant on the area,
