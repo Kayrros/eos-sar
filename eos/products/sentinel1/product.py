@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 import dataclasses
+import io
 import logging
 import os
 import re
@@ -10,6 +11,7 @@ from typing import Any, Optional
 
 import rasterio
 import rasterio.session
+from lxml import etree
 from typing_extensions import override
 
 import eos.sar.io
@@ -66,6 +68,35 @@ class SafeFormat:
         raise FileNotFoundError
 
 
+def extract_ipf(manifest: str) -> str:
+    """
+    Extract the IPF version from a manifest.safe file.
+
+    Notes
+    -----
+    See https://sar-mpc.eu/processor/ipf/ for version numbers and release notes.
+
+    Parameters
+    ----------
+    manifest:
+        content of the manifest.safe file
+
+    Returns
+    -------
+    IPF string version, eg. "002.90"
+    """
+    buf = io.BytesIO(manifest.encode("utf-8"))
+
+    version = etree.parse(buf).xpath(
+        "/xfdu:XFDU/metadataSection/metadataObject/metadataWrap/xmlData/safe:processing/safe:facility/safe:software/@version",
+        namespaces={
+            "xfdu": "urn:ccsds:schema:xfdu:1",
+            "safe": "http://www.esa.int/safe/sentinel-1.0",
+        },
+    )
+    return version[0]
+
+
 @dataclass
 class Sentinel1SLCProductInfo(abc.ABC):
     product_id: str
@@ -90,6 +121,9 @@ class Sentinel1SLCProductInfo(abc.ABC):
     def get_manifest(self) -> str:
         ...
 
+    @property
+    def ipf(self) -> str:
+        return extract_ipf(self.get_manifest())
 
 
 @dataclass
@@ -115,6 +149,10 @@ class Sentinel1GRDProductInfo(abc.ABC):
     @abc.abstractmethod
     def get_manifest(self) -> str:
         ...
+
+    @property
+    def ipf(self) -> str:
+        return extract_ipf(self.get_manifest())
 
 
 class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
