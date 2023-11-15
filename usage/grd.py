@@ -126,7 +126,8 @@ def main(
     if calibration:
         cal_xml = product.get_xml_calibration(pol)
         noise_xml = product.get_xml_noise(pol)
-        calibrator = sentinel1.calibration.Sentinel1Calibrator(cal_xml, noise_xml)
+        ipf = product.ipf
+        calibrator = sentinel1.calibration.Sentinel1Calibrator(cal_xml, noise_xml, ipf)
         reader = sentinel1.calibration.CalibrationReader(
             reader, calibrator, method=calibration
         )
