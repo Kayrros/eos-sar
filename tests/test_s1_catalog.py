@@ -98,3 +98,25 @@ def test_cdse_catalog_grd():
     backend = CDSESentinel1GRDCatalogBackend()
     result = search_grd(backend, query)
     assert result.product_ids == expected_grd
+
+
+def test_cdse_catalog_slc_get_item():
+    backend = CDSESentinel1SLCCatalogBackend()
+    item = backend.get_cdse_item(
+        "S1B_IW_SLC__1SDV_20190305T230512_20190305T230539_015225_01C7C5_EF14"
+    )
+    assert (
+        item["S3Path"]
+        == "/eodata/Sentinel-1/SAR/SLC/2019/03/05/S1B_IW_SLC__1SDV_20190305T230512_20190305T230539_015225_01C7C5_EF14.SAFE"
+    )
+
+
+def test_cdse_catalog_grd_get_item():
+    backend = CDSESentinel1GRDCatalogBackend()
+    item = backend.get_cdse_item(
+        "S1B_IW_GRDH_1SDV_20190329T230513_20190329T230538_015575_01D324_E3AB"
+    )
+    assert (
+        item["S3Path"]
+        == "/eodata/Sentinel-1/SAR/GRD/2019/03/29/S1B_IW_GRDH_1SDV_20190329T230513_20190329T230538_015575_01D324_E3AB.SAFE"
+    )

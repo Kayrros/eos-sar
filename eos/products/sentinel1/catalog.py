@@ -192,6 +192,15 @@ def _cdse_list_items(request: str) -> list[str]:
 
 @dataclass(frozen=True)
 class CDSESentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
+    def get_cdse_item(self, product_id: str) -> dict[str, Any]:
+        response = requests.get(
+            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name%20eq%20%27{product_id}.SAFE%27&$expand=Attributes"
+        ).json()
+        try:
+            return response["value"][0]
+        except KeyError as e:
+            raise Exception(f"OData parsing error? : {response}") from e
+
     @override
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
         # TODO: we might want to look at neighbouring orbits
@@ -208,6 +217,15 @@ class CDSESentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
 
 @dataclass(frozen=True)
 class CDSESentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
+    def get_cdse_item(self, product_id: str) -> dict[str, Any]:
+        response = requests.get(
+            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name%20eq%20%27{product_id}.SAFE%27&$expand=Attributes"
+        ).json()
+        try:
+            return response["value"][0]
+        except KeyError as e:
+            raise Exception(f"OData parsing error? : {response}") from e
+
     @override
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
         # TODO: we might want to look at neighbouring orbits
