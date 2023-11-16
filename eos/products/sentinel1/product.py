@@ -11,6 +11,10 @@ import rasterio
 import rasterio.session
 
 from eos.products.sentinel1 import metadata
+from eos.products.sentinel1.catalog import (
+    CDSESentinel1GRDCatalogBackend,
+    CDSESentinel1SLCCatalogBackend,
+)
 from eos.sar import io
 
 logger = logging.Logger(__name__)
@@ -336,3 +340,83 @@ class CDSEUnzippedSafeSentinel1SLCProductInfo(Sentinel1SLCProductInfo):
         return io.read_xml_file(
             noise_xml_path, s3_client=self.s3_client, requester_pays=True
         )
+
+    @staticmethod
+    def from_product_id(
+        cdse_backend: CDSESentinel1SLCCatalogBackend,
+        s3_session: Any,
+        product_id: str,
+    ) -> CDSEUnzippedSafeSentinel1SLCProductInfo:
+        item = cdse_backend.get_cdse_item(product_id)
+        s3_path = f"s3:/{item['S3Path']}"
+        return CDSEUnzippedSafeSentinel1SLCProductInfo(product_id, s3_path, s3_session)
+
+
+@dataclass
+class CDSEUnzippedSafeSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
+    """Read a S1 GRD product from the Copernicus Data Space Ecosystem (CDSE)."""
+
+    product_id: str
+    s3_path: str
+    """ example: "s3://eodata/Sentinel-1/SAR/GRD/2018/01/09/S1A_IW_GRDH_1SDV_20180109T014033_20180109T014058_020071_022356_3F17.SAFE/" """
+    s3_session: Any
+    """ boto3 session with credentials to access the CDSE. Requests will be made with requester_pays=True """
+    safe_format: SafeFormat = dataclasses.field(init=False)
+    s3_client: Any = dataclasses.field(init=False)
+
+    def __post_init__(self) -> None:
+        self.s3_client = self.s3_session.client(
+            "s3", endpoint_url="https://s3.dataspace.copernicus.eu"
+        )
+        manifest_content = io.read_xml_file(
+            os.path.join(self.s3_path, "manifest.safe"),
+            s3_client=self.s3_client,
+            requester_pays=True,
+        )
+        self.safe_format = SafeFormat.from_manifest(self.product_id, manifest_content)
+
+    def get_image_reader(self, pol: str) -> io.ImageReader:
+        tiff_path = self.safe_format.search("", pol, "measurement/")
+        tiff_path = os.path.join(self.s3_path, tiff_path)
+        with rasterio.Env(
+            rasterio.session.AWSSession(
+                self.s3_session, endpoint_url="s3.dataspace.copernicus.eu"
+            ),
+            AWS_VIRTUAL_HOSTING=False,
+        ):
+            # NOTE: known issue: users of the reader cannot use boundless=True
+            # because rasterio does not keep track of the endpoint url
+            return rasterio.open(tiff_path)  # type: ignore
+
+    def get_xml_annotation(self, pol: str) -> str:
+        xml_path = self.safe_format.search("", pol, "annotation/")
+        xml_path = os.path.join(self.s3_path, xml_path)
+        return io.read_xml_file(xml_path, s3_client=self.s3_client, requester_pays=True)
+
+    def get_xml_calibration(self, pol: str) -> str:
+        calibration_xml_path = self.safe_format.search(
+            "", pol, "annotation/calibration/calibration-"
+        )
+        calibration_xml_path = os.path.join(self.s3_path, calibration_xml_path)
+        return io.read_xml_file(
+            calibration_xml_path, s3_client=self.s3_client, requester_pays=True
+        )
+
+    def get_xml_noise(self, pol: str) -> str:
+        noise_xml_path = self.safe_format.search(
+            "", pol, "annotation/calibration/noise-"
+        )
+        noise_xml_path = os.path.join(self.s3_path, noise_xml_path)
+        return io.read_xml_file(
+            noise_xml_path, s3_client=self.s3_client, requester_pays=True
+        )
+
+    @staticmethod
+    def from_product_id(
+        cdse_backend: CDSESentinel1GRDCatalogBackend,
+        s3_session: Any,
+        product_id: str,
+    ) -> CDSEUnzippedSafeSentinel1GRDProductInfo:
+        item = cdse_backend.get_cdse_item(product_id)
+        s3_path = f"s3:/{item['S3Path']}"
+        return CDSEUnzippedSafeSentinel1GRDProductInfo(product_id, s3_path, s3_session)

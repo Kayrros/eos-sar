@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 import numpy as np
@@ -31,6 +32,28 @@ def _get_gcps(
     return gcps
 
 
+def get_product_info(product_id: str) -> sentinel1.product.Sentinel1GRDProductInfo:
+    if "CDSE_ACCESS_KEY_ID" in os.environ:
+        import boto3
+
+        cdse_session = boto3.Session(
+            aws_access_key_id=os.environ["CDSE_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["CDSE_SECRET_ACCESS_KEY"],
+        )
+        cdse_backend = sentinel1.catalog.CDSESentinel1GRDCatalogBackend()
+        return (
+            sentinel1.product.CDSEUnzippedSafeSentinel1GRDProductInfo.from_product_id(
+                cdse_backend,
+                cdse_session,
+                product_id,
+            )
+        )
+    else:
+        return sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(
+            product_id
+        )
+
+
 def main(
     output: str = "example_grd.tif",
     product_id: str = "S1A_IW_GRDH_1SDV_20220621T055930_20220621T055955_043757_053958_F640",
@@ -41,9 +64,7 @@ def main(
     do_ortho: bool = False,
     rtc_after_ortho: bool = False,
 ) -> None:
-    product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(
-        product_id
-    )
+    product = get_product_info(product_id)
     dem_source = eos.dem.get_any_source()
 
     import phoenix.catalog
@@ -93,9 +114,8 @@ def main(
             reader, calibrator, method=calibration
         )
 
-    print("reading raster")
     raster = eos.sar.io.read_window(
-        reader, roi, get_complex=False, out_dtype=np.float32, boundless=True
+        reader, roi, get_complex=False, out_dtype=np.float32
     )
     mask = sentinel1.border_noise_grd.compute_border_mask(raster)
     raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)

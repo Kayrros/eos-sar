@@ -2,6 +2,7 @@ import os
 
 import boto3
 
+from eos.products.sentinel1.catalog import CDSESentinel1SLCCatalogBackend
 from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 
 session = boto3.Session(
@@ -10,12 +11,17 @@ session = boto3.Session(
 )
 
 product_id = "S1A_IW_SLC__1SDV_20230205T174135_20230205T174151_047104_05A6A7_AADA"
-s3_path = "s3://DIAS/Sentinel-1/SAR/SLC/2023/02/05/S1A_IW_SLC__1SDV_20230205T174135_20230205T174151_047104_05A6A7_AADA.SAFE/"
 
-product = CDSEUnzippedSafeSentinel1SLCProductInfo(
-    product_id=product_id,
-    s3_path=s3_path,
+backend = CDSESentinel1SLCCatalogBackend()
+product = CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+    cdse_backend=backend,
     s3_session=session,
+    product_id=product_id,
+)
+
+assert (
+    product.s3_path
+    == "s3://DIAS/Sentinel-1/SAR/SLC/2023/02/05/S1A_IW_SLC__1SDV_20230205T174135_20230205T174151_047104_05A6A7_AADA.SAFE/"
 )
 
 print(len(product.get_xml_noise("IW3", "VV")))
