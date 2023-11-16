@@ -117,14 +117,14 @@ def remove_weird_products(
     return good_product_ids
 
 
-def get_catalog_backend() -> s1_catalog.Sentinel1CatalogBackend:
+def get_catalog_backend() -> s1_catalog.Sentinel1SLCCatalogBackend:
     import phoenix.catalog
 
     client = phoenix.catalog.Client()
     collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
         "asf:daac:sentinel-1"
     )
-    backend = s1_catalog.PhoenixSentinel1CatalogBackend(collection_source=collection)
+    backend = s1_catalog.PhoenixSentinel1SLCCatalogBackend(collection_source=collection)
     return backend
 
 

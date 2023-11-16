@@ -4,9 +4,12 @@ import pytest
 import shapely.geometry
 
 from eos.products.sentinel1.catalog import (
-    CDSESentinel1CatalogBackend,
-    PhoenixSentinel1CatalogBackend,
+    CDSESentinel1GRDCatalogBackend,
+    CDSESentinel1SLCCatalogBackend,
+    PhoenixSentinel1GRDCatalogBackend,
+    PhoenixSentinel1SLCCatalogBackend,
     Sentinel1CatalogQuery,
+    search_grd,
     search_slc,
 )
 
@@ -26,7 +29,7 @@ query = Sentinel1CatalogQuery(
     polarization=["SV", "DV"],
 )
 
-expected = [
+expected_slc = [
     "S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885",
     "S1A_IW_SLC__1SDV_20190110T230559_20190110T230627_025421_02D0E7_5EFE",
     "S1A_IW_SLC__1SDV_20190122T230559_20190122T230627_025596_02D74D_0EBA",
@@ -44,18 +47,54 @@ expected = [
 ]
 
 
+expected_grd = [
+    "S1B_IW_GRDH_1SDV_20190104T230514_20190104T230539_014350_01AB40_31F1",
+    "S1A_IW_GRDH_1SDV_20190110T230600_20190110T230625_025421_02D0E7_7B47",
+    "S1A_IW_GRDH_1SDV_20190122T230600_20190122T230625_025596_02D74D_9AC6",
+    "S1B_IW_GRDH_1SDV_20190128T230513_20190128T230538_014700_01B682_3033",
+    "S1A_IW_GRDH_1SDV_20190203T230559_20190203T230624_025771_02DDA8_A806",
+    "S1B_IW_GRDH_1SDV_20190209T230513_20190209T230538_014875_01BC41_B2D3",
+    "S1A_IW_GRDH_1SDV_20190215T230559_20190215T230622_025946_02E3DC_3113",
+    "S1B_IW_GRDH_1SDV_20190221T230513_20190221T230538_015050_01C1FA_50F2",
+    "S1A_IW_GRDH_1SDV_20190227T230559_20190227T230624_026121_02EA15_DFE8",
+    "S1B_IW_GRDH_1SDV_20190305T230513_20190305T230538_015225_01C7C5_14D0",
+    "S1A_IW_GRDH_1SDV_20190311T230559_20190311T230624_026296_02F06F_2121",
+    "S1B_IW_GRDH_1SDV_20190317T230513_20190317T230538_015400_01CD6B_9117",
+    "S1A_IW_GRDH_1SDV_20190323T230600_20190323T230625_026471_02F6E6_AC56",
+    "S1B_IW_GRDH_1SDV_20190329T230513_20190329T230538_015575_01D324_E3AB",
+]
+
+
 @pytest.mark.skipif(not has_phx, reason="phoenix not installed")
-def test_phx_catalog():
+def test_phx_catalog_slc():
     client = phx.Client()
     collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
         "asf:daac:sentinel-1"
     )
-    backend = PhoenixSentinel1CatalogBackend(collection_source=collection)
+    backend = PhoenixSentinel1SLCCatalogBackend(collection_source=collection)
     result = search_slc(backend, query)
-    assert result.product_ids == expected
+    assert result.product_ids == expected_slc
 
 
-def test_cdse_catalog():
-    backend = CDSESentinel1CatalogBackend()
+@pytest.mark.skipif(not has_phx, reason="phoenix not installed")
+def test_phx_catalog_grd():
+    client = phx.Client()
+    collection = client.get_collection("esa-sentinel-1-csar-l1-grd").at(
+        "asf:daac:sentinel-1"
+    )
+    backend = PhoenixSentinel1GRDCatalogBackend(collection_source=collection)
+    result = search_grd(backend, query)
+    print(result.product_ids)
+    assert result.product_ids == expected_grd
+
+
+def test_cdse_catalog_slc():
+    backend = CDSESentinel1SLCCatalogBackend()
     result = search_slc(backend, query)
-    assert result.product_ids == expected
+    assert result.product_ids == expected_slc
+
+
+def test_cdse_catalog_grd():
+    backend = CDSESentinel1GRDCatalogBackend()
+    result = search_grd(backend, query)
+    assert result.product_ids == expected_grd
