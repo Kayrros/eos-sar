@@ -34,6 +34,8 @@ setuptools.setup(
         "test": ["pytest", "s1m"],
         # dependencies that teosar requires
         "teosar": ["tqdm", "tifffile", "tensorflow-cpu", "tensorflow_probability"],
+        # dependencies for usage at Kayrros
+        "kayrros": ["kayrros-phoenix[source-s3,plugin-burster]", "kayrros-bursterio"],
     },
     classifiers=[],
 )
