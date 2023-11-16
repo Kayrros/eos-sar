@@ -6,8 +6,8 @@ import shapely.geometry
 from eos.products.sentinel1.catalog import (
     CDSESentinel1CatalogBackend,
     PhoenixSentinel1CatalogBackend,
-    Sentinel1Catalog,
     Sentinel1CatalogQuery,
+    search_slc,
 )
 
 try:
@@ -50,14 +50,12 @@ def test_phx_catalog():
     collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
         "asf:daac:sentinel-1"
     )
-    catalog = Sentinel1Catalog(
-        backend=PhoenixSentinel1CatalogBackend(collection_source=collection)
-    )
-    result = catalog.search_slc(query)
+    backend = PhoenixSentinel1CatalogBackend(collection_source=collection)
+    result = search_slc(backend, query)
     assert result.product_ids == expected
 
 
 def test_cdse_catalog():
-    catalog = Sentinel1Catalog(backend=CDSESentinel1CatalogBackend())
-    result = catalog.search_slc(query)
+    backend = CDSESentinel1CatalogBackend()
+    result = search_slc(backend, query)
     assert result.product_ids == expected

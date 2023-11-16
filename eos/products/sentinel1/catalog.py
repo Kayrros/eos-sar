@@ -40,40 +40,38 @@ class Sentinel1CatalogBackend(abc.ABC):
         """
 
 
-# TODO: simplify by replacing the class by a single function?
-@dataclass(frozen=True)
-class Sentinel1Catalog:
-    backend: Sentinel1CatalogBackend
-    cache: eos.cache.Cache = eos.cache.no_cache()
+def search_slc(
+    backend: Sentinel1CatalogBackend,
+    query: Sentinel1CatalogQuery,
+    cache: eos.cache.Cache = eos.cache.no_cache(),
+) -> Sentinel1CatalogResult:
+    def pid2datatake(product_id: str) -> str:
+        # S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885
+        # mix the mission id and the datatake id
+        return product_id.split("_")[0] + "_" + product_id.split("_")[8]
 
-    def search_slc(self, query: Sentinel1CatalogQuery) -> Sentinel1CatalogResult:
-        def pid2datatake(product_id: str) -> str:
-            # S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885
-            # mix the mission id and the datatake id
-            return product_id.split("_")[0] + "_" + product_id.split("_")[8]
+    def pid2date(product_id: str) -> str:
+        # S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885
+        return product_id.split("_")[5][:8]
 
-        def pid2date(product_id: str) -> str:
-            # S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885
-            return product_id.split("_")[5][:8]
+    if (items := cache.get(query, list[str])) is None:
+        items = backend.search_slc(query)
+        if query.end_date < datetime.datetime.now():
+            cache.put(query, items)
 
-        if (items := self.cache.get(query, list[str])) is None:
-            items = self.backend.search_slc(query)
-            if query.end_date < datetime.datetime.now():
-                self.cache.put(query, items)
+    by_datatake: dict[str, list[str]] = {}
+    for pid in items:
+        by_datatake.setdefault(pid2datatake(pid), []).append(pid)
 
-        by_datatake: dict[str, list[str]] = {}
-        for pid in items:
-            by_datatake.setdefault(pid2datatake(pid), []).append(pid)
+    # date of first product: list of product ids of the same datatake
+    product_ids_per_date = {
+        pid2date(sorted(by_datatake[datatake])[0]): sorted(by_datatake[datatake])
+        for datatake in sorted(by_datatake.keys())
+    }
 
-        # date of first product: list of product ids of the same datatake
-        product_ids_per_date = {
-            pid2date(sorted(by_datatake[datatake])[0]): sorted(by_datatake[datatake])
-            for datatake in sorted(by_datatake.keys())
-        }
-
-        return Sentinel1CatalogResult(
-            product_ids=items, product_ids_per_date=product_ids_per_date
-        )
+    return Sentinel1CatalogResult(
+        product_ids=items, product_ids_per_date=product_ids_per_date
+    )
 
 
 try:

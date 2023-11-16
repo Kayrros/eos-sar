@@ -117,7 +117,7 @@ def remove_weird_products(
     return good_product_ids
 
 
-def get_phx_catalog(cache: eos.cache.Cache) -> s1_catalog.Sentinel1Catalog:
+def get_catalog_backend() -> s1_catalog.Sentinel1CatalogBackend:
     import phoenix.catalog
 
     client = phoenix.catalog.Client()
@@ -125,8 +125,7 @@ def get_phx_catalog(cache: eos.cache.Cache) -> s1_catalog.Sentinel1Catalog:
         "asf:daac:sentinel-1"
     )
     backend = s1_catalog.PhoenixSentinel1CatalogBackend(collection_source=collection)
-    catalog = s1_catalog.Sentinel1Catalog(backend=backend, cache=cache)
-    return catalog
+    return backend
 
 
 def main(
@@ -167,7 +166,10 @@ def main(
         polarization=prod_pol,  # type: ignore
     )
     logger.info("querying the catalog")
-    pids_by_date = get_phx_catalog(cache).search_slc(query).product_ids_per_date
+    catalog_backend = get_catalog_backend()
+    pids_by_date = s1_catalog.search_slc(
+        catalog_backend, query, cache
+    ).product_ids_per_date
     logger.info("catalog query done")
 
     all_product_ids = [
