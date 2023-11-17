@@ -14,17 +14,19 @@ windows = (
 )
 
 
-def get_infos(swath, pol, method, with_noise):
+def get_infos(swath, pol, method, with_noise, s3_client):
     pid = "S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5"
     basepath = (
         "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/test_calibration"
     )
     calibration = io.read_xml_file(
-        f"{basepath}/{pid}.SAFE/{swath}-{pol}-calibration.xml"
+        f"{basepath}/{pid}.SAFE/{swath}-{pol}-calibration.xml", s3_client
     )
     noise = None
     if with_noise:
-        noise = io.read_xml_file(f"{basepath}/{pid}.SAFE/{swath}-{pol}-noise.xml")
+        noise = io.read_xml_file(
+            f"{basepath}/{pid}.SAFE/{swath}-{pol}-noise.xml", s3_client
+        )
     calibrator = sentinel1.calibration.Sentinel1Calibrator(calibration, noise)
 
     image_path = f"{basepath}/{pid}.SAFE/{swath}-{pol}.tiff"
@@ -67,11 +69,13 @@ def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex, sna
 @pytest.mark.parametrize("swath", ("iw1", "iw2", "iw3"))
 @pytest.mark.parametrize("pol", ("vv", "vh"))
 @pytest.mark.parametrize("window", windows)
-def test_calibration_without_noise(window, pol, swath, method, with_noise):
+def test_calibration_without_noise(window, pol, swath, method, with_noise, s3_client):
     _, _, w, h = window
     roi = Roi.from_roi_tuple(window)
 
-    calibrator, reader, snap_reader = get_infos(swath, pol, method, with_noise)
+    calibrator, reader, snap_reader = get_infos(
+        swath, pol, method, with_noise, s3_client
+    )
 
     image = io.read_window(reader, roi, get_complex=False)
     assert image.shape == (h, w)
@@ -99,8 +103,8 @@ def test_calibration_without_noise(window, pol, swath, method, with_noise):
         compare_arrays(arr, arrc, imagec, snap)
 
 
-def test_inplaceness():
-    calibrator, _, _ = get_infos("iw1", "vv", "sigma", False)
+def test_inplaceness(s3_client):
+    calibrator, _, _ = get_infos("iw1", "vv", "sigma", False, s3_client)
     arr = np.ones((20, 20), dtype=np.float32)
     roi = Roi(1000, 100, 20, 20)
     arr2 = calibrator.calibrate_inplace(arr, roi, "sigma")

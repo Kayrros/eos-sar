@@ -15,7 +15,8 @@ def test_rtc_simulation(tmp_path):
     orbit = Orbit(burst_meta.state_vectors)
     model = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, orbit)
     roi = Roi(3000, 100, 1000, 1000)
-    dem = model.fetch_dem(eos.dem.get_any_source(), roi)
+    dem_source = eos.dem.get_any_source()
+    dem = model.fetch_dem(dem_source, roi)
 
     rtc = RadiometricTerrainCorrector(model, dem, roi)
     sim = rtc.get_simulation()

@@ -1,6 +1,5 @@
 import datetime
 
-import pytest
 import shapely.geometry
 
 from eos.products.sentinel1.catalog import (
@@ -12,14 +11,6 @@ from eos.products.sentinel1.catalog import (
     search_grd,
     search_slc,
 )
-
-try:
-    import phoenix.catalog as phx
-
-    has_phx = True
-except ModuleNotFoundError:
-    has_phx = False
-
 
 query = Sentinel1CatalogQuery(
     geometry=shapely.geometry.Point(-68.374028, -23.563574),
@@ -65,10 +56,8 @@ expected_grd = [
 ]
 
 
-@pytest.mark.skipif(not has_phx, reason="phoenix not installed")
-def test_phx_catalog_slc():
-    client = phx.Client()
-    collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
+def test_phx_catalog_slc(phx_client):
+    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-slc").at(
         "asf:daac:sentinel-1"
     )
     backend = PhoenixSentinel1SLCCatalogBackend(collection_source=collection)
@@ -76,10 +65,8 @@ def test_phx_catalog_slc():
     assert result.product_ids == expected_slc
 
 
-@pytest.mark.skipif(not has_phx, reason="phoenix not installed")
-def test_phx_catalog_grd():
-    client = phx.Client()
-    collection = client.get_collection("esa-sentinel-1-csar-l1-grd").at(
+def test_phx_catalog_grd(phx_client):
+    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
         "asf:daac:sentinel-1"
     )
     backend = PhoenixSentinel1GRDCatalogBackend(collection_source=collection)

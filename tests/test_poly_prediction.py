@@ -42,7 +42,7 @@ def test_poly():
     np.testing.assert_allclose(rmse, 0, atol=1e-3)
 
 
-def test_baseline_predictions():
+def test_baseline_predictions(s3_client):
     xml_folder = (
         "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
     )
@@ -55,7 +55,7 @@ def test_baseline_predictions():
     # read the xmls as strings
     xml_content = []
     for xml_path in xml_paths:
-        xml_content.append(io.read_xml_file(xml_path))
+        xml_content.append(io.read_xml_file(xml_path, s3_client))
 
     # Now extract the needed metadata
     primary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[0])

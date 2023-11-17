@@ -149,7 +149,7 @@ def test_projection_grd():
     assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
 
 
-def test_projection_corner_reflectors():
+def test_projection_corner_reflectors(phx_client):
     from math import ceil, floor
 
     from eos.sar import fourier_zoom, max_finding
@@ -186,15 +186,13 @@ def test_projection_corner_reflectors():
     crop_size = 32
     zoom_factor = 32
 
-    import phoenix.catalog
-
     query = Sentinel1OrbitCatalogQuery(
         product_ids=[f.rstrip(".SAFE") for f in safes], quality=BestEffort
     )
     backend = PhoenixSentinel1OrbitCatalogBackend(
-        collection_source=phoenix.catalog.Client()
-        .get_collection("esa-sentinel-1-csar-aux")
-        .at("aws:proxima:kayrros-prod-sentinel-aux")
+        collection_source=phx_client.get_collection("esa-sentinel-1-csar-aux").at(
+            "aws:proxima:kayrros-prod-sentinel-aux"
+        )
     )
     statevectors = orbit_catalog.search(backend, query).single()
 
