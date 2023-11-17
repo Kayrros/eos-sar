@@ -48,10 +48,32 @@ def get_product_info(product_id: str) -> sentinel1.product.Sentinel1GRDProductIn
                 product_id,
             )
         )
-    else:
+    elif "PHX_USERNAME" in os.environ:
         return sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(
             product_id
         )
+    else:
+        raise RuntimeError(
+            "Couldn't find CDSE-S3 or PHX credentials for the product info"
+        )
+
+
+def get_orbit_catalog_backend() -> orbit_catalog.Sentinel1OrbitCatalogBackend:
+    if "CDSE_USERNAME" in os.environ:
+        return orbit_catalog.CDSESentinel1OrbitCatalogBackend(
+            username=os.environ["CDSE_USERNAME"],
+            password=os.environ["CDSE_PASSWORD"],
+        )
+    elif "PHX_USERNAME" in os.environ:
+        import phoenix.catalog
+
+        return orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
+            collection_source=phoenix.catalog.Client()
+            .get_collection("esa-sentinel-1-csar-aux")
+            .at("aws:proxima:kayrros-prod-sentinel-aux")
+        )
+    else:
+        raise RuntimeError("Couldn't find CDSE or PHX credentials for the catalog")
 
 
 def main(
@@ -65,19 +87,14 @@ def main(
     rtc_after_ortho: bool = False,
 ) -> None:
     product = get_product_info(product_id)
-    dem_source = eos.dem.get_any_source()
-
-    import phoenix.catalog
+    dem_source = eos.dem.DEMStitcherSource()
 
     query = orbit_catalog.Sentinel1OrbitCatalogQuery(
         product_ids=[product_id], quality=orbit_catalog.OnlyBest
     )
-    backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-        collection_source=phoenix.catalog.Client()
-        .get_collection("esa-sentinel-1-csar-aux")
-        .at("aws:proxima:kayrros-prod-sentinel-aux")
-    )
-    statevectors = orbit_catalog.search(backend, query).single()
+
+    orbit_catalog_backend = get_orbit_catalog_backend()
+    statevectors = orbit_catalog.search(orbit_catalog_backend, query).single()
     assert statevectors is not None
 
     xml = product.get_xml_annotation(pol)
