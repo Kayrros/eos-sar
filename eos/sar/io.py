@@ -145,7 +145,7 @@ def read_xml_file(
         f = s3_client.get_object(Bucket=bucket, Key=key, RequestPayer=request_payer)[
             "Body"
         ]
-        xml_content: str = f.read()
+        xml_content = f.read().decode("utf-8")
     else:
         with open(xml_path, "r") as f:
             xml_content = f.read()
