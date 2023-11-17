@@ -1,13 +1,15 @@
 import abc
 import datetime
 import fnmatch
+import functools
 import io
 import logging
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Literal, Optional
+from typing import Any, Callable, Literal, Optional, Union
 
+import requests
 from lxml import etree
 from typing_extensions import override
 
@@ -214,7 +216,7 @@ def parse_statevectors(
 
 
 def _parse_start_end_date_from_orbit_file(
-    s
+    s,
 ) -> tuple[datetime.datetime, datetime.datetime]:
     """
     Extract start and end dates for an orbit file filename.
@@ -286,6 +288,127 @@ class LocalFilesSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
         return BackendResult(statevectors_per_item=statevectors_per_item)
 
 
+def get_access_token(username: str, password: str) -> str:
+    endpoint = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+    data = {
+        "client_id": "cdse-public",
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+    }
+
+    r = requests.post(
+        endpoint,
+        data=data,
+    )
+    r.raise_for_status()
+    access_token = r.json()["access_token"]
+    return access_token
+
+
+def _search_cdse(
+    access_token: str, seg: QuerySegment, quality: list[OrbitFileType]
+) -> Optional[bytes]:
+    endpoint = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
+
+    for qual in quality:
+        query = f"startswith(Name,'{seg.platform}') and contains(Name,'AUX_{qual.to_product_type()}') and ContentDate/Start lt '{seg.start}' and ContentDate/End gt '{seg.end}'"
+        query_params = {
+            "$filter": query,
+            "$orderby": "ContentDate/Start desc",
+            "$top": "1",
+        }
+        response = requests.get(endpoint, params=query_params)
+        response.raise_for_status()
+        items = response.json()["value"]
+        if not items:
+            continue
+
+        item = items[0]
+        break
+    else:
+        return None
+
+    item_id = item["Id"]
+    endpoint = "https://zipper.dataspace.copernicus.eu/odata/v1/Products"
+    url = f"{endpoint}({item_id})/$value"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    xml = response.content
+    return xml
+
+
+def _multithreaded_search(
+    query: BackendQuery,
+    callback: Callable[[QuerySegment, list[OrbitFileType]], Union[bytes, None]],
+    num_fetch_workers: Optional[int] = None,
+    num_process_workers: Optional[int] = None,
+) -> BackendResult:
+    import concurrent.futures
+    from concurrent.futures import (
+        FIRST_COMPLETED,
+        Future,
+        ProcessPoolExecutor,
+        ThreadPoolExecutor,
+    )
+
+    statevectors_per_item: dict[QuerySegment, list[StateVector]] = {}
+
+    # There are two pools:
+    # - pool1 (threads): queries the catalog and downloads the xmls (mostly network)
+    # - pool2 (processes): parses the xml and extract the state vectors (mostly cpu)
+    # The two pools are working concurrently (and a single `not_done` set) to be able to
+    # to use the CPU to parse files while other files are being queried.
+    with ThreadPoolExecutor(num_fetch_workers) as pool1, ProcessPoolExecutor(
+        num_process_workers
+    ) as pool2:
+        not_done: set[Future[Any]] = set()
+        futures1: dict[Future[Any], QuerySegment] = {}
+        futures2: dict[Future[Any], QuerySegment] = {}
+
+        for seg in query.segments:
+            future = pool1.submit(callback, seg, query.quality)
+            not_done.add(future)
+            futures1[future] = seg
+
+        while not_done:
+            done, not_done = concurrent.futures.wait(
+                not_done, return_when=FIRST_COMPLETED
+            )
+
+            for future in done:
+                if future in futures1:
+                    xml: Optional[bytes] = future.result()
+                    if not xml:
+                        raise OrbitFileNotFound()
+
+                    seg = futures1[future]
+                    future2 = pool2.submit(parse_statevectors, xml, seg.start, seg.end)
+                    not_done.add(future2)
+                    futures2[future2] = seg
+
+                elif future in futures2:
+                    seg = futures2[future]
+                    statevectors: list[StateVector] = future.result()  # type: ignore
+                    assert len(statevectors) > 0
+                    statevectors_per_item[seg] = statevectors
+
+    return BackendResult(statevectors_per_item=statevectors_per_item)
+
+
+@dataclass(frozen=True)
+class CDSESentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
+    username: str
+    password: str
+
+    @override
+    def search(self, query: BackendQuery) -> BackendResult:
+        access_token = get_access_token(self.username, self.password)
+        clb = functools.partial(_search_cdse, access_token)
+        return _multithreaded_search(query, clb, num_fetch_workers=2)
+
+
 try:
     import phoenix.catalog as phx
 except ImportError:
@@ -323,56 +446,5 @@ else:
 
         @override
         def search(self, query: BackendQuery) -> BackendResult:
-            import concurrent.futures
-            from concurrent.futures import (
-                FIRST_COMPLETED,
-                Future,
-                ProcessPoolExecutor,
-                ThreadPoolExecutor,
-            )
-
-            statevectors_per_item: dict[QuerySegment, list[StateVector]] = {}
-
-            # first the collection search futures are pushed
-            # then, as long as there are futures in the executor:
-            #  pull the first finished future:
-            #    if it's a "collection search" future, then push the "parse_statevectors" future
-            #    if it's a "parse_statevectors" future, then add it to the result
-            # everything is inside a ProcessPoolExecutor, because downloading and parsing is hard for python
-            with ThreadPoolExecutor() as pool1, ProcessPoolExecutor() as pool2:
-                not_done: set[Future[Any]] = set()
-                futures1: dict[Future[Any], QuerySegment] = {}
-                futures2: dict[Future[Any], QuerySegment] = {}
-
-                for seg in query.segments:
-                    future = pool1.submit(
-                        _search_phx, self.collection_source, seg, query.quality
-                    )
-                    not_done.add(future)
-                    futures1[future] = seg
-
-                while not_done:
-                    done, not_done = concurrent.futures.wait(
-                        not_done, return_when=FIRST_COMPLETED
-                    )
-
-                    for future in done:
-                        if future in futures1:
-                            xml: Optional[bytes] = future.result()
-                            if not xml:
-                                raise OrbitFileNotFound()
-
-                            seg = futures1[future]
-                            future2 = pool2.submit(
-                                parse_statevectors, xml, seg.start, seg.end
-                            )
-                            not_done.add(future2)
-                            futures2[future2] = seg
-
-                        elif future in futures2:
-                            seg = futures2[future]
-                            statevectors: list[StateVector] = future.result()  # type: ignore
-                            assert len(statevectors) > 0
-                            statevectors_per_item[seg] = statevectors
-
-            return BackendResult(statevectors_per_item=statevectors_per_item)
+            clb = functools.partial(_search_phx, self.collection_source)
+            return _multithreaded_search(query, clb)

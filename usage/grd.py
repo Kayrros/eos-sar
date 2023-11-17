@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 import numpy as np
@@ -31,6 +32,50 @@ def _get_gcps(
     return gcps
 
 
+def get_product_info(product_id: str) -> sentinel1.product.Sentinel1GRDProductInfo:
+    if "CDSE_ACCESS_KEY_ID" in os.environ:
+        import boto3
+
+        cdse_session = boto3.Session(
+            aws_access_key_id=os.environ["CDSE_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["CDSE_SECRET_ACCESS_KEY"],
+        )
+        cdse_backend = sentinel1.catalog.CDSESentinel1GRDCatalogBackend()
+        return (
+            sentinel1.product.CDSEUnzippedSafeSentinel1GRDProductInfo.from_product_id(
+                cdse_backend,
+                cdse_session,
+                product_id,
+            )
+        )
+    elif "PHX_USERNAME" in os.environ:
+        return sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(
+            product_id
+        )
+    else:
+        raise RuntimeError(
+            "Couldn't find CDSE-S3 or PHX credentials for the product info"
+        )
+
+
+def get_orbit_catalog_backend() -> orbit_catalog.Sentinel1OrbitCatalogBackend:
+    if "CDSE_USERNAME" in os.environ:
+        return orbit_catalog.CDSESentinel1OrbitCatalogBackend(
+            username=os.environ["CDSE_USERNAME"],
+            password=os.environ["CDSE_PASSWORD"],
+        )
+    elif "PHX_USERNAME" in os.environ:
+        import phoenix.catalog
+
+        return orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
+            collection_source=phoenix.catalog.Client()
+            .get_collection("esa-sentinel-1-csar-aux")
+            .at("aws:proxima:kayrros-prod-sentinel-aux")
+        )
+    else:
+        raise RuntimeError("Couldn't find CDSE or PHX credentials for the catalog")
+
+
 def main(
     output: str = "example_grd.tif",
     product_id: str = "S1A_IW_GRDH_1SDV_20220621T055930_20220621T055955_043757_053958_F640",
@@ -41,22 +86,15 @@ def main(
     do_ortho: bool = False,
     rtc_after_ortho: bool = False,
 ) -> None:
-    product = sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(
-        product_id
-    )
-    dem_source = eos.dem.get_any_source()
-
-    import phoenix.catalog
+    product = get_product_info(product_id)
+    dem_source = eos.dem.DEMStitcherSource()
 
     query = orbit_catalog.Sentinel1OrbitCatalogQuery(
         product_ids=[product_id], quality=orbit_catalog.OnlyBest
     )
-    backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-        collection_source=phoenix.catalog.Client()
-        .get_collection("esa-sentinel-1-csar-aux")
-        .at("aws:proxima:kayrros-prod-sentinel-aux")
-    )
-    statevectors = orbit_catalog.search(backend, query).single()
+
+    orbit_catalog_backend = get_orbit_catalog_backend()
+    statevectors = orbit_catalog.search(orbit_catalog_backend, query).single()
     assert statevectors is not None
 
     xml = product.get_xml_annotation(pol)
@@ -93,9 +131,8 @@ def main(
             reader, calibrator, method=calibration
         )
 
-    print("reading raster")
     raster = eos.sar.io.read_window(
-        reader, roi, get_complex=False, out_dtype=np.float32, boundless=True
+        reader, roi, get_complex=False, out_dtype=np.float32
     )
     mask = sentinel1.border_noise_grd.compute_border_mask(raster)
     raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)

@@ -55,13 +55,13 @@ def get_image_file(pid, pol):
     return image_file
 
 
-def get_infos_img(pid, pol):
+def get_infos_img(pid, pol, s3_client):
     basepath = "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/test_mask"
     calibration_dir = f"{basepath}/{pid}.SAFE/annotation/calibration"
     noise_file, calibration_file = get_noise_calibration_files(pid, pol)
 
-    calibration = io.read_xml_file(f"{calibration_dir}/{calibration_file}")
-    noise = io.read_xml_file(f"{calibration_dir}/{noise_file}")
+    calibration = io.read_xml_file(f"{calibration_dir}/{calibration_file}", s3_client)
+    noise = io.read_xml_file(f"{calibration_dir}/{noise_file}", s3_client)
     calibrator = sentinel1.calibration.Sentinel1Calibrator(calibration, noise)
 
     image_dir = f"{basepath}/{pid}.SAFE/measurement"
@@ -117,7 +117,7 @@ def compare_masks(mask_arr, mask_snap):
 
 @pytest.mark.parametrize("method", ("gamma", "beta", "sigma"))
 @pytest.mark.parametrize("pol", ("vv", "vh"))
-def test_masks(pol, method):
+def test_masks(pol, method, s3_client):
     # NB: We use these two products because they each have a specific behavior regarding
     # Thermal Noise Removal and Border Noise Removal:
     # - For S1A_IW_GRDH_1SDV_20170601T182708_20170601T182733_016844_01C013_25CB: It contains both pixels of
@@ -135,7 +135,7 @@ def test_masks(pol, method):
         # we force the polarization to VV because for now it is widely use in our processes
         snap_reader = get_infos_snap(pid, "vv")
 
-        calibrator, reader = get_infos_img(pid, pol)
+        calibrator, reader = get_infos_img(pid, pol, s3_client)
 
         windows = define_windows_size(reader.shape)
 

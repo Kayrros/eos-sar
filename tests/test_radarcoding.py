@@ -8,7 +8,7 @@ from eos.sar import dem_to_radar, io, roi
 from eos.sar.orbit import Orbit
 
 
-def test_radar_coding():
+def test_radar_coding(s3_client):
     remote_test = True
 
     if remote_test:
@@ -22,7 +22,7 @@ def test_radar_coding():
     xml_path = os.path.join(xml_folder, basename)
 
     # read xml
-    xml_content = io.read_xml_file(xml_path)
+    xml_content = io.read_xml_file(xml_path, s3_client)
 
     burst_id = 1
 

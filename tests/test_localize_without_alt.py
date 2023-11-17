@@ -9,7 +9,7 @@ from eos.sar import io, model, roi
 from eos.sar.orbit import Orbit
 
 
-def test_localize_without_alt():
+def test_localize_without_alt(s3_client):
     xml_folder = (
         "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
     )
@@ -17,7 +17,7 @@ def test_localize_without_alt():
     xml_path = os.path.join(xml_folder, basename)
 
     # read xml
-    xml_content = io.read_xml_file(xml_path)
+    xml_content = io.read_xml_file(xml_path, s3_client)
 
     burst_id = 1
 

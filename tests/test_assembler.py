@@ -19,7 +19,7 @@ except ImportError:
     pass
 else:
 
-    def test_grd_assembler():
+    def test_grd_assembler(phx_client):
         pol = "vv"
         product_id1 = (
             "S1A_IW_GRDH_1SDV_20220908T170044_20220908T170109_044916_055D72_82EF"
@@ -65,7 +65,7 @@ else:
 
         assert (raster_both == raster_p1 + raster_p2).all()
 
-    def test_projection_and_localization():
+    def test_projection_and_localization(phx_client):
         # This test aims at checking that the localization and projection of the first 1000 lines of the product2
         # (S1A_IW_GRDH_1SDV_20220908T170109_20220908T170134_044916_055D72_83D3) are similar to those of the 16675 to 17675
         # lines of the concatenated product (product1 + product2)
@@ -135,7 +135,7 @@ else:
         np.testing.assert_allclose(rows_pred_model, rows_pred_model2, atol=1e-3)
         np.testing.assert_allclose(cols_pred_model, cols_pred_model2, atol=1e-3)
 
-    def test_grd_assembler_start_of_datatake():
+    def test_grd_assembler_start_of_datatake(phx_client):
         pol = "vv"
         product_id = (
             "S1A_IW_GRDH_1SDV_20230103T003252_20230103T003321_046612_059621_25B2"
@@ -175,7 +175,7 @@ else:
         raster = asm2.crop(roi2, {product_id: reader})
         assert (raster != 0).all()
 
-    def test_grd_assembler_end_of_datatake():
+    def test_grd_assembler_end_of_datatake(phx_client):
         pol = "vv"
         product_id = (
             "S1A_IW_GRDH_1SDV_20230103T004141_20230103T004200_046612_059621_1F4A"
@@ -215,7 +215,7 @@ else:
         raster = asm2.crop(roi2, {product_id: reader})
         assert (raster != 0).all()
 
-    def test_grd_assemble_metadata():
+    def test_grd_assemble_metadata(phx_client):
         product_id1 = (
             "S1A_IW_GRDH_1SDV_20220908T170044_20220908T170109_044916_055D72_82EF"
         )
