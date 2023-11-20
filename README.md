@@ -2,7 +2,7 @@
 
 This package provides access to some generic SAR (Synthetic Aperture Radar) processing algorithms.
 
-Currently, algorithms specific to **Sentinel1 SLC** in **IW** mode have been implemented.
+Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been implemented.
 
 ### Requirements & Installation
 To install the package in editable mode, you can run:
@@ -11,11 +11,11 @@ To install the package in editable mode, you can run:
 
 Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. The recommended source is `eos.dem.DEMStitcherSource` (with `pip install dem-stitcher`) that uses GLO30 and GLO90. You can also install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4) as SRTM sources.
 
-If you wish to install srtm4, make sure to install with the "crop" extra dependencies: 
+If you wish to install srtm4, make sure to install with the "crop" extra dependencies:
 
 	pip install srtm4["crop"]
 
- If you wish to use another dem source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a dem.
+If you wish to use another DEM source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a DEM.
 
 Automatic download of Sentinel-1 SLC data is not provided in this package yet. You can use [ASF](https://search.asf.alaska.edu/#/) to find and download the data.
 
@@ -35,7 +35,7 @@ Before running the tutorial, the necessary data must first be downloaded. There 
 	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20220110T231926_20220110T231953_041405_04EC57_103E.zip usage/tutorial/data/safes --unzip
 	jupyter notebook # launch notebook
 
-   *eos-sar/usage/tutorial/data* folder will be created containing the safes and the associated orbit files. The two products will be downloaded and unzipped in the directory. The two corresponding orbits will also be downloaded.
+*eos-sar/usage/tutorial/data* folder will be created containing the safes and the associated orbit files. The two products will be downloaded and unzipped in the directory. The two corresponding orbits will also be downloaded.
 
 
 Then, you can check the file `usage/tutorial.ipynb`.
