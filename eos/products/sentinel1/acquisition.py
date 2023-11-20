@@ -1,3 +1,4 @@
+import datetime
 from typing import Sequence
 
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
@@ -79,6 +80,12 @@ class _Sentinel1AcquisitionCutter:
         self.w = max(last_col_per_burst) - min(first_col_per_burst)
         self.h = int(round((last_next_row_time - first_row_time) * azimuth_frequency))
 
+        # Because some old products have large errors, but newer don't,
+        # we are less strict in our checks for <2016 products
+        # e.g. S1A_IW_SLC__1SDV_20150625T173252_20150625T173319_006533_008AEE_5C52
+        acquisition_date = datetime.datetime.fromtimestamp(first_row_time)
+        is_old = acquisition_date.year < 2016
+
         # compute the origin of each burst in the mosaic
         self.__burst_orig_in_mosaic = {}
         for bsid, burst_times, burst_roi_tiff in zip(
@@ -87,7 +94,10 @@ class _Sentinel1AcquisitionCutter:
             swath = bsid.split("_")[1].lower()
 
             row = (burst_times[1] - first_row_time) * azimuth_frequency
-            assert abs(int(round(row)) - row) < 3e-3, row
+            if is_old:
+                assert abs(int(round(row)) - row) < 0.15, row
+            else:
+                assert abs(int(round(row)) - row) < 3e-3, row
             row = int(round(row))
             col = burst_roi_tiff.col + self._swath_col_orig_in_acquisition[swath]
 
@@ -96,7 +106,10 @@ class _Sentinel1AcquisitionCutter:
         # check some of the roundings performed above
         if True:
             a = (slant_range_time_iw1 - first_col_time) * range_frequency
-            assert abs(a - round(a)) < 1e-7
+            if is_old:
+                assert abs(a - round(a)) < 3e-3
+            else:
+                assert abs(a - round(a)) < 1e-7
             if slant_range_time_iw2:
                 a = (slant_range_time_iw2 - first_col_time) * range_frequency
                 assert abs(a - round(a)) < 1e-7
@@ -104,7 +117,10 @@ class _Sentinel1AcquisitionCutter:
                 a = (slant_range_time_iw3 - first_col_time) * range_frequency
                 assert abs(a - round(a)) < 1e-5, abs(a - round(a))
             a = (last_next_row_time - first_row_time) * azimuth_frequency
-            assert abs(int(round(a)) - a) < 5e-3, self.h
+            if is_old:
+                assert abs(int(round(a)) - a) < 0.15, (a, self.h)
+            else:
+                assert abs(int(round(a)) - a) < 5e-3, (a, self.h)
 
     def get_burst_outer_roi_in_tiff(self, bsid) -> Roi:
         bid = self.bsids.index(bsid)
