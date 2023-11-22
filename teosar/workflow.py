@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import numpy as np
@@ -14,6 +15,7 @@ from teosar import inout, utils
 from teosar.overlap_utils import OverlapResampler, OverlapRoiInfo
 from teosar.utils import conditional_profiler, pid2date
 
+logger = logging.getLogger(__name__)
 PROF = False
 
 
@@ -227,6 +229,14 @@ class SecondaryPipeline(Pipeline):
     ):
         self.get_inputs(product_provider, statevectors, polarization)
         self.register(registrator)
+
+        my_bsids = set(self.burst_resampling_matrices.keys())
+        if my_bsids != registrator.bsids:
+            logger.warning(
+                f"secondary pipeline {self.product_ids}={my_bsids} is missing some bursts {registrator.bsids}"
+            )
+            return False
+
         self.deburst(deburster, polarization, calibrate, get_complex)
         self.simulate_phase(primary_proj_model, roi, heights)
         self.save_log()

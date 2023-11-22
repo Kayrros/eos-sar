@@ -264,7 +264,6 @@ def run_ts_on_prods(
     product_provider: ProductProvider,
     cache: Cache,
 ) -> list[Pipeline]:
-    # destination path
     os.makedirs(dstdir, exist_ok=True)
     directory_builder = inout.DirectoryBuilder(dstdir)
 
@@ -292,25 +291,9 @@ def run_ts_on_prods(
         get_complex,
     )
 
-    # save inputs to file
-    inout.save_inputs_to_file(
-        directory_builder.get_proc_path(),
-        ncpu=ncpu,
-        orbit_type=orbit_type,
-        get_complex=get_complex,
-        bistatic=bistatic,
-        apd=apd,
-        intra_pulse=intra_pulse,
-        alt_fm_mismatch=alt_fm_mismatch,
-        dem_sampling_ratio=dem_sampling_ratio,
-        product_ids=product_ids,
-        primary_id=primary_id,
-        roi=primary_pipeline.roi.to_roi(),
-    )
-
     def process_product(product_id):
         secondary_pipeline = SecondaryPipeline(product_id, directory_builder)
-        secondary_pipeline.execute(
+        success = secondary_pipeline.execute(
             product_provider,
             orbits.for_product_id(product_id[0]),
             polarization,
@@ -322,9 +305,9 @@ def run_ts_on_prods(
             primary_pipeline.roi,
             primary_pipeline.heights,
         )
-        return secondary_pipeline
+        return secondary_pipeline, success
 
-    pipelines_map: Iterator[SecondaryPipeline]
+    pipelines_map: Iterator[tuple[SecondaryPipeline, bool]]
     if ncpu == 1:
         pipelines_map = map(process_product, product_ids[1:])
     else:
@@ -332,10 +315,28 @@ def run_ts_on_prods(
         pipelines_map = pool.map(process_product, product_ids[1:])
 
     pipelines: list[Pipeline] = [primary_pipeline]
-    for pipeline in tqdm.tqdm(pipelines_map, total=len(product_ids) - 1):
-        pipelines.append(pipeline)
+    for pipeline, success in tqdm.tqdm(pipelines_map, total=len(product_ids) - 1):
+        if success:
+            pipelines.append(pipeline)
 
     pipelines = sorted(pipelines, key=lambda x: x.date)
+
+    # save inputs to file
+    inout.save_inputs_to_file(
+        directory_builder.get_proc_path(),
+        ncpu=ncpu,
+        orbit_type=orbit_type,
+        get_complex=get_complex,
+        bistatic=bistatic,
+        apd=apd,
+        intra_pulse=intra_pulse,
+        alt_fm_mismatch=alt_fm_mismatch,
+        dem_sampling_ratio=dem_sampling_ratio,
+        product_ids=[p.product_ids for p in pipelines],
+        primary_id=primary_id,
+        roi=primary_pipeline.roi.to_roi(),
+    )
+
     return pipelines
 
 
@@ -412,24 +413,6 @@ def main_ovl(
     ) in primary_pipeline.osids_of_interest_per_swath.items():
         all_osids_of_interest = all_osids_of_interest.union(osids_of_interest)
 
-    # save inputs to file
-    inout.save_inputs_to_file(
-        directory_builder.get_proc_path(),
-        product_ids_per_date=product_ids_per_date,
-        orbit_type=orbit_type,
-        polarization=polarization,
-        calibrate=calibrate,
-        get_complex=get_complex,
-        bistatic=bistatic,
-        apd=apd,
-        intra_pulse=intra_pulse,
-        alt_fm_mismatch=alt_fm_mismatch,
-        dem_sampling_ratio=dem_sampling_ratio,
-        primary_id=primary_id,
-        osids_of_interest=[str(o) for o in all_osids_of_interest],
-        bsint_of_interest=[str(b) for b in all_bsint_of_interest],
-    )
-
     directory_reader = inout.OvlDirectoryReader(directory_builder)
 
     def height_provider(bsint):
@@ -437,7 +420,7 @@ def main_ovl(
 
     def process_product(product_ids):
         secondary_pipeline = OvlSecondaryPipeline(product_ids, directory_builder)
-        secondary_pipeline.execute(
+        success = secondary_pipeline.execute(
             product_provider,
             orbits.for_product_id(product_ids[0]),
             primary_pipeline.registrator_per_swath,
@@ -451,7 +434,7 @@ def main_ovl(
             height_provider,
             ovl_roi_in_swath_per_bsint,
         )
-        return secondary_pipeline
+        return secondary_pipeline, success
 
     n_products = len(product_ids_per_date)
     secondary_product_ids = (
@@ -462,9 +445,28 @@ def main_ovl(
     pipelines: list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]] = [
         primary_pipeline
     ]
-    for pipeline in tqdm.tqdm(pipelines_map, total=n_products - 1):
-        pipelines.append(pipeline)
+    for pipeline, success in tqdm.tqdm(pipelines_map, total=n_products - 1):
+        if success:
+            pipelines.append(pipeline)
 
     pipelines = sorted(pipelines, key=lambda x: x.date)
+
+    # save inputs to file
+    inout.save_inputs_to_file(
+        directory_builder.get_proc_path(),
+        product_ids_per_date=[p.product_ids for p in pipelines],
+        orbit_type=orbit_type,
+        polarization=polarization,
+        calibrate=calibrate,
+        get_complex=get_complex,
+        bistatic=bistatic,
+        apd=apd,
+        intra_pulse=intra_pulse,
+        alt_fm_mismatch=alt_fm_mismatch,
+        dem_sampling_ratio=dem_sampling_ratio,
+        primary_id=primary_id,
+        osids_of_interest=[str(o) for o in all_osids_of_interest],
+        bsint_of_interest=[str(b) for b in all_bsint_of_interest],
+    )
 
     return pipelines
