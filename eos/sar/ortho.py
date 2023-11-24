@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Sequence, TypeVar
 
 import cv2
 import numpy as np
 import rasterio
 import rasterio.warp
 import shapely.geometry
+from numpy.typing import NDArray
 
 import eos.dem
 from eos.sar import model, regist
+
+T = TypeVar("T", np.float32, np.complex64)
 
 
 @dataclass
@@ -165,12 +169,12 @@ class Orthorectifier:
         rows -= origin_row
         cols -= origin_col
 
-        dst_map_r = np.full(dst_shape, np.nan, dtype=np.float32)
-        dst_map_c = np.full(dst_shape, np.nan, dtype=np.float32)
+        self._map_x = np.full(dst_shape, np.nan, dtype=np.float32)
+        self._map_y = np.full(dst_shape, np.nan, dtype=np.float32)
 
         rasterio.warp.reproject(
             cols,
-            dst_map_c,
+            self._map_x,
             dtype=np.float32,
             src_crs=deminfo.crs,
             src_transform=deminfo.transform,
@@ -182,7 +186,7 @@ class Orthorectifier:
         )
         rasterio.warp.reproject(
             rows,
-            dst_map_r,
+            self._map_y,
             dtype=np.float32,
             src_crs=deminfo.crs,
             src_transform=deminfo.transform,
@@ -193,14 +197,12 @@ class Orthorectifier:
             resampling=rasterio.warp.Resampling.bilinear,
         )
 
-        self._map_x = dst_map_c.astype(np.float32)
-        self._map_y = dst_map_r.astype(np.float32)
         self._deminfo = deminfo
         self.shape = dst_shape
         self.crs = dst_crs
         self.transform = dst_transform
 
-    def apply(self, raster, interpolation: Interpolation):
+    def apply(self, raster: NDArray[T], interpolation: Interpolation) -> NDArray[T]:
         if raster.dtype == np.complex64:
             real_out = self.apply(np.real(raster), interpolation)
             imag_out = self.apply(np.imag(raster), interpolation)
@@ -216,3 +218,13 @@ class Orthorectifier:
                 borderValue=np.nan,
             )
         return out
+
+    def apply_stack(
+        self, rasters: Sequence[NDArray[T]], interpolation: Interpolation
+    ) -> NDArray[T]:
+        n = len(rasters)
+        assert n > 0
+        result = np.empty((n, *rasters[0].shape), dtype=rasters[0].dtype)
+        for i in range(n):
+            result[i] = self.apply(rasters[i], interpolation)
+        return result
