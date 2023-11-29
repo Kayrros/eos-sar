@@ -205,7 +205,18 @@ class CDSESentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
         # TODO: we might want to look at neighbouring orbits
         # because of its loose definition around the equator
-        request = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq 'SENTINEL-1' and ContentDate/Start gt {query.start_date.isoformat()} and ContentDate/Start lt {query.end_date.isoformat()} and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'operationalMode' and att/OData.CSC.StringAttribute/Value eq 'IW') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'processingLevel' and att/OData.CSC.StringAttribute/Value eq 'LEVEL1') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'origin' and att/OData.CSC.StringAttribute/Value eq 'ESA') and Attributes/OData.CSC.IntegerAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq '{query.relative_orbit_number}')&$expand=Attributes&$orderby=ContentDate/Start asc"
+        request = (
+            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
+            f"Collection/Name eq 'SENTINEL-1' "
+            f"and ContentDate/Start gt {query.start_date.isoformat()} "
+            f"and ContentDate/Start lt {query.end_date.isoformat()} "
+            f"and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') "
+            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'operationalMode' and att/OData.CSC.StringAttribute/Value eq 'IW') "
+            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'processingLevel' and att/OData.CSC.StringAttribute/Value eq 'LEVEL1') "
+            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'origin' and att/OData.CSC.StringAttribute/Value eq 'ESA') "
+            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number})"
+            f"&$expand=Attributes&$orderby=ContentDate/Start asc"
+        )
         pids = _cdse_list_items(request)
         pids = [
             pid
@@ -230,7 +241,16 @@ class CDSESentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
         # TODO: we might want to look at neighbouring orbits
         # because of its loose definition around the equator
-        request = f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name eq 'SENTINEL-1' and ContentDate/Start gt {query.start_date.isoformat()} and ContentDate/Start lt {query.end_date.isoformat()} and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'authority' and att/OData.CSC.StringAttribute/Value eq 'ESA') and Attributes/OData.CSC.IntegerAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq '{query.relative_orbit_number}')&$expand=Attributes&$orderby=ContentDate/Start asc"
+        request = (
+            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
+            f"Collection/Name eq 'SENTINEL-1' "
+            f"and ContentDate/Start gt {query.start_date.isoformat()} "
+            f"and ContentDate/Start lt {query.end_date.isoformat()} "
+            f"and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') "
+            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'authority' and att/OData.CSC.StringAttribute/Value eq 'ESA') "
+            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number})"
+            f"&$expand=Attributes&$orderby=ContentDate/Start asc"
+        )
         pids = _cdse_list_items(request)
         pids = [
             pid

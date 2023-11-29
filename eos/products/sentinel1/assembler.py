@@ -14,6 +14,7 @@ from eos.products.sentinel1.acquisition import (
     SecondarySentinel1AcquisitionCutter,
 )
 from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
+from eos.products.sentinel1.calibration import Sentinel1Calibrator
 from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
@@ -34,15 +35,23 @@ from eos.sar.roi import Roi
 
 
 def _get_image_reader(
-    product: Sentinel1SLCProductInfo, swath: str, pol: str, calibration: Optional[str]
+    product: Sentinel1SLCProductInfo,
+    swath: str,
+    pol: str,
+    calibration: Optional[str],
+    calibrators_cache: dict[str, Sentinel1Calibrator],
 ):
     reader = product.get_image_reader(swath, pol)
 
     if calibration is not None:
-        cal_xml = product.get_xml_calibration(swath, pol)
-        noise_xml = product.get_xml_noise(swath, pol)
-        ipf = product.ipf
-        calibrator = sentinel1.calibration.Sentinel1Calibrator(cal_xml, noise_xml, ipf)
+        key = f"{product.product_id}_{swath}_{pol}"
+        if key not in calibrators_cache:
+            cal_xml = product.get_xml_calibration(swath, pol)
+            noise_xml = product.get_xml_noise(swath, pol)
+            ipf = product.ipf
+            calibrators_cache[key] = Sentinel1Calibrator(cal_xml, noise_xml, ipf)
+
+        calibrator = calibrators_cache[key]
         reader = sentinel1.calibration.CalibrationReader(
             reader, calibrator, method=calibration
         )
@@ -188,11 +197,14 @@ class Sentinel1Assembler:
         product_per_id = {p.product_id: p for p in products}
 
         readers = {}
+        calibrators_cache: dict[str, Sentinel1Calibrator] = {}
         for bsid in bsids:
             swath = _swath_from_bsid(bsid)
             product_id = self.product_id_per_bsid[bsid]
             product = product_per_id[product_id]
-            readers[bsid] = _get_image_reader(product, swath, pol, calibration)
+            readers[bsid] = _get_image_reader(
+                product, swath, pol, calibration, calibrators_cache
+            )
 
         return readers
 

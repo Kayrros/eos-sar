@@ -335,7 +335,7 @@ class Registrator:
     ):
         bsids = self.bsids.intersection(secondary_bsids)
         if not bsids:
-            return
+            return {}
 
         secondary_corrector_per_bsid = self._get_correctors(
             secondary_correctors_provider, bsids

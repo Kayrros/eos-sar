@@ -142,6 +142,7 @@ def main(
         width=crop_size, height=crop_size, count=1, dtype=raster.dtype, nodata=np.nan
     )
 
+    sim = None
     if do_rtc:
         print("computing rtc")
         rtc = eos.sar.rtc.RadiometricTerrainCorrector(proj_model, dem, roi)
@@ -165,6 +166,7 @@ def main(
         profile["height"] = raster.shape[0]
 
         if do_rtc and rtc_after_ortho:
+            assert sim is not None
             sim = orthorectifier.apply(sim, eos.sar.ortho.LanczosInterpolation)
             raster = eos.sar.rtc.normalize(raster, sim)
 
