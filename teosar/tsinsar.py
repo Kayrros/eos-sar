@@ -1,6 +1,7 @@
 import concurrent.futures
 import datetime
 import logging
+import multiprocessing
 import os
 from functools import partial
 from typing import Callable, Iterator, Optional, Union
@@ -55,14 +56,15 @@ def get_bsids_for_products(
     get = partial(get_bsids_for_product, product_provider, polarization)
     bsids: dict[str, list[str]] = {}
     errors: dict[str, Exception] = {}
-    with concurrent.futures.ProcessPoolExecutor() as pool:
-        futures: dict[str, concurrent.futures.Future] = {}
-        for pid in product_ids:
-            future = pool.submit(get, pid)
-            futures[pid] = future
-        for pid in product_ids:
+    mp_context = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=10, mp_context=mp_context
+    ) as pool:
+        futures = {pool.submit(get, pid): pid for pid in product_ids}
+        for future in concurrent.futures.as_completed(futures):
+            pid = futures[future]
             try:
-                result = futures[pid].result()
+                result = future.result()
             except Exception as e:
                 errors[pid] = e
             else:
