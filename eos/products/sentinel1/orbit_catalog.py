@@ -443,8 +443,11 @@ else:
     @dataclass(frozen=True)
     class PhoenixSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
         collection_source: Any
+        num_fetch_workers: Optional[int] = 10
 
         @override
         def search(self, query: BackendQuery) -> BackendResult:
             clb = functools.partial(_search_phx, self.collection_source)
-            return _multithreaded_search(query, clb)
+            return _multithreaded_search(
+                query, clb, num_process_workers=self.num_fetch_workers
+            )
