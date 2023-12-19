@@ -4,6 +4,7 @@ import fnmatch
 import functools
 import io
 import logging
+import multiprocessing
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -360,8 +361,9 @@ def _multithreaded_search(
     # - pool2 (processes): parses the xml and extract the state vectors (mostly cpu)
     # The two pools are working concurrently (and a single `not_done` set) to be able to
     # to use the CPU to parse files while other files are being queried.
+    mp_context = multiprocessing.get_context("spawn")
     with ThreadPoolExecutor(num_fetch_workers) as pool1, ProcessPoolExecutor(
-        num_process_workers
+        num_process_workers, mp_context=mp_context
     ) as pool2:
         not_done: set[Future[Any]] = set()
         futures1: dict[Future[Any], QuerySegment] = {}
