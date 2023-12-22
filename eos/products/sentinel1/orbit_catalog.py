@@ -4,6 +4,7 @@ import fnmatch
 import functools
 import io
 import logging
+import multiprocessing
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -360,8 +361,9 @@ def _multithreaded_search(
     # - pool2 (processes): parses the xml and extract the state vectors (mostly cpu)
     # The two pools are working concurrently (and a single `not_done` set) to be able to
     # to use the CPU to parse files while other files are being queried.
+    mp_context = multiprocessing.get_context("spawn")
     with ThreadPoolExecutor(num_fetch_workers) as pool1, ProcessPoolExecutor(
-        num_process_workers
+        num_process_workers, mp_context=mp_context
     ) as pool2:
         not_done: set[Future[Any]] = set()
         futures1: dict[Future[Any], QuerySegment] = {}
@@ -443,8 +445,11 @@ else:
     @dataclass(frozen=True)
     class PhoenixSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
         collection_source: Any
+        num_fetch_workers: Optional[int] = 10
 
         @override
         def search(self, query: BackendQuery) -> BackendResult:
             clb = functools.partial(_search_phx, self.collection_source)
-            return _multithreaded_search(query, clb)
+            return _multithreaded_search(
+                query, clb, num_process_workers=self.num_fetch_workers
+            )
