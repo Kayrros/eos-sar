@@ -7,13 +7,14 @@ from typing import Literal, Optional, Union
 import numpy as np
 import pyproj
 import rasterio
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
 
 from eos.sar import coordinates, range_doppler, utils
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC
 from eos.sar.model import Arrayf32, SensorModel
 from eos.sar.orbit import Orbit, StateVector
 from eos.sar.projection_correction import Corrector, GeoImagePoints
+from eos.sar.roi import Roi
 
 
 @dataclass(frozen=True)
@@ -30,15 +31,51 @@ class CosmoSkyMedMetadata:
     slant_range_time: float
     range_pixel_spacing: float
     azimuth_pixel_spacing: float
+    range_sampling_rate: float
     wavelength: float
+    doppler_coefficients: list[float]
 
     @property
     def range_frequency(self) -> float:
-        return LIGHT_SPEED_M_PER_SEC / (2 * self.range_pixel_spacing)
+        return LIGHT_SPEED_M_PER_SEC / (2.0 * self.range_pixel_spacing)
+
+    @property
+    def azimuth_time_interval(self) -> float:
+        return 1.0 / self.azimuth_frequency
+
+    @property
+    def range_time_interval(self):
+        return 1.0 / self.range_sampling_rate
 
     def get_gdal_image_path(self, hdf5_path) -> str:
         ipt = "IMG" if self.mission_id == "CSG" else "SBI"
         return f'HDF5:"{hdf5_path}"://S01/{ipt}'
+
+    def deramping_phases(self, roi: Roi) -> NDArray[np.float32]:
+        # from SNAP microwave-toolbox
+        #   sar-io/src/main/java/eu/esa/sar/io/cosmo/CosmoSkymedNetCDFReader.java
+        #   and sar-op-utilities/src/main/java/eu/esa/sar/utilities/gpf/DemodulateOp.java
+        # except:
+        #   I considered that "offsets" were 0 (TODO)
+        #   mid_range_time is the middle of the Roi and not the middle of the product, it seems to improve the deramping
+        # TODO: there is a small residual shift that depends on the range location, can we fix it?
+
+        mid_range_time = (roi.col + roi.w // 2) * self.range_time_interval
+
+        doppler_centroid = sum(
+            coeff * mid_range_time**p
+            for p, coeff in enumerate(self.doppler_coefficients)
+        )
+
+        h, w = roi.get_shape()
+        rows = np.arange(roi.row, roi.row + h, dtype=np.float32)
+        ta = rows * self.azimuth_time_interval
+        phi = -np.pi * 2 * doppler_centroid * ta
+        phi = np.broadcast_to(phi.reshape((h, 1)), (h, w))
+
+        assert phi.shape == (h, w)
+        assert phi.dtype == np.float32
+        return phi
 
 
 def string_to_timestamp(s: str) -> float:
@@ -52,7 +89,7 @@ def string_to_timestamp(s: str) -> float:
     )
 
 
-def extract_needed_metadata_from_image(hdf5_path: str) -> CosmoSkyMedMetadata:
+def parse_cosmoskymed_metadata(hdf5_path: str) -> CosmoSkyMedMetadata:
     with rasterio.open(hdf5_path, driver="HDF5") as f:
         d = f.tags()
 
@@ -75,6 +112,7 @@ def extract_needed_metadata_from_image(hdf5_path: str) -> CosmoSkyMedMetadata:
     range_pixel_spacing = float(d[f"S01_{ipt}_Column_Spacing"])
     azimuth_pixel_spacing = float(d[f"S01_{ipt}_Line_Spacing"])
     wavelength = float(d["Radar_Wavelength"])
+    range_sampling_rate = float(d["S01_Sampling_Rate"])
 
     if "RANGE_PIXEL_SPACING" in d:
         range_pixel_spacing = float(d["RANGE_PIXEL_SPACING"])
@@ -115,6 +153,10 @@ def extract_needed_metadata_from_image(hdf5_path: str) -> CosmoSkyMedMetadata:
     )
     approx_geom = [(x[1], x[0]) for x in corners]
 
+    doppler_coefficients = [
+        float(x) for x in d["Centroid_vs_Range_Time_Polynomial"].split()
+    ]
+
     return CosmoSkyMedMetadata(
         width=width,
         height=height,
@@ -128,7 +170,9 @@ def extract_needed_metadata_from_image(hdf5_path: str) -> CosmoSkyMedMetadata:
         slant_range_time=slant_range_time,
         range_pixel_spacing=range_pixel_spacing,
         azimuth_pixel_spacing=azimuth_pixel_spacing,
+        range_sampling_rate=range_sampling_rate,
         wavelength=wavelength,
+        doppler_coefficients=doppler_coefficients,
     )
 
 
