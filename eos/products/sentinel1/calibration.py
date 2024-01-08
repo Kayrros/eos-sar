@@ -57,10 +57,10 @@ def _get_noise_azimuth_blocks(noiseAzimuthVectorList):
         blocks.append(
             _AzimuthNoise(
                 v["swath"],
-                float(v["firstAzimuthLine"]),
-                float(v["firstRangeSample"]),
-                float(v["lastAzimuthLine"]),
-                float(v["lastRangeSample"]),
+                int(v["firstAzimuthLine"]),
+                int(v["firstRangeSample"]),
+                int(v["lastAzimuthLine"]),
+                int(v["lastRangeSample"]),
                 list(map(float, v["line"]["#text"].split())),
                 list(map(float, v["noiseAzimuthLut"]["#text"].split())),
             )
@@ -114,8 +114,8 @@ def _read_lut_from_noise_xml(xml):
         lut_key = "noiseLut"
 
     for v in noise_vector_list:
-        lines.append(float(v["line"]))
-        pixels.append(list(map(float, v["pixel"]["#text"].split())))
+        lines.append(int(v["line"]))
+        pixels.append(list(map(int, v["pixel"]["#text"].split())))
         values.append(list(map(float, v[lut_key]["#text"].split())))
 
     # check lists lengths
@@ -222,9 +222,13 @@ class Sentinel1Calibrator:
         >>> calibrator_noise.calibrate_inplace(myarray, window, "beta")
 
     Note
+        For more details, see https://sentinels.copernicus.eu/documents/247904/0/Thermal-Denoising-of-Products-Generated-by-Sentinel-1-IPF/11d3bd86-5d6a-4e07-b8bb-912c1093bf91
+
         s1tbx (8.0.5) does not clip to 0 and instead keep the original value of the pixel.
-        Expect some small differences between eos and SNAP because of this. Any other difference should be reported!
+        Expect some small differences between eos-sar and SNAP because of this. Any other difference should be reported!
     """
+
+    _noise_azimuth_blocks: Optional[list[_AzimuthNoise]]
 
     def __init__(
         self,
@@ -295,18 +299,30 @@ class Sentinel1Calibrator:
         )
 
         self._noise_lines = np.array(lines)
+        self._noise_azimuth_blocks = azimuth_blocks
 
-        # re-define the pixel array as the pixels positions of the first line:
-        # min and max positions for all the noise LUT are covered.
-        # this could be necessary for the GRD products when the pixels arrays sizes vary with the line
-        self._noise_pixels = np.array(pixels[0])
-
-        # get the noise values according to the new pixels
+        # Densify the noise blocks to make the grid regular.
+        # This is necessary for the GRD products when the pixels arrays sizes vary in azimuth.
+        all_pixels = sorted(list(set(p for px in pixels for p in px)))
+        self._noise_pixels = np.array(all_pixels)
         self._noise_values = np.zeros((len(lines), self._noise_pixels.size))
         for i in range(len(values)):
+            # The following can happen at the begining of a GRD datatake (probably at the end too)
+            # IW1__|IW2__|IW3__
+            # x x x|0 0 0|0 0 0 (x represents an arbitrary range noise value (in `values`)
+            # x x x|x x x|0 0 0 (sometimes the value is 0, which makes further interpolation quite bad)
+            # x x x|x x x|x x x (because these 0 can even happen inside valid SAR regions)
+            # so we replace the 0 by an extrapolation of the line.
+            # This is not an accurate denoising factor, but it is much better than "0" which creates gradients after interpolation.
+            nonzeros = np.asarray(values[i]) != 0
+            pixels[i] = np.asarray(pixels[i])[nonzeros]
+            values[i] = np.asarray(values[i])[nonzeros]
+
+            # densify and extrapolate the range noise vectors
             self._noise_values[i, :] = np.interp(
                 self._noise_pixels, pixels[i], values[i]
             )
+
             # some noise maps have negative values, which creates signal during the calibration
             # so we clip to 0 the noise map
             # ex: S1B_IW_GRDH_1SDV_20210605T230132_20210605T230150_027227_0340A2_9DF3 vv (lon lat -68.43241, -8.13822)
@@ -316,20 +332,12 @@ class Sentinel1Calibrator:
         assert self._noise_lines[0] <= 0
         assert self._noise_pixels[0] <= 0
 
-        # check again that all pixels used for the new grid correspond to the first row of pixels
-        assert all(self._noise_pixels == np.array(pixels[0]))
-
         # we should have one value per grid node
         assert len(self._noise_lines) == len(self._noise_values)
         assert (
             len(self._noise_lines) * len(self._noise_pixels)
             == np.asarray(self._noise_values).size
         )
-
-        if azimuth_blocks is not None:
-            self._noise_azimuth_block = azimuth_blocks[0]
-        else:
-            self._noise_azimuth_block = None
 
     def _get_calibration_array(self, window, method):
         values = np.array(self._values[method])
@@ -340,15 +348,36 @@ class Sentinel1Calibrator:
             window, self._noise_lines, self._noise_pixels, self._noise_values
         )
 
-        if self._noise_azimuth_block is not None:
-            _, y, _, h = window
-            ys = np.arange(y, y + h, dtype=np.int16)
-            azimuth_noise = np.interp(
-                ys,
-                self._noise_azimuth_block.lines,
-                self._noise_azimuth_block.noise_azimuth_LUT,
-            )
-            range_noise *= azimuth_noise[:, None]
+        if self._noise_azimuth_blocks is not None:
+            x, y, w, h = window
+            assert range_noise.shape == (h, w)
+
+            for block in self._noise_azimuth_blocks:
+                startx = block.first_range_sample
+                endx = block.last_range_sample + 1  # excluded
+                starty = block.first_azimuth_line
+                endy = block.last_azimuth_line + 1  # excluded
+
+                # check if we are out of the swath
+                if x + w < startx or x >= endx:
+                    continue
+                if y + h < starty or y >= endy:
+                    continue
+
+                # interpolate the values along azimuth
+                lines = block.lines
+                noise_azimuth_LUT = block.noise_azimuth_LUT
+
+                # interpolate the noise azimuth LUT
+                ys = np.arange(max(y, starty), min(y + h, endy), dtype=np.int16)
+                azimuth_noise = np.interp(ys, lines, noise_azimuth_LUT)
+
+                # consider the intersection between the block and the ROI
+                sx = max(x, startx) - x
+                ex = min(x + w, endx) - x
+
+                # adjust the range_noise
+                range_noise[ys - y, sx:ex] *= azimuth_noise[:, None]
 
         # Scaling factor to apply while calibrating, following IPF version. Based on doc:
         # Masking "No-value" Pixels on GRD Products generated by the Sentinel - 1 ESA IPF
