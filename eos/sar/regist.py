@@ -1,8 +1,10 @@
 """Generic registration functions."""
 import abc
+from typing import Any
 
 import cv2
 import numpy as np
+from numpy.typing import NDArray
 
 import eos.dem
 from eos.sar import utils
@@ -251,20 +253,23 @@ def apply_affine(src_array, matrix, destination_array_shape):
     M[1, 1] = matrix[0, 0]
     M[1, 2] = matrix[0, 2]
 
+    resampled: NDArray[Any]
     if src_array.dtype == np.complex64:
         h, w = src_array.shape
         img = src_array.copy(order="C")  # ensures contiguous data and C order
         img = img.view(dtype=np.float32)  # now data is float
         img = img.reshape([h, w, 2])  # now data is float2
 
-        resampled = cv2.warpAffine(img, M, dsize, flags=flags, borderValue=np.nan)
+        resampled = cv2.warpAffine(img, M, dsize, flags=flags, borderValue=(np.nan,))
 
         h, w = destination_array_shape
         resampled.reshape((h, w * 2))
         resampled = resampled.view(dtype=np.complex64).squeeze()
 
     else:
-        resampled = cv2.warpAffine(src_array, M, dsize, flags=flags, borderValue=np.nan)
+        resampled = cv2.warpAffine(
+            src_array, M, dsize, flags=flags, borderValue=(np.nan,)
+        )
 
     return resampled
 

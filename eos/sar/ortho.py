@@ -215,7 +215,7 @@ class Orthorectifier:
                 self._map_y,
                 interpolation=interpolation.cv2_flag,
                 borderMode=cv2.BORDER_CONSTANT,
-                borderValue=np.nan,
+                borderValue=(np.nan,),
             )
         return out
 
