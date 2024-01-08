@@ -627,14 +627,14 @@ def extract_grd_metadata(xml: Union[str, bytes]) -> Sentinel1GRDMetadata:
 
 
 def assemble_multiple_products_into_metas(
-    metas_per_product: list[list[Sentinel1BurstMetadata]]
+    metas_per_product: list[list[Sentinel1BurstMetadata]],
 ) -> list[Sentinel1BurstMetadata]:
     bursts = list(sum(metas_per_product, []))
     return bursts
 
 
 def assemble_multiple_grd_products_into_meta(
-    metas: Sequence[Sentinel1GRDMetadata]
+    metas: Sequence[Sentinel1GRDMetadata],
 ) -> Sentinel1GRDMetadata:
     # make sure the product are ordered by time
     metas = sorted(metas, key=lambda m: m.image_start)
@@ -743,7 +743,7 @@ def _unique_sv(state_vectors: Sequence[StateVector]) -> list[StateVector]:
 
 
 def unique_sv_from_bursts_meta(
-    bursts_meta: list[Sentinel1BurstMetadata]
+    bursts_meta: list[Sentinel1BurstMetadata],
 ) -> list[StateVector]:
     """
     Get an aggregated list of state_vectors from bursts_meta
