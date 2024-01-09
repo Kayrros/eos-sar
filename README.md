@@ -69,7 +69,7 @@ The CI validates the code against pep8 rules and formatting, as configured in `p
 
 You can check your code locally before commiting using:
 ```bash
-pip install ruff==0.1.5
+pip install ruff==0.1.11
 ruff check . --fix; ruff format .
 ```
 
