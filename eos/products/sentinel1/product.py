@@ -335,8 +335,8 @@ else:
 
         @override
         def get_manifest(self) -> str:
-            # TODO: this is not yet available in the phoenix collection
-            raise NotImplementedError
+            content: bytes = self.item.assets.download_as_bytes("MANIFEST")
+            return content.decode("utf-8")
 
         @staticmethod
         def from_product_id(
