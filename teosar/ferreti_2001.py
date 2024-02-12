@@ -96,7 +96,7 @@ def iterative_alternate_periodogram(
     bperp,
     inc,
     rng,
-    dates,
+    years_since_ref,
     max_iterations=10,
     threshold_q=0.7,
     threshold_v=0.1,
@@ -112,11 +112,6 @@ def iterative_alternate_periodogram(
     # APS is affine on the image plane
 
     # Convert dates to deltas in day
-    times_differences_against_ref = [
-        (d - dates[0]).days / 365.25 for d in dates[1:]
-    ]  # total_seconds() to get seconds
-    times_differences_against_ref = np.array(times_differences_against_ref)
-
     num_PS = len(PS_X_coordinates)
 
     rng_PS = rng[PS_X_coordinates]
@@ -131,7 +126,7 @@ def iterative_alternate_periodogram(
     Cq = Cq.flatten()
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
-    num_dates = len(dates) - 1  # ignoring the reference
+    num_dates = len(years_since_ref)  # ignoring the reference
 
     # init variables
     q_estimation = np.zeros([num_PS], dtype=np.float32)  # constant dem error
@@ -169,7 +164,7 @@ def iterative_alternate_periodogram(
             date_normal_baseline,
             q_estimation,
             Cv,
-            times_differences_against_ref,
+            years_since_ref,
             v_estimation,
         )
 
@@ -235,11 +230,9 @@ def iterative_alternate_periodogram(
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
-                (
-                    Cv
-                    * times_differences_against_ref[:, np.newaxis]
-                    * v_estimation[np.newaxis, :]
-                )[-1, :],
+                (Cv * years_since_ref[:, np.newaxis] * v_estimation[np.newaxis, :])[
+                    -1, :
+                ],
             )
             save_debug_image(
                 os.path.join(debug_path, "DPHI_NOAPS_NOMVT_NOTOPO_%d.tiff" % iteration),
@@ -259,7 +252,7 @@ def iterative_alternate_periodogram(
             Cq,
             date_normal_baseline,
             Cv,
-            times_differences_against_ref,
+            years_since_ref,
             date_coefs,
             use_tensorflow=use_tensorflow,
         )
@@ -273,7 +266,7 @@ def iterative_alternate_periodogram(
         date_normal_baseline,
         q_estimation,
         Cv,
-        times_differences_against_ref,
+        years_since_ref,
         v_estimation,
     )
     residual = psutils.wrap(Delta_phi_no_q_v_estimation - APS_estimated)
@@ -288,7 +281,7 @@ def velo_topo_periodogram(
     Cq,
     date_normal_baseline,
     Cv,
-    times_differences_against_ref,
+    years_since_ref,
     weights_per_date=None,
     *,
     use_tensorflow=True,
@@ -323,8 +316,7 @@ def velo_topo_periodogram(
                         (
                             tf_phi_ps_mat[k, :]
                             - tf.cast(Cq * date_normal_baseline[k], tf.float64) * q
-                            - tf.cast(Cv * times_differences_against_ref[k], tf.float64)
-                            * v
+                            - tf.cast(Cv * years_since_ref[k], tf.float64) * v
                         ),
                     )
                 )
@@ -358,9 +350,7 @@ def velo_topo_periodogram(
         gammas = np.zeros([num_PS], dtype=np.float32)  # temporal coherence
         v_test = periodogram.get_test_vals(300, 10)
         q_test = periodogram.get_test_vals(80, 10)
-        lin_defo_model = periodogram.LinearTermModel(
-            Cv, times_differences_against_ref, v_test
-        )
+        lin_defo_model = periodogram.LinearTermModel(Cv, years_since_ref, v_test)
         for h in range(num_PS):
             topo_model = periodogram.LinearTermModel(
                 Cq[h], date_normal_baseline[:, h], q_test
@@ -413,7 +403,7 @@ def get_atmo_full(interpolated, ak, pdzeta, peta, parent_shape):
 def final_periodogram(
     phi_ts_raster,
     atmos,
-    dates,
+    years_since_ref,
     rng,
     inc,
     bperp,
@@ -422,10 +412,6 @@ def final_periodogram(
     use_tensorflow=True,
 ):
     n, h, w = phi_ts_raster.shape
-    times_differences_against_ref = [
-        (d - dates[0]).days / 365.25 for d in dates[1:]
-    ]  # total_seconds() to get seconds
-    times_differences_against_ref = np.array(times_differences_against_ref)
 
     phi_no_atmo = psutils.wrap(phi_ts_raster - atmos)
 
@@ -442,7 +428,7 @@ def final_periodogram(
         Cq,
         bperp,
         Cv,
-        times_differences_against_ref,
+        years_since_ref,
         use_tensorflow=use_tensorflow,
     )
 
@@ -453,12 +439,12 @@ def final_periodogram(
 
 
 def get_phi_no_q_v_estimation(
-    phi_ps_mat, Cq, date_normal_baseline, q, Cv, times_differences_against_ref, v
+    phi_ps_mat, Cq, date_normal_baseline, q, Cv, years_since_ref, v
 ):
     phi_no_q_v_estimation = (
         phi_ps_mat
         - Cq[np.newaxis, :] * date_normal_baseline * q[np.newaxis, :]
-        - Cv * times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
+        - Cv * years_since_ref[:, np.newaxis] * v[np.newaxis, :]
     )
     return phi_no_q_v_estimation
 
@@ -469,7 +455,7 @@ def full_pipeline(
     bperp,
     inc,
     rng,
-    dates,
+    years_since_ref,
     da_threshold=0.25,
     max_iterations=10,
     threshold_q=0.7,
@@ -486,7 +472,7 @@ def full_pipeline(
         bperp,
         inc,
         rng,
-        dates,
+        years_since_ref,
         da_threshold=da_threshold,
         max_iterations=max_iterations,
         threshold_q=threshold_q,
@@ -519,7 +505,7 @@ def run(
     bperp,
     inc,
     rng,
-    dates,
+    years_since_ref,
     da_threshold=0.25,
     max_iterations=10,
     threshold_q=0.7,
@@ -556,7 +542,7 @@ def run(
         bperp,
         inc,
         rng,
-        dates,
+        years_since_ref,
         max_iterations=max_iterations,
         threshold_q=threshold_q,
         threshold_v=threshold_v,
@@ -589,7 +575,7 @@ def run(
     q, v, gammas = final_periodogram(
         Delta_phi_against_ref,
         atmos,
-        dates,
+        years_since_ref,
         rng,
         inc,
         bperp,
@@ -597,8 +583,6 @@ def run(
         use_tensorflow=use_tensorflow,
     )
 
-    years_since_ref = [(d - dates[0]).days / 365.25 for d in dates[1:]]
-    years_since_ref = np.array(years_since_ref)
     Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
