@@ -28,17 +28,22 @@ def pid2date(product_id: str) -> str:
     return product_id.split("_")[5][:8]
 
 
-def get_gcps_localization(proj_model, grid_size=10):
-    h, w = proj_model.h, proj_model.w
+def get_gcps_localization(
+    proj_model: SensorModel, dem: DEM, roi: Optional[Roi] = None, grid_size: int = 10
+):
+    if roi is None:
+        h, w = proj_model.h, proj_model.w
+        roi = Roi(0, 0, w, h)
 
     Cols, Rows = np.meshgrid(
-        np.linspace(0, w, num=grid_size), np.linspace(0, h, num=grid_size)
+        np.linspace(roi.col, roi.col + roi.w, num=grid_size),
+        np.linspace(roi.row, roi.row + roi.h, num=grid_size),
     )
     rows = Rows.ravel()
     cols = Cols.ravel()
-    lons, lats, alts, _ = proj_model.localize_without_alt(rows, cols)
+    lons, lats, alts, _ = proj_model.localize_without_alt(rows, cols, dem=dem)
     gcps = [
-        rasterio.control.GroundControlPoint(row, col, x, y, z)
+        rasterio.control.GroundControlPoint(row - roi.row, col - roi.col, x, y, z)
         for row, col, x, y, z in zip(rows, cols, lons, lats, alts)
     ]
     return gcps

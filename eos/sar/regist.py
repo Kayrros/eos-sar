@@ -397,3 +397,23 @@ def zoom_roi(roi, zoom_factor):
     dst_roi.h += zoom_factor - 1
 
     return dst_roi
+
+
+def phase_correlation_on_amplitude(
+    u1: NDArray[np.float32], u2: NDArray[np.float32]
+) -> tuple[float, float]:
+    """
+    Estimate a translation from u1 to u2.
+    NaNs are interpreted as 0.0.
+    """
+    from . import _phase_correlation
+
+    f1 = _phase_correlation.compute_fft(u1)
+    f2 = _phase_correlation.compute_fft(u2)
+
+    # TODO: expose registering_shift_from_phase_correlation parameters to the caller
+    (ty, tx), _ = _phase_correlation.registering_shift_from_phase_correlation(
+        f1, f2, pc_threshold=0.0
+    )
+
+    return tx, ty
