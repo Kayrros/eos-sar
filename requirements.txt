@@ -9,3 +9,5 @@ scipy
 cython
 rasterio>=1.3
 ortools
+requests
+typing-extensions
