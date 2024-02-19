@@ -5,13 +5,14 @@ from eos.products.sentinel1.orbit_catalog import (
     BestEffort,
     CDSESentinel1OrbitCatalogBackend,
     OrbitFileNotFound,
-    PhoenixSentinel1OrbitCatalogBackend,
     Sentinel1OrbitCatalogQuery,
 )
 
 
 @pytest.fixture
 def phx_backend(phx_client):
+    from eos.products.sentinel1.orbit_catalog import PhoenixSentinel1OrbitCatalogBackend
+
     backend = PhoenixSentinel1OrbitCatalogBackend(
         collection_source=phx_client.get_collection("esa-sentinel-1-csar-aux").at(
             "aws:proxima:kayrros-prod-sentinel-aux"
