@@ -5,8 +5,6 @@ import shapely.geometry
 from eos.products.sentinel1.catalog import (
     CDSESentinel1GRDCatalogBackend,
     CDSESentinel1SLCCatalogBackend,
-    PhoenixSentinel1GRDCatalogBackend,
-    PhoenixSentinel1SLCCatalogBackend,
     Sentinel1CatalogQuery,
     search_grd,
     search_slc,
@@ -57,6 +55,8 @@ expected_grd = [
 
 
 def test_phx_catalog_slc(phx_client):
+    from eos.products.sentinel1.catalog import PhoenixSentinel1SLCCatalogBackend
+
     collection = phx_client.get_collection("esa-sentinel-1-csar-l1-slc").at(
         "asf:daac:sentinel-1"
     )
@@ -66,9 +66,12 @@ def test_phx_catalog_slc(phx_client):
 
 
 def test_phx_catalog_grd(phx_client):
+    from eos.products.sentinel1.catalog import PhoenixSentinel1GRDCatalogBackend
+
     collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
         "asf:daac:sentinel-1"
     )
+
     backend = PhoenixSentinel1GRDCatalogBackend(collection_source=collection)
     result = search_grd(backend, query)
     print(result.product_ids)

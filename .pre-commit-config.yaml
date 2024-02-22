@@ -1,0 +1,17 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.11
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      # the official pre-commit mypy doesn't play well with python dependencies
+      # so we rely on the user's mypy
+      - id: mypy
+        name: mypy
+        language: system
+        entry: bash
+        args: [ -c, "mypy --non-interactive eos/ teosar/ tests/ usage/" ]
+        require_serial: true

@@ -157,7 +157,7 @@ def main(
         geometry = shapely.wkt.loads(geometry)
 
     # query phoenix
-    prod_pol = {"vv": ["SV", "DV"], "vh": ["DV"], "hh": ["SH", "DH"], "hv": ["DV"]}[
+    prod_pol = {"vv": ["SV", "DV"], "vh": ["DV"], "hh": ["SH", "DH"], "hv": ["DH"]}[
         polarization
     ]
     query = s1_catalog.Sentinel1CatalogQuery(

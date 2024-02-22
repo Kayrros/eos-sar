@@ -55,8 +55,6 @@ deploy:
   script:
     - python setup.py sdist
     - python setup.py bdist_wheel
-    - pip install dist/*.tar.gz
-    - pip install dist/*.whl
     - twine upload
       --repository-url ${PIP_EXTRA_INDEX_URL}
       -u ${PYPI_USERNAME}

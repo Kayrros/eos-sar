@@ -11,7 +11,6 @@ from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.orbit_catalog import (
     BestEffort,
-    PhoenixSentinel1OrbitCatalogBackend,
     Sentinel1OrbitCatalogQuery,
 )
 from eos.sar import range_doppler
@@ -152,6 +151,7 @@ def test_projection_grd():
 def test_projection_corner_reflectors(phx_client):
     from math import ceil, floor
 
+    from eos.products.sentinel1.orbit_catalog import PhoenixSentinel1OrbitCatalogBackend
     from eos.sar import fourier_zoom, max_finding
 
     # subset of corner reflectors that give a mosaic of reasonable size
