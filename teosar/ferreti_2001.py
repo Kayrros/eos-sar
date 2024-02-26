@@ -108,6 +108,7 @@ def iterative_alternate_periodogram(
     *,
     use_tensorflow=True,
     ncpu=1,
+    batch_size=128,
 ):
     # Estimate LOS velocity, DEM errors and APSs on the sparse grid
     # Solving system 13 of Ferreti 2001
@@ -260,6 +261,7 @@ def iterative_alternate_periodogram(
             date_coefs,
             use_tensorflow=use_tensorflow,
             ncpu=ncpu,
+            batch_size=batch_size,
         )
         print(f"iteration: {iteration} dq {max(abs(delta_q))} dv {max(abs(delta_v))}")
 
@@ -291,6 +293,7 @@ def velo_topo_periodogram(
     *,
     use_tensorflow=True,
     ncpu=1,
+    batch_size=128,
 ):
     num_dates, num_PS = phi_ps_mat.shape
 
@@ -309,20 +312,22 @@ def velo_topo_periodogram(
         # but then is much faster. We have a lot of variables to minimize, thus it makes sense.
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
 
-        Cq = Cq[None, :]
+        # Cq = Cq[None, :]
 
-        def periodogram_to_optimize(x):
+        @tf.function
+        def periodogram_to_optimize(
+            q_b, v_b, Cq_b, date_normal_baseline_b, tf_phi_ps_mat_b
+        ):  # _b stands for batch
             res = 0
-            q = x[0:num_PS]
-            v = x[num_PS:]
             for k in range(num_dates):
                 res += weights_per_date[k] * tf.exp(
                     tf.dtypes.complex(
                         tf.cast(0.0, tf.float64),
                         (
-                            tf_phi_ps_mat[k, :]
-                            - tf.cast(Cq * date_normal_baseline[k], tf.float64) * q
-                            - tf.cast(Cv * years_since_ref[k], tf.float64) * v
+                            tf_phi_ps_mat_b[k, :]
+                            - tf.cast(Cq_b * date_normal_baseline_b[k], tf.float64)
+                            * q_b
+                            - tf.cast(Cv * years_since_ref[k], tf.float64) * v_b
                         ),
                     )
                 )
@@ -335,21 +340,47 @@ def velo_topo_periodogram(
 
             return val_and_grad
 
-        @make_val_and_grad_fn
-        def loss(x):
-            per = periodogram_to_optimize(x)
-            return -tf.reduce_sum(tf.math.abs(per))
+        # slice in batches
+        start_indices = np.arange(0, num_PS, batch_size)
+        end_indices = np.append(start_indices[1:], num_PS)
+        q = np.zeros((num_PS,), dtype=np.float64)
+        v = np.zeros((num_PS,), dtype=np.float64)
+        for s, e in tqdm.tqdm(
+            zip(start_indices, end_indices), total=len(start_indices)
+        ):
+            nps = e - s
 
-        res = tfp.optimizer.lbfgs_minimize(
-            loss,
-            initial_position=tf.constant(np.zeros(2 * num_PS), dtype=tf.float64),
-            tolerance=1e-15,
-            max_iterations=10,
+            @make_val_and_grad_fn
+            def loss(x):
+                q_b = x[0:nps]
+                v_b = x[nps:]
+                per = periodogram_to_optimize(
+                    q_b,
+                    v_b,
+                    Cq[s:e],
+                    date_normal_baseline[:, s:e],
+                    tf_phi_ps_mat[:, s:e],
+                )
+                return -tf.reduce_sum(tf.math.abs(per))
+
+            res = tfp.optimizer.lbfgs_minimize(
+                loss,
+                initial_position=tf.constant(np.zeros(2 * nps), dtype=tf.float64),
+                tolerance=1e-15,
+                max_iterations=10,
+            )
+
+            x = res.position
+            q[s:e] = x[0:nps].numpy()
+            v[s:e] = x[nps:].numpy()
+
+        gammas = (
+            tf.math.abs(
+                periodogram_to_optimize(q, v, Cq, date_normal_baseline, tf_phi_ps_mat)
+            )
+            .numpy()
+            .squeeze()
         )
-        x = res.position
-        q = x[0:num_PS].numpy()
-        v = x[num_PS:].numpy()
-        gammas = tf.math.abs(periodogram_to_optimize(x)).numpy().squeeze()
     else:
         q = np.zeros([num_PS], dtype=np.float32)  # constant dem error
         v = np.zeros([num_PS], dtype=np.float32)  # constant velocity
@@ -446,6 +477,7 @@ def final_periodogram(
     *,
     use_tensorflow=True,
     ncpu=1,
+    batch_size=128,
 ):
     n, h, w = phi_ts_raster.shape
 
@@ -467,6 +499,7 @@ def final_periodogram(
         years_since_ref,
         use_tensorflow=use_tensorflow,
         ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     q = q.reshape((h, w))
@@ -488,7 +521,7 @@ def get_phi_no_q_v_estimation(
 
 def full_pipeline(
     amps,
-    phi_ts,
+    Delta_phi_against_ref,
     bperp,
     inc,
     rng,
@@ -503,10 +536,11 @@ def full_pipeline(
     *,
     use_tensorflow=True,
     ncpu=1,
+    batch_size=128,
 ):
     result = run(
         amps,
-        phi_ts,
+        Delta_phi_against_ref,
         bperp,
         inc,
         rng,
@@ -519,6 +553,7 @@ def full_pipeline(
         wavelength=wavelength,
         use_tensorflow=use_tensorflow,
         ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     # keep only good ps
@@ -538,14 +573,24 @@ def full_pipeline(
     )
 
 
-def run(
-    amps,
-    phi_ts,
+def get_psc_coords(amps, da_threshold):
+    _, PS_candidates_basic, _ = psc.get_PS_candidates_DA(amps, da_threshold)
+    PS_candidates_mask_sparse = psutils.dense_mask_to_sparse(PS_candidates_basic)
+
+    PS_X_coordinates = PS_candidates_mask_sparse.col.reshape([-1])
+    PS_Y_coordinates = PS_candidates_mask_sparse.row.reshape([-1])
+
+    return PS_X_coordinates, PS_Y_coordinates
+
+
+def get_atmos(
+    PS_X_coordinates,
+    PS_Y_coordinates,
+    Delta_phi_against_ref,
     bperp,
     inc,
     rng,
     years_since_ref,
-    da_threshold=0.25,
     max_iterations=10,
     threshold_q=0.7,
     threshold_v=0.1,
@@ -554,19 +599,8 @@ def run(
     *,
     use_tensorflow=True,
     ncpu=1,
-) -> Ferreti2001Result:
-    print("ps candidates selection")
-    # ps candidates
-    _, PS_candidates_basic, PS_candidates_mask = psc.get_PS_candidates_DA(
-        amps, da_threshold
-    )
-    PS_candidates_mask_sparse = psutils.dense_mask_to_sparse(PS_candidates_basic)
-    PS_X_coordinates = PS_candidates_mask_sparse.col.reshape([-1])
-    PS_Y_coordinates = PS_candidates_mask_sparse.row.reshape([-1])
-
-    print("iterative periodogram")
-    # estimate atmosphere on candidates
-    Delta_phi_against_ref = np.array(phi_ts)
+    batch_size=128,
+):
     (
         q_estimation,
         v_estimation,
@@ -589,6 +623,7 @@ def run(
         wavelength=wavelength,
         use_tensorflow=use_tensorflow,
         ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     # filter bad candidates
@@ -610,6 +645,54 @@ def run(
     atmos = get_atmo_full(
         interpolated, ak, pdzeta, peta, parent_shape=Delta_phi_against_ref[0].shape
     )
+    return atmos
+
+
+def run(
+    amps,
+    Delta_phi_against_ref,
+    bperp,
+    inc,
+    rng,
+    years_since_ref,
+    da_threshold=0.25,
+    max_iterations=10,
+    threshold_q=0.7,
+    threshold_v=0.1,
+    first_gamma_threshold=0.8,
+    wavelength=5.5465763 * 1e-2,
+    *,
+    use_tensorflow=True,
+    ncpu=1,
+    batch_size=128,
+) -> Ferreti2001Result:
+    print("ps candidates selection")
+    # ps candidates
+    PS_X_coordinates, PS_Y_coordinates = get_psc_coords(amps, da_threshold)
+    del amps
+
+    print("iterative periodogram")
+    # estimate atmosphere on candidates
+    Delta_phi_against_ref = np.array(Delta_phi_against_ref)
+    atmos = get_atmos(
+        PS_X_coordinates,
+        PS_Y_coordinates,
+        Delta_phi_against_ref,
+        bperp,
+        inc,
+        rng,
+        years_since_ref,
+        max_iterations=max_iterations,
+        threshold_q=threshold_q,
+        threshold_v=threshold_v,
+        first_gamma_threshold=first_gamma_threshold,
+        wavelength=wavelength,
+        use_tensorflow=use_tensorflow,
+        ncpu=ncpu,
+        batch_size=batch_size,
+    )
+    del PS_X_coordinates
+    del PS_Y_coordinates
 
     print("final periodogram")
     # do final periodogram
@@ -623,6 +706,7 @@ def run(
         wavelength=wavelength,
         use_tensorflow=use_tensorflow,
         ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
