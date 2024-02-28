@@ -4,8 +4,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from numpy.typing import ArrayLike
+from typing_extensions import override
 
 import eos.sar
+from eos.sar.srgr import Arrayf32
 
 
 @dataclass(frozen=True)
@@ -98,7 +101,8 @@ class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
         self.sr0 = np.asarray(srgr_meta.sr0)
         self.gr0 = np.asarray(srgr_meta.gr0)
 
-    def gr_to_rng(self, gr, azt):
+    @override
+    def gr_to_rng(self, gr: ArrayLike, azt: ArrayLike) -> Arrayf32:
         gr = np.atleast_1d(gr)
         azt = np.atleast_1d(azt)
 
@@ -109,7 +113,8 @@ class Sentinel1SRGRConverter(eos.sar.srgr.SRGRConverter):
             return rng[0]
         return rng
 
-    def rng_to_gr(self, rng, azt):
+    @override
+    def rng_to_gr(self, rng: ArrayLike, azt: ArrayLike) -> Arrayf32:
         rng = np.atleast_1d(rng)
         azt = np.atleast_1d(azt)
 
