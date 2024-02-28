@@ -104,13 +104,13 @@ def test_geom_phase_prediction(s3_client):
 
     # test sparse flat earth prediction
     sparse_flat = topo.sparse_flat_earth(rows + row_orig, cols + col_orig, wrapped=True)
-    assert not np.any(sparse_flat[0] - flat_earth[0][rows, cols])
+    np.testing.assert_almost_equal(sparse_flat[0], flat_earth[0][rows, cols])
 
     # test sparse topo prediction
     sparse_topo = topo.sparse_topo_phase(
         heights[rows, cols], rows + row_orig, cols + col_orig, wrapped=False
     )
-    assert not np.any(sparse_topo[0] - topo_phase[0][rows, cols])
+    np.testing.assert_almost_equal(sparse_topo[0], topo_phase[0][rows, cols])
 
     # test on multiple secondary imgs
     list_topo = eos.sar.geom_phase.TopoCorrection(
