@@ -18,7 +18,7 @@ test:
     - pip install pytest-xdist
   script:
     - pip install multidem 'kayrros-phoenix[source-s3]' dem-stitcher srtm4
-    - pytest . -n auto
+    - pytest . -n auto -v
 
 checkstyle:
   stage: test

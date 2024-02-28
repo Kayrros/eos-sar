@@ -1,11 +1,13 @@
 """Coordinates conversion between image (row/column denoted as `row` \
     and `col`) and sar (azimuth time and range denoted as `azt` and `rng`)."""
 
+import abc
 from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from typing_extensions import override
 
 from eos.sar import const
 from eos.sar.srgr import SRGRConverter
@@ -13,8 +15,18 @@ from eos.sar.srgr import SRGRConverter
 Arrayf32 = NDArray[np.float32]
 
 
+class TwoDCoordinate(abc.ABC):
+    @abc.abstractmethod
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        ...
+
+    @abc.abstractmethod
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+        ...
+
+
 @dataclass(frozen=True)
-class SLCCoordinate:
+class SLCCoordinate(TwoDCoordinate):
     first_row_time: float
     first_col_time: float
     azimuth_frequency: float
@@ -34,6 +46,7 @@ class SLCCoordinate:
         )
         return rng
 
+    @override
     def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         azt = self.to_azt(row)
         rng = self.to_rng(col)
@@ -51,6 +64,7 @@ class SLCCoordinate:
         ) * self.range_frequency
         return col
 
+    @override
     def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         row = self.to_row(azt)
         col = self.to_col(rng)
@@ -58,7 +72,7 @@ class SLCCoordinate:
 
 
 @dataclass(frozen=True)
-class GRDCoordinate:
+class GRDCoordinate(TwoDCoordinate):
     # NOTE: the function signature is slightly different than in SLCCoordinate
     # because the azt is required for the to_col, not optional
 
@@ -78,6 +92,7 @@ class GRDCoordinate:
         rng = self.srgr.gr_to_rng(gr, azt)
         return rng
 
+    @override
     def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         azt = self.to_azt(row)
         rng = self.to_rng(col, azt)
@@ -93,6 +108,7 @@ class GRDCoordinate:
         col = gr / self.range_pixel_spacing
         return col
 
+    @override
     def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
         row = self.to_row(azt)
         col = self.to_col(rng, azt)

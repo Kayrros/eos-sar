@@ -1,3 +1,4 @@
+import importlib.util
 import os
 
 import pytest
@@ -51,6 +52,8 @@ def maybe_skip_cdse():
 
 @pytest.fixture(scope="session")
 def maybe_skip_phx():
+    if importlib.util.find_spec("phoenix") is None:
+        pytest.skip("skipped because Phoenix is not installed")
     if "PHX_USERNAME" not in os.environ:
         pytest.skip("skipped because Phoenix credentials are not found")
 
