@@ -1,4 +1,5 @@
 import pytest
+import requests.exceptions
 
 from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.orbit_catalog import (
@@ -37,6 +38,7 @@ def test_phx_catalog_backend_single(phx_backend):
     assert result.single()
 
 
+@pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
 def test_cdse_catalog_backend_single(cdse_backend):
     product_id = "S1A_IW_SLC__1SDV_20210216T151206_20210216T151233_036617_044D40_8650"
     query = Sentinel1OrbitCatalogQuery(product_ids=[product_id], quality=BestEffort)
@@ -67,6 +69,7 @@ def test_phx_catalog_backend_many(phx_backend):
         assert result.for_product_id(pid) is not None
 
 
+@pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
 def test_cdse_catalog_backend_many(cdse_backend):
     product_ids = [
         "S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885",

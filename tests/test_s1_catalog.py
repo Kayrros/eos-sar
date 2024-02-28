@@ -1,5 +1,7 @@
 import datetime
 
+import pytest
+import requests
 import shapely.geometry
 
 from eos.products.sentinel1.catalog import (
@@ -78,18 +80,21 @@ def test_phx_catalog_grd(phx_client):
     assert result.product_ids == expected_grd
 
 
+@pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
 def test_cdse_catalog_slc():
     backend = CDSESentinel1SLCCatalogBackend()
     result = search_slc(backend, query)
     assert result.product_ids == expected_slc
 
 
+@pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
 def test_cdse_catalog_grd():
     backend = CDSESentinel1GRDCatalogBackend()
     result = search_grd(backend, query)
     assert result.product_ids == expected_grd
 
 
+@pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
 def test_cdse_catalog_slc_get_item():
     backend = CDSESentinel1SLCCatalogBackend()
     item = backend.get_cdse_item(
@@ -101,6 +106,7 @@ def test_cdse_catalog_slc_get_item():
     )
 
 
+@pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
 def test_cdse_catalog_grd_get_item():
     backend = CDSESentinel1GRDCatalogBackend()
     item = backend.get_cdse_item(
