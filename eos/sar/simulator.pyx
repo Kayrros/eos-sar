@@ -234,12 +234,13 @@ class SARSimulator:
 
         return dem, transform
 
-    def simulate(self, roi: Roi, *, extends_roi=True, detect_shadows=True):
+    def simulate(self, roi: Roi, *, extends_roi: bool=True, detect_shadows: bool=True, extends_roi_n_grid: int=10):
         """
         Inputs:
             roi: region of interest, defined according to the proj_model
             extends_roi (optional): extends the roi internally due to SAR geometric distortion
             detect_shadows (optional): sets to 0 values that are not visible by the sensor due to elevation
+            extends_roi_n_grid (optional, int): number of points to define the grid used to extend the ROI
         Outputs:
             array: simulated image of the shape of the roi
         """
@@ -268,7 +269,7 @@ class SARSimulator:
 
         outer_roi = roi.copy()
         if extends_roi:
-            self._adjust_outer_roi(outer_roi)
+            self._adjust_outer_roi(outer_roi, extends_roi_n_grid)
         # add a bit of y margins for the bilinear splatting
         outer_roi.row -= 2
         outer_roi.h += 3
@@ -447,7 +448,7 @@ class SARSimulator:
 
         return True
 
-    def _adjust_outer_roi(self, roi: Roi, int N=10):
+    def _adjust_outer_roi(self, roi: Roi, int N):
         """
             Compute the outer ROI. Each 3D point from the outer roi should be projected inside the inner ROI.
         """
