@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,7 +15,7 @@ def normalize(
     raster: NDArray[Any],
     simulation: NDArray[np.float32],
     shadow_threshold: float = 0.05,
-    shadow_value: float = 0.0,
+    shadow_value: Optional[float] = 0.0,
 ) -> NDArray[Any]:
     normalized = np.sqrt(np.abs(raster) ** 2 / (simulation + 1e-30))
 
