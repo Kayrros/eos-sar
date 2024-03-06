@@ -102,7 +102,7 @@ def search_grd(
 try:
     import phoenix.catalog as phx
 except ImportError:
-    logger.warning("phoenix backend for eos.products.sentinel1.catalog not available.")
+    pass
 else:
 
     def _phx_search(collection_source: Any, query: Sentinel1CatalogQuery) -> list[str]:

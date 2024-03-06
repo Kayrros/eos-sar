@@ -223,15 +223,13 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
 try:
     import phoenix.catalog
 except ImportError:
-    logger.warning("phoenix backend for eos.products.sentinel1.product not available.")
+    pass
 else:
     try:
         from bursterio import BursterSwathReader
         from phoenix.catalog.plugins.slc_burster import Burster
-    except ImportError as e:
-        logger.warning(
-            f"phoenix burster backend or bursterio for eos.products.sentinel1.product not available: {e}"
-        )
+    except ImportError:
+        pass
     else:
 
         class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):

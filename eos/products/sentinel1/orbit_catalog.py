@@ -414,7 +414,7 @@ class CDSESentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
 try:
     import phoenix.catalog as phx
 except ImportError:
-    logger.warning("phoenix backend for eos.products.sentinel1.catalog not available.")
+    pass
 else:
 
     def _search_phx(
