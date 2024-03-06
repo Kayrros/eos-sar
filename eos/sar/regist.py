@@ -1,6 +1,7 @@
 """Generic registration functions."""
 
 import abc
+from dataclasses import dataclass
 from typing import Any
 
 import cv2
@@ -10,6 +11,18 @@ from numpy.typing import NDArray
 import eos.dem
 from eos.sar import utils
 from eos.sar.model import SensorModel
+
+
+@dataclass(frozen=True)
+class Interpolation:
+    cv2_flag: int
+
+
+NearestInterpolation = Interpolation(cv2.INTER_NEAREST)
+LinearInterpolation = Interpolation(cv2.INTER_LINEAR)
+CubicInterpolation = Interpolation(cv2.INTER_CUBIC)
+AreaInterpolation = Interpolation(cv2.INTER_AREA)
+LanczosInterpolation = Interpolation(cv2.INTER_LANCZOS4)
 
 
 def affine_transformation(src, dst):
@@ -224,7 +237,12 @@ def translation_matrix(col, row):
     return T
 
 
-def apply_affine(src_array, matrix, destination_array_shape):
+def apply_affine(
+    src_array,
+    matrix,
+    destination_array_shape,
+    interpolation: Interpolation = LanczosInterpolation,
+):
     """Resamples an image with the provided matrix using Lanczos interpolation.
 
     Parameters
@@ -244,7 +262,7 @@ def apply_affine(src_array, matrix, destination_array_shape):
     """
     # parameters for warpAffine
     dsize = destination_array_shape[::-1]
-    flags = cv2.INTER_LANCZOS4 | cv2.WARP_INVERSE_MAP
+    flags = interpolation.cv2_flag | cv2.WARP_INVERSE_MAP
     M = np.zeros((2, 3))
     # swap x and y for opencv
     M[0, 0] = matrix[1, 1]
