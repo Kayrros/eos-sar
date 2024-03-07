@@ -311,12 +311,14 @@ def velo_topo_periodogram(
         # Here we use tensorflow, which has a fixed cost when calling (graph compilation),
         # but then is much faster. We have a lot of variables to minimize, thus it makes sense.
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
+        tf_Cq = tf.cast(Cq, tf.float64)
+        tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
 
         # Cq = Cq[None, :]
 
-        @tf.function
+        @tf.function(jit_compile=True)
         def periodogram_to_optimize(
-            q_b, v_b, Cq_b, date_normal_baseline_b, tf_phi_ps_mat_b
+            q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
         ):  # _b stands for batch
             res = 0
             for k in range(num_dates):
@@ -325,8 +327,7 @@ def velo_topo_periodogram(
                         tf.cast(0.0, tf.float64),
                         (
                             tf_phi_ps_mat_b[k, :]
-                            - tf.cast(Cq_b * date_normal_baseline_b[k], tf.float64)
-                            * q_b
+                            - tf_Cq_b * tf_date_normal_baseline_b[k] * q_b
                             - tf.cast(Cv * years_since_ref[k], tf.float64) * v_b
                         ),
                     )
@@ -340,6 +341,13 @@ def velo_topo_periodogram(
 
             return val_and_grad
 
+        @tf.function(jit_compile=True)
+        def subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice):
+            per = periodogram_to_optimize(
+                q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice
+            )
+            return -tf.reduce_sum(tf.math.abs(per))
+
         # slice in batches
         start_indices = np.arange(0, num_PS, batch_size)
         end_indices = np.append(start_indices[1:], num_PS)
@@ -349,19 +357,15 @@ def velo_topo_periodogram(
             zip(start_indices, end_indices), total=len(start_indices)
         ):
             nps = e - s
+            tf_Cq_slice = tf_Cq[s:e]
+            tf_date_slice = tf_date_normal_baseline[:, s:e]
+            tf_phi_ps_slice = tf_phi_ps_mat[:, s:e]
 
             @make_val_and_grad_fn
             def loss(x):
                 q_b = x[0:nps]
                 v_b = x[nps:]
-                per = periodogram_to_optimize(
-                    q_b,
-                    v_b,
-                    Cq[s:e],
-                    date_normal_baseline[:, s:e],
-                    tf_phi_ps_mat[:, s:e],
-                )
-                return -tf.reduce_sum(tf.math.abs(per))
+                return subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice)
 
             res = tfp.optimizer.lbfgs_minimize(
                 loss,
@@ -376,7 +380,9 @@ def velo_topo_periodogram(
 
         gammas = (
             tf.math.abs(
-                periodogram_to_optimize(q, v, Cq, date_normal_baseline, tf_phi_ps_mat)
+                periodogram_to_optimize(
+                    q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat
+                )
             )
             .numpy()
             .squeeze()
