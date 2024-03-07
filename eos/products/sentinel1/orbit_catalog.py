@@ -77,6 +77,7 @@ class Sentinel1OrbitCatalogResult:
         return self._statevectors_per_datatake.get(datatake)
 
     def single(self) -> Optional[list[StateVector]]:
+        """Get the list of statevectors. To be used only when a single datatake is queried (might be multiple products)."""
         if not self._statevectors_per_datatake:
             return None
         assert len(self._statevectors_per_datatake) == 1
