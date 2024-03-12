@@ -17,7 +17,7 @@ for m in ext_module:
 
 setuptools.setup(
     name="kayrros-eos-sar",
-    version="0.25.0",
+    version="0.26.0",
     description="",
     long_description=long_description,
     author="Kayrros",
