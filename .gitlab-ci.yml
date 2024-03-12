@@ -47,13 +47,76 @@ fakedeploy:
     - pip install dist/*.tar.gz
     - pip install dist/*.whl
 
-deploy:
+deploy-sdist:
   stage: deploy
   before_script:
     - pip install twine
     - pip install cython numpy
   script:
     - python setup.py sdist
+    - twine upload
+      --repository-url ${PIP_EXTRA_INDEX_URL}
+      -u ${PYPI_USERNAME}
+      -p ${PYPI_PASSWORD}
+      dist/*
+  only:
+    - tags
+
+deploy-wheel39:
+  stage: deploy
+  image: python:3.9
+  before_script:
+    - pip install twine
+    - pip install cython numpy
+  script:
+    - python setup.py bdist_wheel
+    - twine upload
+      --repository-url ${PIP_EXTRA_INDEX_URL}
+      -u ${PYPI_USERNAME}
+      -p ${PYPI_PASSWORD}
+      dist/*
+  only:
+    - tags
+
+deploy-wheel310:
+  stage: deploy
+  image: python:3.10
+  before_script:
+    - pip install twine
+    - pip install cython numpy
+  script:
+    - python setup.py bdist_wheel
+    - twine upload
+      --repository-url ${PIP_EXTRA_INDEX_URL}
+      -u ${PYPI_USERNAME}
+      -p ${PYPI_PASSWORD}
+      dist/*
+  only:
+    - tags
+
+deploy-wheel311:
+  stage: deploy
+  image: python:3.11
+  before_script:
+    - pip install twine
+    - pip install cython numpy
+  script:
+    - python setup.py bdist_wheel
+    - twine upload
+      --repository-url ${PIP_EXTRA_INDEX_URL}
+      -u ${PYPI_USERNAME}
+      -p ${PYPI_PASSWORD}
+      dist/*
+  only:
+    - tags
+
+deploy-wheel312:
+  stage: deploy
+  image: python:3.12
+  before_script:
+    - pip install twine
+    - pip install cython numpy
+  script:
     - python setup.py bdist_wheel
     - twine upload
       --repository-url ${PIP_EXTRA_INDEX_URL}
