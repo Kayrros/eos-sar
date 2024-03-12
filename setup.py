@@ -24,7 +24,6 @@ setuptools.setup(
     url="https://git.dev-kayrros.ovh/products/satellite-tools/rs-tlbx/eos-sar/",
     packages=find_packages(exclude=["tests"]),
     package_dir={"": "."},
-    package_data={"eos": ["py.typed"], "teosar": ["py.typed"]},
     ext_modules=ext_module,
     setup_requires=["cython", "numpy"],
     install_requires=required,

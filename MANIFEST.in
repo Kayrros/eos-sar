@@ -7,3 +7,4 @@ include README.md
 include requirements.txt
 include eos/products/sentinel1/_calibration.pyx
 include eos/sar/simulator.pyx
+recursive-include py.typed
