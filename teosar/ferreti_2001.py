@@ -1,4 +1,6 @@
+import concurrent.futures
 import functools
+import multiprocessing
 import os
 from dataclasses import dataclass
 from typing import Optional
@@ -6,6 +8,7 @@ from typing import Optional
 import numpy as np
 import scipy
 import tifffile
+import tqdm
 from numpy.typing import NDArray
 
 from teosar import periodogram, psc, psutils
@@ -96,7 +99,7 @@ def iterative_alternate_periodogram(
     bperp,
     inc,
     rng,
-    dates,
+    years_since_ref,
     max_iterations=10,
     threshold_q=0.7,
     threshold_v=0.1,
@@ -104,6 +107,8 @@ def iterative_alternate_periodogram(
     debug_path=None,
     *,
     use_tensorflow=True,
+    ncpu=1,
+    batch_size=128,
 ):
     # Estimate LOS velocity, DEM errors and APSs on the sparse grid
     # Solving system 13 of Ferreti 2001
@@ -112,11 +117,6 @@ def iterative_alternate_periodogram(
     # APS is affine on the image plane
 
     # Convert dates to deltas in day
-    times_differences_against_ref = [
-        (d - dates[0]).days / 365.25 for d in dates[1:]
-    ]  # total_seconds() to get seconds
-    times_differences_against_ref = np.array(times_differences_against_ref)
-
     num_PS = len(PS_X_coordinates)
 
     rng_PS = rng[PS_X_coordinates]
@@ -131,7 +131,7 @@ def iterative_alternate_periodogram(
     Cq = Cq.flatten()
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
-    num_dates = len(dates) - 1  # ignoring the reference
+    num_dates = len(years_since_ref)
 
     # init variables
     q_estimation = np.zeros([num_PS], dtype=np.float32)  # constant dem error
@@ -169,7 +169,7 @@ def iterative_alternate_periodogram(
             date_normal_baseline,
             q_estimation,
             Cv,
-            times_differences_against_ref,
+            years_since_ref,
             v_estimation,
         )
 
@@ -235,11 +235,9 @@ def iterative_alternate_periodogram(
                 PS_X_coordinates,
                 PS_Y_coordinates,
                 parent_shape,
-                (
-                    Cv
-                    * times_differences_against_ref[:, np.newaxis]
-                    * v_estimation[np.newaxis, :]
-                )[-1, :],
+                (Cv * years_since_ref[:, np.newaxis] * v_estimation[np.newaxis, :])[
+                    -1, :
+                ],
             )
             save_debug_image(
                 os.path.join(debug_path, "DPHI_NOAPS_NOMVT_NOTOPO_%d.tiff" % iteration),
@@ -259,9 +257,11 @@ def iterative_alternate_periodogram(
             Cq,
             date_normal_baseline,
             Cv,
-            times_differences_against_ref,
+            years_since_ref,
             date_coefs,
             use_tensorflow=use_tensorflow,
+            ncpu=ncpu,
+            batch_size=batch_size,
         )
         print(f"iteration: {iteration} dq {max(abs(delta_q))} dv {max(abs(delta_v))}")
 
@@ -273,7 +273,7 @@ def iterative_alternate_periodogram(
         date_normal_baseline,
         q_estimation,
         Cv,
-        times_differences_against_ref,
+        years_since_ref,
         v_estimation,
     )
     residual = psutils.wrap(Delta_phi_no_q_v_estimation - APS_estimated)
@@ -288,10 +288,12 @@ def velo_topo_periodogram(
     Cq,
     date_normal_baseline,
     Cv,
-    times_differences_against_ref,
+    years_since_ref,
     weights_per_date=None,
     *,
     use_tensorflow=True,
+    ncpu=1,
+    batch_size=128,
 ):
     num_dates, num_PS = phi_ps_mat.shape
 
@@ -309,22 +311,22 @@ def velo_topo_periodogram(
         # Here we use tensorflow, which has a fixed cost when calling (graph compilation),
         # but then is much faster. We have a lot of variables to minimize, thus it makes sense.
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
+        tf_Cq = tf.cast(Cq, tf.float64)
+        tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
 
-        Cq = Cq[None, :]
-
-        def periodogram_to_optimize(x):
+        @tf.function(jit_compile=True)
+        def periodogram_to_optimize(
+            q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
+        ):  # _b stands for batch
             res = 0
-            q = x[0:num_PS]
-            v = x[num_PS:]
             for k in range(num_dates):
                 res += weights_per_date[k] * tf.exp(
                     tf.dtypes.complex(
                         tf.cast(0.0, tf.float64),
                         (
-                            tf_phi_ps_mat[k, :]
-                            - tf.cast(Cq * date_normal_baseline[k], tf.float64) * q
-                            - tf.cast(Cv * times_differences_against_ref[k], tf.float64)
-                            * v
+                            tf_phi_ps_mat_b[k, :]
+                            - tf_Cq_b * tf_date_normal_baseline_b[k] * q_b
+                            - tf.cast(Cv * years_since_ref[k], tf.float64) * v_b
                         ),
                     )
                 )
@@ -337,46 +339,104 @@ def velo_topo_periodogram(
 
             return val_and_grad
 
-        @make_val_and_grad_fn
-        def loss(x):
-            per = periodogram_to_optimize(x)
+        @tf.function(jit_compile=True)
+        def subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice):
+            per = periodogram_to_optimize(
+                q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice
+            )
             return -tf.reduce_sum(tf.math.abs(per))
 
-        res = tfp.optimizer.lbfgs_minimize(
-            loss,
-            initial_position=tf.constant(np.zeros(2 * num_PS), dtype=tf.float64),
-            tolerance=1e-15,
-            max_iterations=10,
+        # slice in batches
+        start_indices = np.arange(0, num_PS, batch_size)
+        end_indices = np.append(start_indices[1:], num_PS)
+        q = np.zeros((num_PS,), dtype=np.float64)
+        v = np.zeros((num_PS,), dtype=np.float64)
+        for s, e in tqdm.tqdm(
+            zip(start_indices, end_indices), total=len(start_indices)
+        ):
+            nps = e - s
+            tf_Cq_slice = tf_Cq[s:e]
+            tf_date_slice = tf_date_normal_baseline[:, s:e]
+            tf_phi_ps_slice = tf_phi_ps_mat[:, s:e]
+
+            @make_val_and_grad_fn
+            def loss(x):
+                q_b = x[0:nps]
+                v_b = x[nps:]
+                return subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice)
+
+            res = tfp.optimizer.lbfgs_minimize(
+                loss,
+                initial_position=tf.constant(np.zeros(2 * nps), dtype=tf.float64),
+                tolerance=1e-15,
+                max_iterations=10,
+            )
+
+            x = res.position
+            q[s:e] = x[0:nps].numpy()
+            v[s:e] = x[nps:].numpy()
+
+        gammas = (
+            tf.math.abs(
+                periodogram_to_optimize(
+                    q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat
+                )
+            )
+            .numpy()
+            .squeeze()
         )
-        x = res.position
-        q = x[0:num_PS].numpy()
-        v = x[num_PS:].numpy()
-        gammas = tf.math.abs(periodogram_to_optimize(x)).numpy().squeeze()
     else:
         q = np.zeros([num_PS], dtype=np.float32)  # constant dem error
         v = np.zeros([num_PS], dtype=np.float32)  # constant velocity
         gammas = np.zeros([num_PS], dtype=np.float32)  # temporal coherence
         v_test = periodogram.get_test_vals(300, 10)
         q_test = periodogram.get_test_vals(80, 10)
-        lin_defo_model = periodogram.LinearTermModel(
-            Cv, times_differences_against_ref, v_test
-        )
-        for h in range(num_PS):
-            topo_model = periodogram.LinearTermModel(
-                Cq[h], date_normal_baseline[:, h], q_test
-            )
-            defo_topo_model = periodogram.CompoundModel([lin_defo_model, topo_model])
-            defo_topo_grid = defo_topo_model.predict_grid()
-            period = periodogram.Periodogram(phi_ps_mat[:, h], weights_per_date)
-            exhaustive = period.exhaustive_gamma(defo_topo_grid)
-            x, gamma_opt = period.refinement(
-                defo_topo_model, exhaustive, no_failure=True
-            )
-            v[h] = x[0]
-            q[h] = x[1]
-            gammas[h] = gamma_opt
+        lin_defo_model = periodogram.LinearTermModel(Cv, years_since_ref, v_test)
+        mp_context = multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=ncpu, mp_context=mp_context
+        ) as executor:
+            future_to_ps = {
+                executor.submit(
+                    process_ps,
+                    Cq[h],
+                    date_normal_baseline[:, h],
+                    q_test,
+                    lin_defo_model,
+                    phi_ps_mat[:, h],
+                    weights_per_date,
+                ): h
+                for h in range(num_PS)
+            }
 
+            for future in tqdm.tqdm(
+                concurrent.futures.as_completed(future_to_ps), total=num_PS
+            ):
+                h = future_to_ps[future]
+                try:
+                    data = future.result()
+                except Exception as exc:
+                    print(f"PS {h} generated an exception: {exc}")
+                else:
+                    _v, _q, gamma_opt = data
+                    v[h] = _v
+                    q[h] = _q
+                    gammas[h] = gamma_opt
     return q, v, gammas
+
+
+def process_ps(
+    Cq_ps, date_normal_baseline_ps, q_test, lin_defo_model, phi_ps, weights_per_date
+):
+    topo_model = periodogram.LinearTermModel(Cq_ps, date_normal_baseline_ps, q_test)
+    defo_topo_model = periodogram.CompoundModel([lin_defo_model, topo_model])
+    defo_topo_grid = defo_topo_model.predict_grid()
+    period = periodogram.Periodogram(phi_ps, weights_per_date)
+    exhaustive = period.exhaustive_gamma(defo_topo_grid)
+    x, gamma_opt = period.refinement(defo_topo_model, exhaustive, no_failure=True)
+    _v = x[0]
+    _q = x[1]
+    return (_v, _q, gamma_opt)
 
 
 def spatial_low_pass_interpolate_atmo(
@@ -413,19 +473,17 @@ def get_atmo_full(interpolated, ak, pdzeta, peta, parent_shape):
 def final_periodogram(
     phi_ts_raster,
     atmos,
-    dates,
+    years_since_ref,
     rng,
     inc,
     bperp,
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
+    ncpu=1,
+    batch_size=128,
 ):
     n, h, w = phi_ts_raster.shape
-    times_differences_against_ref = [
-        (d - dates[0]).days / 365.25 for d in dates[1:]
-    ]  # total_seconds() to get seconds
-    times_differences_against_ref = np.array(times_differences_against_ref)
 
     phi_no_atmo = psutils.wrap(phi_ts_raster - atmos)
 
@@ -442,8 +500,10 @@ def final_periodogram(
         Cq,
         bperp,
         Cv,
-        times_differences_against_ref,
+        years_since_ref,
         use_tensorflow=use_tensorflow,
+        ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     q = q.reshape((h, w))
@@ -453,23 +513,23 @@ def final_periodogram(
 
 
 def get_phi_no_q_v_estimation(
-    phi_ps_mat, Cq, date_normal_baseline, q, Cv, times_differences_against_ref, v
+    phi_ps_mat, Cq, date_normal_baseline, q, Cv, years_since_ref, v
 ):
     phi_no_q_v_estimation = (
         phi_ps_mat
         - Cq[np.newaxis, :] * date_normal_baseline * q[np.newaxis, :]
-        - Cv * times_differences_against_ref[:, np.newaxis] * v[np.newaxis, :]
+        - Cv * years_since_ref[:, np.newaxis] * v[np.newaxis, :]
     )
     return phi_no_q_v_estimation
 
 
 def full_pipeline(
     amps,
-    phi_ts,
+    Delta_phi_against_ref,
     bperp,
     inc,
     rng,
-    dates,
+    years_since_ref,
     da_threshold=0.25,
     max_iterations=10,
     threshold_q=0.7,
@@ -479,14 +539,16 @@ def full_pipeline(
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
+    ncpu=1,
+    batch_size=128,
 ):
     result = run(
         amps,
-        phi_ts,
+        Delta_phi_against_ref,
         bperp,
         inc,
         rng,
-        dates,
+        years_since_ref,
         da_threshold=da_threshold,
         max_iterations=max_iterations,
         threshold_q=threshold_q,
@@ -494,6 +556,8 @@ def full_pipeline(
         first_gamma_threshold=first_gamma_threshold,
         wavelength=wavelength,
         use_tensorflow=use_tensorflow,
+        ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     # keep only good ps
@@ -513,14 +577,24 @@ def full_pipeline(
     )
 
 
-def run(
-    amps,
-    phi_ts,
+def get_psc_coords(amps, da_threshold):
+    _, PS_candidates_basic, _ = psc.get_PS_candidates_DA(amps, da_threshold)
+    PS_candidates_mask_sparse = psutils.dense_mask_to_sparse(PS_candidates_basic)
+
+    PS_X_coordinates = PS_candidates_mask_sparse.col.reshape([-1])
+    PS_Y_coordinates = PS_candidates_mask_sparse.row.reshape([-1])
+
+    return PS_X_coordinates, PS_Y_coordinates
+
+
+def get_atmos(
+    PS_X_coordinates,
+    PS_Y_coordinates,
+    Delta_phi_against_ref,
     bperp,
     inc,
     rng,
-    dates,
-    da_threshold=0.25,
+    years_since_ref,
     max_iterations=10,
     threshold_q=0.7,
     threshold_v=0.1,
@@ -528,19 +602,9 @@ def run(
     wavelength=5.5465763 * 1e-2,
     *,
     use_tensorflow=True,
-) -> Ferreti2001Result:
-    print("ps candidates selection")
-    # ps candidates
-    _, PS_candidates_basic, PS_candidates_mask = psc.get_PS_candidates_DA(
-        amps, da_threshold
-    )
-    PS_candidates_mask_sparse = psutils.dense_mask_to_sparse(PS_candidates_basic)
-    PS_X_coordinates = PS_candidates_mask_sparse.col.reshape([-1])
-    PS_Y_coordinates = PS_candidates_mask_sparse.row.reshape([-1])
-
-    print("iterative periodogram")
-    # estimate atmosphere on candidates
-    Delta_phi_against_ref = np.array(phi_ts)
+    ncpu=1,
+    batch_size=128,
+):
     (
         q_estimation,
         v_estimation,
@@ -556,12 +620,14 @@ def run(
         bperp,
         inc,
         rng,
-        dates,
+        years_since_ref,
         max_iterations=max_iterations,
         threshold_q=threshold_q,
         threshold_v=threshold_v,
         wavelength=wavelength,
         use_tensorflow=use_tensorflow,
+        ncpu=ncpu,
+        batch_size=batch_size,
     )
 
     # filter bad candidates
@@ -583,22 +649,70 @@ def run(
     atmos = get_atmo_full(
         interpolated, ak, pdzeta, peta, parent_shape=Delta_phi_against_ref[0].shape
     )
+    return atmos
+
+
+def run(
+    amps,
+    Delta_phi_against_ref,
+    bperp,
+    inc,
+    rng,
+    years_since_ref,
+    da_threshold=0.25,
+    max_iterations=10,
+    threshold_q=0.7,
+    threshold_v=0.1,
+    first_gamma_threshold=0.8,
+    wavelength=5.5465763 * 1e-2,
+    *,
+    use_tensorflow=True,
+    ncpu=1,
+    batch_size=128,
+) -> Ferreti2001Result:
+    print("ps candidates selection")
+    # ps candidates
+    PS_X_coordinates, PS_Y_coordinates = get_psc_coords(amps, da_threshold)
+    del amps
+
+    print("iterative periodogram")
+    # estimate atmosphere on candidates
+    Delta_phi_against_ref = np.array(Delta_phi_against_ref)
+    atmos = get_atmos(
+        PS_X_coordinates,
+        PS_Y_coordinates,
+        Delta_phi_against_ref,
+        bperp,
+        inc,
+        rng,
+        years_since_ref,
+        max_iterations=max_iterations,
+        threshold_q=threshold_q,
+        threshold_v=threshold_v,
+        first_gamma_threshold=first_gamma_threshold,
+        wavelength=wavelength,
+        use_tensorflow=use_tensorflow,
+        ncpu=ncpu,
+        batch_size=batch_size,
+    )
+    del PS_X_coordinates
+    del PS_Y_coordinates
 
     print("final periodogram")
     # do final periodogram
     q, v, gammas = final_periodogram(
         Delta_phi_against_ref,
         atmos,
-        dates,
+        years_since_ref,
         rng,
         inc,
         bperp,
         wavelength=wavelength,
         use_tensorflow=use_tensorflow,
+        ncpu=ncpu,
+        batch_size=batch_size,
     )
 
-    years_since_ref = [(d - dates[0]).days / 365.25 for d in dates[1:]]
-    years_since_ref = np.array(years_since_ref)
     Cq = -4 * np.pi / (wavelength * rng[np.newaxis, :] * np.sin(inc))
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
