@@ -131,7 +131,7 @@ def iterative_alternate_periodogram(
     Cq = Cq.flatten()
     Cv = -4 * np.pi / (wavelength * 1e3)  # 1e-3 to have mm/year
 
-    num_dates = len(years_since_ref)  # ignoring the reference
+    num_dates = len(years_since_ref)
 
     # init variables
     q_estimation = np.zeros([num_PS], dtype=np.float32)  # constant dem error
@@ -313,8 +313,6 @@ def velo_topo_periodogram(
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
         tf_Cq = tf.cast(Cq, tf.float64)
         tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
-
-        # Cq = Cq[None, :]
 
         @tf.function(jit_compile=True)
         def periodogram_to_optimize(
