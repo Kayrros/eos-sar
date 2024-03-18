@@ -4,7 +4,7 @@ from typing import Sequence
 import numpy as np
 import pyproj
 
-from eos.sar import geoconfig
+from eos.sar import const, geoconfig
 
 
 class Points:
@@ -490,3 +490,33 @@ class Corrector:
         """
         self.estimate(geo_im_pt)
         return self.apply(geo_im_pt, inverse)
+
+
+class RngAztShift(ImageCorrection):
+    """Applies the same shift on all points in image coordinates."""
+
+    def __init__(self, rng_shift: float, azt_shift: float):
+        super().__init__()
+        self.rng_shift = rng_shift
+        self.azt_shift = azt_shift
+
+    def estimate(self, pt: GeoImagePoints):
+        """Makes shift arrays with the same lenght as points"""
+        num_points = len(pt.azt)
+        self.drng = np.full((num_points,), self.rng_shift, dtype=float)
+        self.dazt = np.full((num_points,), self.azt_shift, dtype=float)
+
+
+class SLCPxShiftCorrection(RngAztShift):
+    """Applies the same shift on all points in image coordinates."""
+
+    def __init__(
+        self,
+        azimuth_frequency: float,
+        range_frequency: float,
+        col_shift: float,
+        row_shift: float,
+    ):
+        azt_shift = row_shift / azimuth_frequency
+        rng_shift = col_shift / range_frequency * const.LIGHT_SPEED_M_PER_SEC / 2
+        super().__init__(rng_shift, azt_shift)

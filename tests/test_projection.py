@@ -15,6 +15,7 @@ from eos.products.sentinel1.orbit_catalog import (
 )
 from eos.sar import range_doppler
 from eos.sar.orbit import Orbit
+from eos.sar.projection_correction import Corrector, SLCPxShiftCorrection
 
 
 def test_projection():
@@ -100,6 +101,31 @@ def test_projection():
     assert isinstance(
         gx, float
     ), "vectorized iterative localization func failed on scalar input"
+
+    # Test bias correction
+    # create an unbiased Sentinel1BurstModel
+    bmod_unbiased = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, orbit)
+    bias = np.random.uniform(low=-10, high=10, size=(2,))
+    # create an biased Sentinel1BurstModel
+    bias_correction = SLCPxShiftCorrection(
+        burst_meta.azimuth_frequency,
+        burst_meta.range_frequency,
+        col_shift=bias[0],
+        row_shift=bias[1],
+    )
+    bmod_biased = sentinel1.proj_model.burst_model_from_burst_meta(
+        burst_meta, orbit, coord_corrector=Corrector([bias_correction])
+    )
+
+    ptrow_unbiased, ptcol_unbiased, _ = bmod_unbiased.projection(lon[0], lat[0], alt[0])
+    ptrow_biased, ptcol_biased, _ = bmod_biased.projection(lon[0], lat[0], alt[0])
+
+    estimated_bias = np.array(
+        [ptcol_biased - ptcol_unbiased, ptrow_biased - ptrow_unbiased]
+    )
+
+    # Check if the bias applied on the data is close to the prescribed bias
+    np.testing.assert_allclose(estimated_bias, bias, atol=1e-3)
 
 
 def test_projection_grd():
