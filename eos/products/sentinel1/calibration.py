@@ -412,6 +412,9 @@ class CalibrationReader(ImageReader):
     """
     tile_size: Optional[int] = None
     """If not None, the calibration is done by tile, reducing the memory cost for large arrays."""
+    as_amplitude: bool = True
+    """By default, returns the raster in amplitude unit (same as the underlying raster).
+    If False, the raster is returned in intensity unit."""
 
     def read(
         self,
@@ -453,11 +456,15 @@ class CalibrationReader(ImageReader):
                     tile_roi,
                     self.method,
                     self.dont_clip_noise,
-                    as_amplitude=True,
+                    as_amplitude=self.as_amplitude,
                 )
         else:
             self.calibrator.calibrate_inplace(
-                array, roi, self.method, self.dont_clip_noise, as_amplitude=True
+                array,
+                roi,
+                self.method,
+                self.dont_clip_noise,
+                as_amplitude=self.as_amplitude,
             )
 
         return array
