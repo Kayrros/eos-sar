@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Union
 
 import numpy as np
@@ -388,40 +389,23 @@ class Sentinel1Calibrator:
         return range_noise
 
 
+@dataclass(frozen=True)
 class CalibrationReader(ImageReader):
     """Class to calibrate after reading the data"""
 
-    def __init__(
-        self,
-        reader: ImageReader,
-        calibrator: Sentinel1Calibrator,
-        method: str,
-        dont_clip_noise: bool = False,
-    ):
-        """
-        Constructor.
-
-        Parameters
-        ----------
-        reader : any ImageReader object (has .read(index, window))
-            Reader to the tiff of the product.
-        calibrator : Sentinel1Calibrator
-            Calibrator on the same product (same swath/polarization).
-        method : str
-            Calibration method (either "sigma", "gamma", "beta").
-        dont_clip_noise : boolean, optional
-            if true, during noise calibration, values are not clipped to 0 but stay positive
-            this is what happens in the implementation of SNAP. The default is False.
-
-        Returns
-        -------
-        None.
-
-        """
-        self.reader = reader
-        self.calibrator = calibrator
-        self.method = method
-        self.dont_clip_noise = dont_clip_noise
+    reader: ImageReader
+    """Any ImageReader object (has .read(index, window)). Reader to the tiff of the product."""
+    calibrator: Sentinel1Calibrator
+    """Calibrator on the same product (same swath/polarization)."""
+    method: str
+    """Calibration method (either "sigma", "gamma", "beta")."""
+    dont_clip_noise: bool = False
+    """
+    If true, during noise calibration, values are not clipped to 0 but stay positive.
+    This is what happens in the implementation of SNAP. The default is False.
+    """
+    tile_size: Optional[int] = None
+    """If not None, the calibration is done by tile, reducing the memory cost for large arrays."""
 
     def read(
         self,
@@ -451,7 +435,20 @@ class CalibrationReader(ImageReader):
         h = yh - y
         w = xw - x
         roi = Roi(x, y, w, h)
-        self.calibrator.calibrate_inplace(array, roi, self.method, self.dont_clip_noise)
+
+        if self.tile_size is not None:
+            ox, oy = roi.get_origin()
+            for tile_roi in roi.split_into_tiles(self.tile_size, self.tile_size):
+                roi_in_array = tile_roi.translate_roi(-ox, -oy)
+                tile = roi_in_array.crop_array(array)
+                # because the calibration operates on contiguous arrays, we copy the views
+                tile[:] = self.calibrator.calibrate_inplace(
+                    tile.copy(), tile_roi, self.method, self.dont_clip_noise
+                )
+        else:
+            self.calibrator.calibrate_inplace(
+                array, roi, self.method, self.dont_clip_noise
+            )
 
         # undo the pow2 from the calibration
         return array / np.sqrt(1e-9 + np.abs(array))
