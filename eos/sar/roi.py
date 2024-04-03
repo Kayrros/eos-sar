@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Iterator
 
 import numpy as np
 
@@ -442,3 +443,8 @@ class Roi:
             utils.arr_in_interval(rows, row_min, row_max),
         )
         return mask
+
+    def split_into_tiles(self, tile_width: int, tile_height: int) -> Iterator[Roi]:
+        for row in range(self.row, self.row + self.h, tile_height):
+            for col in range(self.col, self.col + self.w, tile_width):
+                yield Roi(col, row, tile_width, tile_height).clip(self)

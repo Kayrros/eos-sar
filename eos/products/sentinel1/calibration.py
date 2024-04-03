@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Union
 
 import numpy as np
@@ -194,13 +195,15 @@ def _bilinear_interpolation(window, lines, pixels, values):
     return res
 
 
-def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_noise):
+def _apply_radiometric_calibration(
+    img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude: bool
+):
     if np.iscomplexobj(img):
         assert img.dtype == np.complex64
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
         _cal.apply_radiometric_calibration_complex64(
-            img, calib_coeffs, noise_coeffs, dont_clip_noise
+            img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude
         )
         return img
     else:
@@ -208,7 +211,7 @@ def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_no
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
         _cal.apply_radiometric_calibration_float32(
-            img, calib_coeffs, noise_coeffs, dont_clip_noise
+            img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude
         )
         return img
 
@@ -244,7 +247,9 @@ class Sentinel1Calibrator:
         else:
             self.has_noise = False
 
-    def calibrate_inplace(self, image, roi, method, dont_clip_noise=False):
+    def calibrate_inplace(
+        self, image, roi, method, dont_clip_noise=False, as_amplitude: bool = False
+    ):
         """
         Apply the radiometric calibration on the given raster, at position `window` of the SLC tif image.
 
@@ -255,6 +260,8 @@ class Sentinel1Calibrator:
             dont_clip_noise (bool, default False):
                 if true, during noise calibration, values are not clipped to 0 but stay positive
                 this is what happens in the implementation of SNAP
+            as_amplitude (bool, default False):
+                if true, convert back to "amplitude unit" by dividing by sqrt(1e-9 + abs(array))
 
         Returns
             the calibration is applied in-place, the returned array is the same instance as the input image
@@ -272,7 +279,7 @@ class Sentinel1Calibrator:
         noise_array = self._get_noise_array(window) if self.has_noise else None
 
         return _apply_radiometric_calibration(
-            image, calib_array, noise_array, dont_clip_noise
+            image, calib_array, noise_array, dont_clip_noise, as_amplitude
         )
 
     def _load_calibration(self, calibration_xml_content):
@@ -388,40 +395,26 @@ class Sentinel1Calibrator:
         return range_noise
 
 
+@dataclass(frozen=True)
 class CalibrationReader(ImageReader):
     """Class to calibrate after reading the data"""
 
-    def __init__(
-        self,
-        reader: ImageReader,
-        calibrator: Sentinel1Calibrator,
-        method: str,
-        dont_clip_noise: bool = False,
-    ):
-        """
-        Constructor.
-
-        Parameters
-        ----------
-        reader : any ImageReader object (has .read(index, window))
-            Reader to the tiff of the product.
-        calibrator : Sentinel1Calibrator
-            Calibrator on the same product (same swath/polarization).
-        method : str
-            Calibration method (either "sigma", "gamma", "beta").
-        dont_clip_noise : boolean, optional
-            if true, during noise calibration, values are not clipped to 0 but stay positive
-            this is what happens in the implementation of SNAP. The default is False.
-
-        Returns
-        -------
-        None.
-
-        """
-        self.reader = reader
-        self.calibrator = calibrator
-        self.method = method
-        self.dont_clip_noise = dont_clip_noise
+    reader: ImageReader
+    """Any ImageReader object (has .read(index, window)). Reader to the tiff of the product."""
+    calibrator: Sentinel1Calibrator
+    """Calibrator on the same product (same swath/polarization)."""
+    method: str
+    """Calibration method (either "sigma", "gamma", "beta")."""
+    dont_clip_noise: bool = False
+    """
+    If true, during noise calibration, values are not clipped to 0 but stay positive.
+    This is what happens in the implementation of SNAP. The default is False.
+    """
+    tile_size: Optional[int] = None
+    """If not None, the calibration is done by tile, reducing the memory cost for large arrays."""
+    as_amplitude: bool = True
+    """By default, returns the raster in amplitude unit (same as the underlying raster).
+    If False, the raster is returned in intensity unit."""
 
     def read(
         self,
@@ -451,7 +444,27 @@ class CalibrationReader(ImageReader):
         h = yh - y
         w = xw - x
         roi = Roi(x, y, w, h)
-        self.calibrator.calibrate_inplace(array, roi, self.method, self.dont_clip_noise)
 
-        # undo the pow2 from the calibration
-        return array / np.sqrt(1e-9 + np.abs(array))
+        if self.tile_size is not None:
+            ox, oy = roi.get_origin()
+            for tile_roi in roi.split_into_tiles(self.tile_size, self.tile_size):
+                roi_in_array = tile_roi.translate_roi(-ox, -oy)
+                tile = roi_in_array.crop_array(array)
+                # because the calibration operates on contiguous arrays, we copy the views
+                tile[:] = self.calibrator.calibrate_inplace(
+                    tile.copy(),
+                    tile_roi,
+                    self.method,
+                    self.dont_clip_noise,
+                    as_amplitude=self.as_amplitude,
+                )
+        else:
+            self.calibrator.calibrate_inplace(
+                array,
+                roi,
+                self.method,
+                self.dont_clip_noise,
+                as_amplitude=self.as_amplitude,
+            )
+
+        return array

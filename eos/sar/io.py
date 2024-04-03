@@ -181,13 +181,13 @@ def read_window(
     if get_complex:
         # check if reader returned a complex image
         assert complex_flg, "Reader should return a complex type"
-        return img.astype(np.complex64)
+        return img.astype(np.complex64, copy=False)
     else:
         if complex_flg:
             amp = np.abs(img)
         else:
             amp = img
-        return amp.astype(np.float32)  # type: ignore
+        return amp.astype(np.float32, copy=False)  # type: ignore
 
 
 def read_windows(
