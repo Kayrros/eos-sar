@@ -195,13 +195,15 @@ def _bilinear_interpolation(window, lines, pixels, values):
     return res
 
 
-def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_noise):
+def _apply_radiometric_calibration(
+    img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude: bool
+):
     if np.iscomplexobj(img):
         assert img.dtype == np.complex64
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
         _cal.apply_radiometric_calibration_complex64(
-            img, calib_coeffs, noise_coeffs, dont_clip_noise
+            img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude
         )
         return img
     else:
@@ -209,7 +211,7 @@ def _apply_radiometric_calibration(img, calib_coeffs, noise_coeffs, dont_clip_no
         assert calib_coeffs.dtype == np.float32
         assert noise_coeffs is None or noise_coeffs.dtype == np.float32
         _cal.apply_radiometric_calibration_float32(
-            img, calib_coeffs, noise_coeffs, dont_clip_noise
+            img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude
         )
         return img
 
@@ -245,7 +247,9 @@ class Sentinel1Calibrator:
         else:
             self.has_noise = False
 
-    def calibrate_inplace(self, image, roi, method, dont_clip_noise=False):
+    def calibrate_inplace(
+        self, image, roi, method, dont_clip_noise=False, as_amplitude: bool = False
+    ):
         """
         Apply the radiometric calibration on the given raster, at position `window` of the SLC tif image.
 
@@ -256,6 +260,8 @@ class Sentinel1Calibrator:
             dont_clip_noise (bool, default False):
                 if true, during noise calibration, values are not clipped to 0 but stay positive
                 this is what happens in the implementation of SNAP
+            as_amplitude (bool, default False):
+                if true, convert back to "amplitude unit" by dividing by sqrt(1e-9 + abs(array))
 
         Returns
             the calibration is applied in-place, the returned array is the same instance as the input image
@@ -273,7 +279,7 @@ class Sentinel1Calibrator:
         noise_array = self._get_noise_array(window) if self.has_noise else None
 
         return _apply_radiometric_calibration(
-            image, calib_array, noise_array, dont_clip_noise
+            image, calib_array, noise_array, dont_clip_noise, as_amplitude
         )
 
     def _load_calibration(self, calibration_xml_content):
@@ -443,12 +449,15 @@ class CalibrationReader(ImageReader):
                 tile = roi_in_array.crop_array(array)
                 # because the calibration operates on contiguous arrays, we copy the views
                 tile[:] = self.calibrator.calibrate_inplace(
-                    tile.copy(), tile_roi, self.method, self.dont_clip_noise
+                    tile.copy(),
+                    tile_roi,
+                    self.method,
+                    self.dont_clip_noise,
+                    as_amplitude=True,
                 )
         else:
             self.calibrator.calibrate_inplace(
-                array, roi, self.method, self.dont_clip_noise
+                array, roi, self.method, self.dont_clip_noise, as_amplitude=True
             )
 
-        # undo the pow2 from the calibration
-        return array / np.sqrt(1e-9 + np.abs(array))
+        return array

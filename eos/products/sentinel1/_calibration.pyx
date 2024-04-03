@@ -84,7 +84,7 @@ def bilinear_interpolation(tuple window, np.int32_t[::1] lines, np.int32_t[::1] 
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def apply_radiometric_calibration_float32(np.float32_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs, bint dont_clip_noise):
+def apply_radiometric_calibration_float32(np.float32_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs, bint dont_clip_noise, bint as_amplitude):
     cdef int h = img.shape[0]
     cdef int w = img.shape[1]
 
@@ -108,12 +108,16 @@ def apply_radiometric_calibration_float32(np.float32_t[:,::1] img, np.float32_t[
         for i in range(w * h):
             pimg[i] = (pimg[i] / pcalib[i]) ** 2
 
+    if as_amplitude:
+        # undo the pow2
+        for i in range(w * h):
+            pimg[i] = sqrt(pimg[i])
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-def apply_radiometric_calibration_complex64(np.complex64_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs, bint dont_clip_noise):
+def apply_radiometric_calibration_complex64(np.complex64_t[:,::1] img, np.float32_t[:,::1] calib_coeffs, np.float32_t[:,::1] noise_coeffs, bint dont_clip_noise, bint as_amplitude):
     cdef int h = img.shape[0]
     cdef int w = img.shape[1]
 
@@ -144,3 +148,8 @@ def apply_radiometric_calibration_complex64(np.complex64_t[:,::1] img, np.float3
             namp = (amp / pcalib[i]) ** 2
             pimg[i] = pimg[i] * (namp / max(amp, 1e-10))
 
+    if as_amplitude:
+        # undo the pow2
+        for i in range(w * h):
+            amp = abs(pimg[i])
+            pimg[i] = pimg[i] / sqrt(1e-9 + amp)
