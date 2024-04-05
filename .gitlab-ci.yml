@@ -16,6 +16,11 @@ variables:
 
 test:
   stage: test
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    paths:
+    - .cache/pip
   tags:
     - high
   before_script:
@@ -34,6 +39,11 @@ checkstyle:
 
 mypy:
   stage: test
+  variables:
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  cache:
+    paths:
+    - .cache/pip
   before_script:
     - pip install -r requirements-dev.txt -r requirements-dev.txt
   script:
