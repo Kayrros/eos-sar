@@ -13,17 +13,15 @@ test:
   tags:
     - high
   before_script:
-    - pip install cython numpy
-    - pip install -e ".[test]"
-    - pip install pytest-xdist
+    - pip install -r requirements-dev.txt -r requirements-dev.txt
+    - pip install -e .
   script:
-    - pip install multidem 'kayrros-phoenix[source-s3]' dem-stitcher srtm4
     - pytest . -n auto -v
 
 checkstyle:
   stage: test
   before_script:
-    - pip install ruff==0.1.11
+    - pip install $(grep ruff requirements-dev.txt)
   script:
     - ruff check .
     - ruff format --check .
@@ -31,8 +29,7 @@ checkstyle:
 mypy:
   stage: test
   before_script:
-    - pip install mypy==1.8.0 cython numpy
-    - pip install -e ".[test]"
+    - pip install -r requirements-dev.txt -r requirements-dev.txt
   script:
     - mypy --non-interactive eos/ teosar/ tests/ usage/
 
