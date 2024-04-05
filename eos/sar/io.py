@@ -1,4 +1,5 @@
 import glob
+import os
 from typing import Any, Optional, Sequence, Union
 from urllib.parse import urlparse
 
@@ -10,6 +11,7 @@ from typing_extensions import Protocol
 
 from eos.sar.roi import Roi
 
+S3Client = Any
 Window = tuple[tuple[int, int], tuple[int, int]]
 
 
@@ -108,11 +110,11 @@ def open_image_fsspec(uri: str, **extra_args: Any) -> ImageReader:
         return reader  # type: ignore
 
 
-def read_xml_file(
-    xml_path: str, s3_client: Any = None, requester_pays: bool = False
+def read_file_as_str(
+    path: str, s3_client: S3Client = None, requester_pays: bool = False
 ) -> str:
     """
-    Read the content of a local or remote (S3) xml file.
+    Read the content of a local or remote (S3) file.
 
     Parameters
     ----------
@@ -127,28 +129,31 @@ def read_xml_file(
 
     Returns
     -------
-    xml_content : str
-        Content of the xml file.
+    content: str
+        Content of the file.
 
     """
-    if xml_path.startswith("s3://"):
+    if path.startswith("s3://"):
         if s3_client is None:
             import boto3
 
             s3_client = boto3.client("s3")
 
-        parsed_url = urlparse(xml_path)
+        parsed_url = urlparse(path)
         bucket = parsed_url.netloc
         key = parsed_url.path.lstrip("/")
         request_payer = "requester" if requester_pays else ""
         f = s3_client.get_object(Bucket=bucket, Key=key, RequestPayer=request_payer)[
             "Body"
         ]
-        xml_content = f.read().decode("utf-8")
+        content = f.read().decode("utf-8")
     else:
-        with open(xml_path, "r") as f:
-            xml_content = f.read()
-    return xml_content
+        with open(path, "r") as f:
+            content = f.read()
+    return content
+
+
+read_xml_file = read_file_as_str
 
 
 def read_window(
@@ -245,3 +250,22 @@ def glob_single_file(pattern: str) -> str:
         len(list_results) == 1
     ), f"Expected to find one file, instead found {len(list_results)}"
     return list_results[0]
+
+
+def exists(path: str, s3_client: S3Client) -> bool:
+    """Check if a file exists."""
+    if path.startswith("s3://"):
+        import botocore.exceptions
+
+        bucket, key = path.replace("s3://", "").split("/", 1)
+        try:
+            s3_client.head_object(Bucket=bucket, Key=key)
+        except botocore.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            else:
+                raise
+        return True
+
+    else:
+        return os.path.isfile(path)
