@@ -1,7 +1,8 @@
-""" 
+"""
 Note:
     Most of the code is was taken and adapted from centreborelli/itsr (Carlo de Franchis and Charles Hessel)
 """
+
 from typing import Optional
 
 import numpy as np

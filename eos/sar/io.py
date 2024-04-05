@@ -25,8 +25,7 @@ class ImageReader(Protocol):
 
 
 class ImageOpener(Protocol):
-    def __call__(self, path: str) -> ImageReader:
-        ...
+    def __call__(self, path: str) -> ImageReader: ...
 
 
 def open_image(path: str, requester_pays: bool = False) -> ImageReader:

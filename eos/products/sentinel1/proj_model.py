@@ -1,4 +1,5 @@
 """Sentinel1 models for projection/localization."""
+
 from __future__ import annotations
 
 import abc

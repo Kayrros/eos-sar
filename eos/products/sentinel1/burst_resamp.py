@@ -1,4 +1,5 @@
 """Resamples a complex Sentinel1 burst."""
+
 from __future__ import annotations
 
 import numpy as np

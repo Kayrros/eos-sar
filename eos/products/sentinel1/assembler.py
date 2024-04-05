@@ -68,12 +68,12 @@ class Sentinel1Assembler:
     product_id_per_bsid: dict[str, str] = {}
     bsids: set[str] = set()
     orbit_degree: int
-    _prim_cutter: Optional[
-        sentinel1.acquisition.PrimarySentinel1AcquisitionCutter
-    ] = None
-    _sec_cutter: Optional[
-        sentinel1.acquisition.SecondarySentinel1AcquisitionCutter
-    ] = None
+    _prim_cutter: Optional[sentinel1.acquisition.PrimarySentinel1AcquisitionCutter] = (
+        None
+    )
+    _sec_cutter: Optional[sentinel1.acquisition.SecondarySentinel1AcquisitionCutter] = (
+        None
+    )
     _ref_per_product_id: Optional[dict[str, FullBistaticReference]] = None
 
     def __init__(
@@ -99,9 +99,9 @@ class Sentinel1Assembler:
         for swath in swaths:
             xmls = [p.get_xml_annotation(swath=swath, pol=pol) for p in products]
             bursts = [sentinel1.metadata.extract_bursts_metadata(xml) for xml in xmls]
-            bursts_per_swath[
-                swath
-            ] = sentinel1.metadata.assemble_multiple_products_into_metas(bursts)
+            bursts_per_swath[swath] = (
+                sentinel1.metadata.assemble_multiple_products_into_metas(bursts)
+            )
 
             for product, metas in zip(products, bursts):
                 for m in metas:
@@ -226,9 +226,9 @@ class Sentinel1Assembler:
 
             # check if product already processed
             if product_id not in self._ref_per_product_id:
-                self._ref_per_product_id[
-                    product_id
-                ] = FullBistaticReference.from_burst_metadata(bmeta)
+                self._ref_per_product_id[product_id] = (
+                    FullBistaticReference.from_burst_metadata(bmeta)
+                )
 
     def get_full_bistatic_reference(self, bsid: str) -> FullBistaticReference:
         if self._ref_per_product_id is None:

@@ -3,6 +3,7 @@
 Warning: the current implementation does not support concurrent read or write operations.
 A Cache object should not be be used inside a multithread/multiprocess context.
 """
+
 from __future__ import annotations
 
 import abc
@@ -63,11 +64,9 @@ def hash_anything(obj) -> str:
 
 
 class CacheBackend(abc.ABC):
-    def put(self, key: str, object: Any) -> None:
-        ...
+    def put(self, key: str, object: Any) -> None: ...
 
-    def get(self, key: str) -> Optional[Any]:
-        ...
+    def get(self, key: str) -> Optional[Any]: ...
 
 
 @dataclass(frozen=True)

@@ -229,10 +229,10 @@ class MosaicZoomer(regist.SarResample):
         # loop on the write rois to reramp
         for bsid in self.bsids:
             col_min, row_min, col_max, row_max = self.write_rois[bsid].to_bounds()
-            reramped[
-                row_min : row_max + 1, col_min : col_max + 1
-            ] = self.resampled_resamplers[bsid].reramp(
-                dst_array[row_min : row_max + 1, col_min : col_max + 1]
+            reramped[row_min : row_max + 1, col_min : col_max + 1] = (
+                self.resampled_resamplers[
+                    bsid
+                ].reramp(dst_array[row_min : row_max + 1, col_min : col_max + 1])
             )
         return reramped
 

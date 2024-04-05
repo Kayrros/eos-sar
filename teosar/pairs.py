@@ -213,8 +213,7 @@ FilterResult: TypeAlias = tuple[Cost, Validity]
 @dataclass(frozen=True)
 class PairSetFilter(abc.ABC):
     @abc.abstractmethod
-    def cost(self, pairset: PairSet) -> FilterResult:
-        ...
+    def cost(self, pairset: PairSet) -> FilterResult: ...
 
 
 @dataclass(frozen=True)

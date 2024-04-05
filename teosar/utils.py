@@ -85,8 +85,7 @@ class RoiProvider(abc.ABC):
     @abc.abstractmethod
     def get_roi(
         self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, NDArray, NDArray]:
-        ...
+    ) -> tuple[Roi, NDArray, NDArray]: ...
 
 
 class GeometryRoiProvider(RoiProvider):
