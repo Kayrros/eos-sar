@@ -1,5 +1,11 @@
 default:
-  image: python:3.9
+  # boto3 requires urllib3<2 for python 3.9
+  #   https://github.com/boto/botocore/issues/3138
+  # but types-requests requests >=2
+  #   https://github.com/python/typeshed/blob/main/stubs/requests/METADATA.toml#L4
+  # so for the CI we use 3.10
+  # but eos-sar should stay compatible with 3.9 for a while
+  image: python:3.10
 
 stages:
   - test
