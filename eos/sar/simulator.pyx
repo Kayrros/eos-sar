@@ -167,6 +167,14 @@ cdef inline void saveIlluminationArea(int x0, int y0, int w, int h, double azimu
 
 
 class SARSimulator:
+    """
+    Warnings:
+        1. Because of assumptions for optimizations (warping the DEM),
+        the simulation performs poorly on large ROIs.
+        You should split the processing in sub-ROI for such cases.
+
+        2. The last line of the simulation tends to not be accurate. This is a bug.
+    """
 
     coordinate: Union[SLCCoordinate, GRDCoordinate]
 
