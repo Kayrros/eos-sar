@@ -24,7 +24,7 @@ test:
   tags:
     - high
   before_script:
-    - pip install -r requirements-dev.txt -r requirements-dev.txt
+    - pip install -r requirements.txt -r requirements-dev.txt
     - pip install -e .
   script:
     - pytest . -n auto -v
@@ -45,7 +45,7 @@ mypy:
     paths:
     - .cache/pip
   before_script:
-    - pip install -r requirements-dev.txt -r requirements-dev.txt
+    - pip install -r requirements.txt -r requirements-dev.txt
   script:
     - mypy --non-interactive eos/ teosar/ tests/ usage/
 
