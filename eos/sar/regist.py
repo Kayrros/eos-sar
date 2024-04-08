@@ -1,4 +1,5 @@
 """Generic registration functions."""
+
 import abc
 from typing import Any
 

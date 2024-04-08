@@ -1,4 +1,5 @@
 """Fill needed metadata of a burst or a product."""
+
 from __future__ import annotations
 
 import datetime

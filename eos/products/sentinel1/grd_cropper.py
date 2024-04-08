@@ -1,6 +1,7 @@
 """
 High-level module to generate Analysis-Ready-Data (ARD) crops of Sentinel-1 IW GRD.
 """
+
 from __future__ import annotations
 
 import abc
@@ -42,8 +43,7 @@ class Params:
 
 class InputProduct(abc.ABC):
     @abc.abstractmethod
-    def into_product_info(self) -> sentinel1.product.Sentinel1GRDProductInfo:
-        ...
+    def into_product_info(self) -> sentinel1.product.Sentinel1GRDProductInfo: ...
 
 
 @dataclass(frozen=True)

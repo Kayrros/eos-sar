@@ -17,12 +17,14 @@ Arrayf32 = NDArray[np.float32]
 
 class TwoDCoordinate(abc.ABC):
     @abc.abstractmethod
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
-        ...
+    def to_azt_rng(
+        self, row: ArrayLike, col: ArrayLike
+    ) -> tuple[Arrayf32, Arrayf32]: ...
 
     @abc.abstractmethod
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
-        ...
+    def to_row_col(
+        self, azt: ArrayLike, rng: ArrayLike
+    ) -> tuple[Arrayf32, Arrayf32]: ...
 
 
 @dataclass(frozen=True)

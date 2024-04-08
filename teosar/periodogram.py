@@ -30,8 +30,7 @@ class BaseModel(ABC):
         return len(self.get_theta_list())
 
     @abstractmethod
-    def get_theta_list(self) -> list[NDArray]:
-        ...
+    def get_theta_list(self) -> list[NDArray]: ...
 
     def get_theta_from_indices(self, indices: list[int]):
         assert (

@@ -9,6 +9,7 @@ polynomials. Same notations are used. Additional notations are:
 The following does not assume the samples are equidistant in time. It may, or
 may not, be better... Usually, the best fit is performed at polynomial roots.
 """
+
 from typing import Sequence
 
 import numpy as np

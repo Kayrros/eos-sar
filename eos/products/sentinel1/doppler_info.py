@@ -1,4 +1,5 @@
 """Compute Sentinel1 burst doppler quantities from metadata."""
+
 from __future__ import annotations
 
 import numpy as np

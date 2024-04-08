@@ -362,9 +362,10 @@ def _multithreaded_search(
     # The two pools are working concurrently (and a single `not_done` set) to be able to
     # to use the CPU to parse files while other files are being queried.
     mp_context = multiprocessing.get_context("spawn")
-    with ThreadPoolExecutor(num_fetch_workers) as pool1, ProcessPoolExecutor(
-        num_process_workers, mp_context=mp_context
-    ) as pool2:
+    with (
+        ThreadPoolExecutor(num_fetch_workers) as pool1,
+        ProcessPoolExecutor(num_process_workers, mp_context=mp_context) as pool2,
+    ):
         not_done: set[Future[Any]] = set()
         futures1: dict[Future[Any], QuerySegment] = {}
         futures2: dict[Future[Any], QuerySegment] = {}

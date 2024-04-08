@@ -373,7 +373,6 @@ class GeoCorrection(abc.ABC):
 
 
 class ImageCorrection(abc.ABC):
-
     """Correction on azt, rng image coordinates"""
 
     def __init__(self):
