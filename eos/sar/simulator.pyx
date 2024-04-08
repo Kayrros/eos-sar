@@ -30,7 +30,7 @@ from rasterio.control import GroundControlPoint
 
 
 # from GeoUtils (snap-engine)
-cdef inline (double, double, double) geo2xyzWGS84(double latitude, double longitude, double altitude) nogil:
+cdef inline (double, double, double) geo2xyzWGS84(double latitude, double longitude, double altitude) noexcept nogil:
     """"
     Convert geodetic coordinate into cartesian XYZ coordinate with specified geodetic system (WGS84)
 
@@ -64,7 +64,7 @@ cdef inline (double, double, double) geo2xyzWGS84(double latitude, double longit
     return x, y, z
 
 cdef inline double computeElevationAngle(double earthPoint_x, double earthPoint_y, double earthPoint_z,
-                                         double sensorPos_x, double sensorPos_y, double sensorPos_z):
+                                         double sensorPos_x, double sensorPos_y, double sensorPos_z) noexcept nogil:
     """
     Compute the elevation angle (in degree)
     Inputs:
@@ -86,7 +86,7 @@ cdef inline double computeIlluminatedArea(double t00_x, double t00_y, double t00
                                           double t01_x, double t01_y, double t01_z,
                                           double t10_x, double t10_y, double t10_z,
                                           double t11_x, double t11_y, double t11_z,
-                                          double sld_x, double sld_y, double sld_z):
+                                          double sld_x, double sld_y, double sld_z) noexcept nogil:
     """
     Inputs:
          x/y/z (WGS84) of t00, t01, t10 and t11
@@ -130,7 +130,7 @@ cdef inline double computeIlluminatedArea(double t00_x, double t00_y, double t00
 
 cdef inline void saveIlluminationArea(int x0, int y0, int w, int h, double azimuthIndex,
                          double rangeIndex, double gamma0Area,
-                         double[:,:] gamma0ReferenceArea_view):
+                         double[:,:] gamma0ReferenceArea_view) noexcept nogil:
     """
     Distribute the local illumination area to the 4 adjacent pixels using bi-linear distribution.
     Inputs:
@@ -323,75 +323,80 @@ class SARSimulator:
         col0_alts = dem[rrow, mid].astype(np.float64)
         col0_lons, col0_lats = dem_transform * (mid, rrow)
         row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
-        azt0 = self.coordinate.to_azt(row0)
+        cdef np.ndarray[np.float64_t, ndim=1] azt0 = self.coordinate.to_azt(row0)
 
         cdef np.ndarray[np.float64_t, ndim=2] sats = self.proj_model.orbit.evaluate(azt0)
 
         cdef int i, j
-        for i in range(0, Nrows):
-            maxElevAngle = 0.0
+        cdef bint ok
+        with nogil:
+            for i in range(0, Nrows):
+                maxElevAngle = 0.0
 
-            # move previous row to row1_* and fill row0 with new data
-            row1_gx, row0_gx = row0_gx, row1_gx
-            row1_gy, row0_gy = row0_gy, row1_gy
-            row1_gz, row0_gz = row0_gz, row1_gz
+                # move previous row to row1_* and fill row0 with new data
+                with gil:
+                    row1_gx, row0_gx = row0_gx, row1_gx
+                    row1_gy, row0_gy = row0_gy, row1_gy
+                    row1_gz, row0_gz = row0_gz, row1_gz
 
-            # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
-            row0_alts = dem[i].astype(np.float64)
-            row0_lons, row0_lats = dem_transform * (rcol, i)
-            for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
-                row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])
+                    # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
+                    row0_alts = dem[i].astype(np.float64)
+                    row0_lons, row0_lats = dem_transform * (rcol, i)
 
-            ok = self._compute_ground_coordinates(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
-                            row0_successes, row0_rangeIndices, row0_azimuthIndices)
-            if not ok:  # fast path in case the azimuth is outside [y0, y0+h]
-                continue
+                for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
+                    row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])
 
-            sensorPos_x = sats[i,0]
-            sensorPos_y = sats[i,1]
-            sensorPos_z = sats[i,2]
-
-            for j in range(Ncols-1):
-                if not row0_successes[j]:
+                with gil:
+                    ok = self._compute_ground_coordinates(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
+                                    row0_successes, row0_rangeIndices, row0_azimuthIndices)
+                if not ok:  # fast path in case the azimuth is outside [y0, y0+h]
                     continue
 
-                earthPoint_x = row0_gx[j]
-                earthPoint_y = row0_gy[j]
-                earthPoint_z = row0_gz[j]
+                sensorPos_x = sats[i,0]
+                sensorPos_y = sats[i,1]
+                sensorPos_z = sats[i,2]
 
-                # Prepare computeIlluminatedArea: fetch positions of t00, t01, t10 and t11
-                # TODO: is row1 OK? or do we want row-1 (next row)?
-                # probably not a big deal for low res DEM, but could have an impact for high res DEM
-                t00_x, t00_y, t00_z = row0_gx[j],   row0_gy[j],   row0_gz[j]
-                t01_x, t01_y, t01_z = row1_gx[j],   row1_gy[j],   row1_gz[j]
-                t10_x, t10_y, t10_z = row0_gx[j+1], row0_gy[j+1], row0_gz[j+1]
-                t11_x, t11_y, t11_z = row1_gx[j+1], row1_gy[j+1], row1_gz[j+1]
+                for j in range(Ncols-1):
+                    if not row0_successes[j]:
+                        continue
 
-                # Prepare computeIlluminatedArea: compute slant range direction
-                sld_x = sensorPos_x - earthPoint_x
-                sld_y = sensorPos_y - earthPoint_y
-                sld_z = sensorPos_z - earthPoint_z
-                norm = sqrt(sld_x*sld_x + sld_y*sld_y + sld_z*sld_z)
-                sld_x /= norm
-                sld_y /= norm
-                sld_z /= norm
+                    earthPoint_x = row0_gx[j]
+                    earthPoint_y = row0_gy[j]
+                    earthPoint_z = row0_gz[j]
 
-                gamma0 = computeIlluminatedArea(t00_x, t00_y, t00_z,
-                                                t01_x, t01_y, t01_z,
-                                                t10_x, t10_y, t10_z,
-                                                t11_x, t11_y, t11_z,
-                                                sld_x, sld_y, sld_z)
+                    # Prepare computeIlluminatedArea: fetch positions of t00, t01, t10 and t11
+                    # TODO: is row1 OK? or do we want row-1 (next row)?
+                    # probably not a big deal for low res DEM, but could have an impact for high res DEM
+                    t00_x, t00_y, t00_z = row0_gx[j],   row0_gy[j],   row0_gz[j]
+                    t01_x, t01_y, t01_z = row1_gx[j],   row1_gy[j],   row1_gz[j]
+                    t10_x, t10_y, t10_z = row0_gx[j+1], row0_gy[j+1], row0_gz[j+1]
+                    t11_x, t11_y, t11_z = row1_gx[j+1], row1_gy[j+1], row1_gz[j+1]
 
-                if _detect_shadows:
-                    elevation = computeElevationAngle(earthPoint_x, earthPoint_y, earthPoint_z,
-                                                      sensorPos_x, sensorPos_y, sensorPos_z)
-                else:
-                    elevation = 0
+                    # Prepare computeIlluminatedArea: compute slant range direction
+                    sld_x = sensorPos_x - earthPoint_x
+                    sld_y = sensorPos_y - earthPoint_y
+                    sld_z = sensorPos_z - earthPoint_z
+                    norm = sqrt(sld_x*sld_x + sld_y*sld_y + sld_z*sld_z)
+                    sld_x /= norm
+                    sld_y /= norm
+                    sld_z /= norm
 
-                if elevation >= maxElevAngle:
-                    maxElevAngle = elevation
-                    saveIlluminationArea(x0, y0, w, h, row0_azimuthIndices[j], row0_rangeIndices[j],
-                                         gamma0, gamma0ReferenceArea_view)
+                    gamma0 = computeIlluminatedArea(t00_x, t00_y, t00_z,
+                                                    t01_x, t01_y, t01_z,
+                                                    t10_x, t10_y, t10_z,
+                                                    t11_x, t11_y, t11_z,
+                                                    sld_x, sld_y, sld_z)
+
+                    if _detect_shadows:
+                        elevation = computeElevationAngle(earthPoint_x, earthPoint_y, earthPoint_z,
+                                                          sensorPos_x, sensorPos_y, sensorPos_z)
+                    else:
+                        elevation = 0
+
+                    if elevation >= maxElevAngle:
+                        maxElevAngle = elevation
+                        saveIlluminationArea(x0, y0, w, h, row0_azimuthIndices[j], row0_rangeIndices[j],
+                                             gamma0, gamma0ReferenceArea_view)
 
         gamma0ReferenceArea /= aBeta # Normalize (note: original code did it in outputSimulatedArea)
         return gamma0ReferenceArea
