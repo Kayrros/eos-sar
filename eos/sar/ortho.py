@@ -16,7 +16,7 @@ from eos.sar import model, regist
 T = TypeVar("T", np.float32, np.complex64)
 
 
-@dataclass
+@dataclass(frozen=True)
 class Interpolation:
     cv2_flag: int
 

@@ -585,6 +585,9 @@ class Sentinel1GRDAssembler:
             self._meta, self.orbit, coord_corrector
         )
 
+    def get_metadata(self) -> Sentinel1GRDMetadata:
+        return self._meta
+
     def crop(self, roi: Roi, readers: dict[str, ImageReader]):
         def gen():
             for pid, reader in readers.items():
