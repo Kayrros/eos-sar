@@ -10,9 +10,11 @@ pytest-xdist==3.5.0
 
 srtm4[crop]==1.2.4
 dem-stitcher==2.5.5
-multidem==0.7.0
 
-s1m==1.3.4
 boto3==1.34.78
-kayrros-phoenix[source-s3]==1.14.0
 fire==0.6.0
+
+# kayrros related:
+s1m==1.3.4
+multidem==0.7.0
+kayrros-phoenix[source-s3]==1.14.0

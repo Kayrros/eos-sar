@@ -51,7 +51,7 @@ The features shown in the tutorial are listed below:
 
 Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests.  Currently, only local tests will run and others will fail if you don't have these credentials. To run the tests locally, we use `pytest`:
 
-	pip install pytest
+	pip install -r requirements-dev.txt
 	pytest .
 
 For the future, all tests should be able to run locally, but test data should be downloaded beforehand. We plan to use data from ASF, similarly to the tutorial data, that can be downloaded by running in a shell:
@@ -67,9 +67,9 @@ For the future, all tests should be able to run locally, but test data should be
 
 The CI validates the code against pep8 rules and formatting, as configured in `pyproject.toml`.
 
-You can check your code locally before commiting using:
+You can check your code locally before commiting using pre-commit or using:
 ```bash
-pip install ruff==0.1.11
+pip install $(grep ruff requirements-dev.txt)
 ruff check . --fix; ruff format .
 ```
 
