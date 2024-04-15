@@ -173,11 +173,26 @@ def relative_orbit_number_from_absolute(
 
 def isostring_to_timestamp(s: str) -> float:
     """Convert a string representing a date and time to a float number."""
-    return (
-        datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f")
-        .replace(tzinfo=datetime.timezone.utc)
-        .timestamp()
-    )
+    # this version is about three times as fast as _old_isostring_to_timestamp
+    # 2024-03-24T07:06:22.000000
+    year = int(s[0:4])
+    month = int(s[5:7])
+    day = int(s[8:10])
+    hour = int(s[11:13])
+    minute = int(s[14:16])
+    second = int(s[17:19])
+    micro = s[20:]
+    micro = int(micro + "0" * (6 - len(micro)))
+    return datetime.datetime(
+        year=year,
+        month=month,
+        day=day,
+        hour=hour,
+        minute=minute,
+        second=second,
+        microsecond=micro,
+        tzinfo=datetime.timezone.utc,
+    ).timestamp()
 
 
 def corners_of_geolocation_grid_points_list(l, only_burst_id):
