@@ -345,7 +345,7 @@ def _multithreaded_search(
     num_fetch_workers: Optional[int] = None,
     # according to quick benchmark, it doesn't make sense to use more than two workers
     # because of the GIL, and 2 is still better than 1 or better than without pool2
-    num_process_workers: Optional[int] = 2,
+    num_parse_workers: Optional[int] = 2,
 ) -> BackendResult:
     import concurrent.futures
     from concurrent.futures import (
@@ -363,7 +363,7 @@ def _multithreaded_search(
     # to use the CPU to parse files while other files are being queried.
     with (
         ThreadPoolExecutor(num_fetch_workers) as pool1,
-        ThreadPoolExecutor(num_process_workers) as pool2,
+        ThreadPoolExecutor(num_parse_workers) as pool2,
     ):
         not_done: set[Future[Any]] = set()
         futures1: dict[Future[Any], QuerySegment] = {}
