@@ -342,25 +342,25 @@ def process(input: CropperInput) -> None:
             )
 
         raster = eos.sar.io.read_window(
-            reader, roi, get_complex=False, out_dtype=np.float32
+            reader, roi, get_complex=False, out_dtype=np.float32, boundless=True
         )
         mask = sentinel1.border_noise_grd.compute_border_mask(raster)
         raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)
+
+        raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
 
         assert len(raster.shape) == 2
         assert raster.dtype == np.float32
         profile = dict(
             driver="GTiff",
             width=raster.shape[1],
-            height=raster.shape[1],
+            height=raster.shape[0],
             count=1,
             dtype=raster.dtype,
             nodata=np.nan,
             crs=orthorectifier.crs,
             transform=orthorectifier.transform,
         )
-
-        raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
 
         storage = input.result_destination
         if isinstance(storage, FilesystemResultDestination):
