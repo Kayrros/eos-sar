@@ -2,9 +2,7 @@ import abc
 import datetime
 import fnmatch
 import functools
-import io
 import logging
-import multiprocessing
 import os
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -186,14 +184,14 @@ def parse_statevectors(
     start: datetime.datetime,
     end: datetime.datetime,
 ) -> list[StateVector]:
-    buf = io.BytesIO(xml_content)
     start_timestamp = start.timestamp()
     end_timestamp = end.timestamp()
-    context = etree.iterparse(buf, events=("end",), tag="OSV")
+    context = etree.fromstring(xml_content)
     newsvs: list[StateVector] = []
-    for _, element in context:
-        # TODO: optimize by skipping the conversion to timestamp
-        date = isostring_to_timestamp(element.findtext("UTC")[4:])
+    for element in context.xpath("//OSV"):
+        assert element[1].tag == "UTC"
+        utc = element[1].text[4:]
+        date = isostring_to_timestamp(utc)
 
         if date < start_timestamp:
             continue
@@ -279,7 +277,7 @@ class LocalFilesSentinel1OrbitCatalogBackend(Sentinel1OrbitCatalogBackend):
                 file = files[-1]
                 break
             else:
-                raise OrbitFileNotFound(f"for query {seg} {query.quality}")
+                raise OrbitFileNotFound(query)
 
             with open(file, "rb") as f:
                 xml = f.read()
@@ -345,27 +343,27 @@ def _multithreaded_search(
     query: BackendQuery,
     callback: Callable[[QuerySegment, list[OrbitFileType]], Union[bytes, None]],
     num_fetch_workers: Optional[int] = None,
-    num_process_workers: Optional[int] = None,
+    # according to quick benchmark, it doesn't make sense to use more than two workers
+    # because of the GIL, and 2 is still better than 1 or better than without pool2
+    num_parse_workers: Optional[int] = 2,
 ) -> BackendResult:
     import concurrent.futures
     from concurrent.futures import (
         FIRST_COMPLETED,
         Future,
-        ProcessPoolExecutor,
         ThreadPoolExecutor,
     )
 
     statevectors_per_item: dict[QuerySegment, list[StateVector]] = {}
 
-    # There are two pools:
-    # - pool1 (threads): queries the catalog and downloads the xmls (mostly network)
-    # - pool2 (processes): parses the xml and extract the state vectors (mostly cpu)
+    # There are two thread pools:
+    # - pool1: queries the catalog and downloads the xmls (mostly network)
+    # - pool2: parses the xml and extract the state vectors (mostly cpu, bottleneck by the GIL)
     # The two pools are working concurrently (and a single `not_done` set) to be able to
     # to use the CPU to parse files while other files are being queried.
-    mp_context = multiprocessing.get_context("spawn")
     with (
         ThreadPoolExecutor(num_fetch_workers) as pool1,
-        ProcessPoolExecutor(num_process_workers, mp_context=mp_context) as pool2,
+        ThreadPoolExecutor(num_parse_workers) as pool2,
     ):
         not_done: set[Future[Any]] = set()
         futures1: dict[Future[Any], QuerySegment] = {}
@@ -384,10 +382,11 @@ def _multithreaded_search(
             for future in done:
                 if future in futures1:
                     xml: Optional[bytes] = future.result()
-                    if not xml:
-                        raise OrbitFileNotFound()
-
                     seg = futures1[future]
+
+                    if not xml:
+                        raise OrbitFileNotFound(seg)
+
                     future2 = pool2.submit(parse_statevectors, xml, seg.start, seg.end)
                     not_done.add(future2)
                     futures2[future2] = seg
@@ -395,7 +394,7 @@ def _multithreaded_search(
                 elif future in futures2:
                     seg = futures2[future]
                     statevectors: list[StateVector] = future.result()  # type: ignore
-                    assert len(statevectors) > 0
+                    assert len(statevectors) > 0, seg
                     statevectors_per_item[seg] = statevectors
 
     return BackendResult(statevectors_per_item=statevectors_per_item)
@@ -453,5 +452,5 @@ else:
         def search(self, query: BackendQuery) -> BackendResult:
             clb = functools.partial(_search_phx, self.collection_source)
             return _multithreaded_search(
-                query, clb, num_process_workers=self.num_fetch_workers
+                query, clb, num_fetch_workers=self.num_fetch_workers
             )

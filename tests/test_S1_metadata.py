@@ -1,3 +1,4 @@
+import datetime
 import glob
 
 import numpy as np
@@ -63,3 +64,12 @@ def test_deprecated_dict():
     with pytest.warns(DeprecationWarning):
         bsid = meta["bsid"]
     assert meta.bsid == bsid
+
+
+def test_isostring_to_timestamp():
+    s = "2024-04-11T11:58:41.291134"
+    assert sentinel1.metadata.isostring_to_timestamp(s) == (
+        datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f")
+        .replace(tzinfo=datetime.timezone.utc)
+        .timestamp()
+    )
