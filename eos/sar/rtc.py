@@ -27,6 +27,10 @@ def normalize(
 
 
 class RadiometricTerrainCorrector:
+    """
+    Warning: see eos.sar.simulator.SARSimulator notes. (= avoid large ROI)
+    """
+
     def __init__(
         self,
         proj_model: model.SensorModel,

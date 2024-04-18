@@ -252,7 +252,7 @@ def glob_single_file(pattern: str) -> str:
     return list_results[0]
 
 
-def exists(path: str, s3_client: S3Client) -> bool:
+def exists(path: str, s3_client: S3Client = None) -> bool:
     """Check if a file exists."""
     if path.startswith("s3://"):
         import botocore.exceptions
