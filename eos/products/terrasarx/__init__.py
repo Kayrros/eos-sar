@@ -28,20 +28,20 @@ class TSXMetadata:
     height: int
     approx_geom: list[tuple[float, float]]
     image_start: float
-    azimuth_frequency: float
-    slant_range_time: float
-    range_pixel_spacing: float
+    azimuth_time_interval: float
     azimuth_pixel_spacing: float
-    range_frequency: float
+    slant_range_time: float
+    range_time_interval: float
+    range_pixel_spacing: float
     wavelength: float
 
     @property
-    def azimuth_time_interval(self) -> float:
-        return 1.0 / self.azimuth_frequency
+    def azimuth_frequency(self) -> float:
+        return 1.0 / self.azimuth_time_interval
 
     @property
-    def range_time_interval(self):
-        return 1.0 / self.range_frequency
+    def range_frequency(self):
+        return 1.0 / self.range_time_interval
 
 
 def string_to_timestamp(s: str) -> float:
@@ -84,14 +84,12 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     image_start = string_to_timestamp(image_start)
     slant_range_time = float(scene_info["rangeTime"]["firstPixel"])
 
-    azimuth_period = float(raster_info["columnSpacing"]["#text"])
-    azimuth_frequency = 1 / azimuth_period
+    azimuth_time_interval = float(raster_info["columnSpacing"]["#text"])
     azimuth_pixel_spacing = float(
         metadata["productSpecific"]["complexImageInfo"]["projectedSpacingAzimuth"]
     )
 
-    range_period = float(raster_info["rowSpacing"]["#text"])
-    range_frequency = 1 / range_period
+    range_time_interval = float(raster_info["rowSpacing"]["#text"])
     range_pixel_spacing = float(
         metadata["productSpecific"]["complexImageInfo"]["projectedSpacingRange"][
             "slantRange"
@@ -135,11 +133,11 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
         look_side=look_side,
         approx_geom=approx_geom,
         image_start=image_start,
-        azimuth_frequency=azimuth_frequency,
-        slant_range_time=slant_range_time,
-        range_pixel_spacing=range_pixel_spacing,
+        azimuth_time_interval=azimuth_time_interval,
         azimuth_pixel_spacing=azimuth_pixel_spacing,
-        range_frequency=range_frequency,
+        slant_range_time=slant_range_time,
+        range_time_interval=range_time_interval,
+        range_pixel_spacing=range_pixel_spacing,
         wavelength=wavelength,
     )
 
