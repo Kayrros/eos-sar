@@ -32,12 +32,8 @@ class TSXMetadata:
     slant_range_time: float
     range_pixel_spacing: float
     azimuth_pixel_spacing: float
-    range_sampling_rate: float
+    range_frequency: float
     wavelength: float
-
-    @property
-    def range_frequency(self) -> float:
-        return LIGHT_SPEED_M_PER_SEC / (2.0 * self.range_pixel_spacing)
 
     @property
     def azimuth_time_interval(self) -> float:
@@ -45,7 +41,7 @@ class TSXMetadata:
 
     @property
     def range_time_interval(self):
-        return 1.0 / self.range_sampling_rate
+        return 1.0 / self.range_frequency
 
 
 def string_to_timestamp(s: str) -> float:
@@ -95,7 +91,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     )
 
     range_period = float(raster_info["rowSpacing"]["#text"])
-    range_sampling_rate = 1 / range_period
+    range_frequency = 1 / range_period
     range_pixel_spacing = float(
         metadata["productSpecific"]["complexImageInfo"]["projectedSpacingRange"][
             "slantRange"
@@ -143,7 +139,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
         slant_range_time=slant_range_time,
         range_pixel_spacing=range_pixel_spacing,
         azimuth_pixel_spacing=azimuth_pixel_spacing,
-        range_sampling_rate=range_sampling_rate,
+        range_frequency=range_frequency,
         wavelength=wavelength,
     )
 
