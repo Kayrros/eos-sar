@@ -1,11 +1,13 @@
 from eos.products import terrasarx
+from eos.sar.orbit import Orbit
 
 
 def test_tsx_metadata():
     xml = "./tests/data/TDX1_SAR__SSC______SM_S_SRA_20200722T141112_20200722T141120.xml"
 
     metadata = terrasarx.parse_tsx_metadata(xml)
-    model = terrasarx.TSXModel.from_metadata(metadata, orbit_degree=11)
+    orbit = Orbit(sv=metadata.state_vectors, degree=11)
+    model = terrasarx.TSXModel.from_metadata(metadata, orbit)
 
     assert model.w == 16366
     assert model.h == 28887

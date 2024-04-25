@@ -153,7 +153,7 @@ class TSXModel(SensorModel):
 
     @staticmethod
     def from_metadata(
-        meta: TSXMetadata, orbit_degree: int, corrector: Corrector = Corrector()
+        meta: TSXMetadata, orbit: Orbit, corrector: Corrector = Corrector()
     ) -> TSXModel:
         coordinate = coordinates.SLCCoordinate(
             first_row_time=meta.image_start,
@@ -162,7 +162,6 @@ class TSXModel(SensorModel):
             range_frequency=meta.range_frequency,
         )
 
-        orbit = Orbit(sv=meta.state_vectors, degree=orbit_degree)
         tolerance = 0.001
         projection_tolerance = float(tolerance / np.linalg.norm(orbit.sv[0].velocity))
         approx_centroid_lon, approx_centroid_lat = np.mean(meta.approx_geom, axis=0)
@@ -232,8 +231,8 @@ def main(xml_annotation_file_path):
     Example usage
     """
     metadata = parse_tsx_metadata(xml_annotation_file_path)
-
-    model = TSXModel.from_metadata(metadata, orbit_degree=11)
+    orbit = Orbit(sv=metadata.state_vectors, degree=11)
+    model = TSXModel.from_metadata(metadata, orbit)
     return model
 
 
