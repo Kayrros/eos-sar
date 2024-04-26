@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import datetime
-from dataclasses import dataclass
-from typing import Literal, Optional, Union
+from dataclasses import asdict, dataclass
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 import pyproj
@@ -42,6 +42,30 @@ class TSXMetadata:
     @property
     def range_frequency(self):
         return 1.0 / self.range_time_interval
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> TSXMetadata:
+        return TSXMetadata(
+            mission_id=d["mission_id"],
+            state_vectors=[
+                StateVector.from_dict(sv_dict) for sv_dict in d["state_vectors"]
+            ],
+            orbit_direction=d["orbit_direction"],
+            look_side=d["look_side"],
+            width=d["width"],
+            height=d["height"],
+            approx_geom=d["approx_geom"],
+            image_start=d["image_start"],
+            azimuth_time_interval=d["azimuth_time_interval"],
+            azimuth_pixel_spacing=d["azimuth_pixel_spacing"],
+            slant_range_time=d["slant_range_time"],
+            range_time_interval=d["range_time_interval"],
+            range_pixel_spacing=d["range_pixel_spacing"],
+            wavelength=d["wavelength"],
+        )
 
 
 def string_to_timestamp(s: str) -> float:
