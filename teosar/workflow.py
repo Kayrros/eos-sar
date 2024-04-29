@@ -11,6 +11,7 @@ from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
 from eos.products.sentinel1.overlap import Bsint, Osid
 from eos.products.sentinel1.proj_model import Sentinel1SwathModel
 from eos.sar.orbit import StateVector
+from eos.sar.roi_provider import RoiProvider
 from teosar import inout, utils
 from teosar.overlap_utils import OverlapResampler, OverlapRoiInfo
 from teosar.utils import conditional_profiler, pid2date
@@ -47,7 +48,7 @@ class PrimaryPipeline(Pipeline):
         self.dem_source = dem_source
 
     @conditional_profiler(PROF)
-    def roi_info(self, roi_provider: utils.RoiProvider):
+    def roi_info(self, roi_provider: RoiProvider):
         # Get primary proj model
         self.proj_model = self.asm.get_mosaic_model()
 
@@ -143,7 +144,7 @@ class PrimaryPipeline(Pipeline):
         product_provider,
         statevectors: Optional[list[StateVector]],
         polarization,
-        roi_provider: utils.RoiProvider,
+        roi_provider: RoiProvider,
         dem_sampling_ratio,
         bistatic,
         apd,
