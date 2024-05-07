@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import abc
 import cProfile
 import pstats
 import tempfile
@@ -10,13 +9,10 @@ import numpy as np
 import pyproj
 import rasterio
 import scipy.ndimage as ndimage
-import shapely
-from numpy.typing import NDArray
-from typing_extensions import override
 
 import eos.products.sentinel1
 import eos.sar
-from eos.dem import DEM, DEMSource
+from eos.dem import DEM
 from eos.products.sentinel1.acquisition import PrimarySentinel1AcquisitionCutter
 from eos.products.sentinel1.overlap import Bsint
 from eos.sar import goldstein_filter
@@ -56,124 +52,6 @@ def prods2date(products):
 def asm2date(asm):
     product_ids = asm.product_id_per_bsid.values()
     return min(map(pid2date, product_ids))
-
-
-def geometry_to_geocoords(geometry):
-    if geometry.geom_type == "Polygon":
-        geom = geometry.exterior
-    else:
-        # in practice only linear rings
-        geom = geometry
-    return geom.coords[:]
-
-
-def geometry_to_roi(geom_coords, proj_model, dem: DEM, min_width=1024, min_height=512):
-    lons = [c[0] for c in geom_coords]
-    lats = [c[1] for c in geom_coords]
-    alts = np.nan_to_num(dem.elevation(lons, lats))
-    rows, cols, _ = proj_model.projection(lons, lats, alts)
-    roi = eos.sar.roi.Roi.from_bounds_tuple(eos.sar.roi.Roi.points_to_bbox(rows, cols))
-    col, row, w, h = roi.to_roi()
-    nh = max(h, min_height)
-    nw = max(w, min_width)
-    ncol = int(col + (w - nw) / 2)
-    nrow = int(row + (h - nh) / 2)
-    return eos.sar.roi.Roi(ncol, nrow, nw, nh), rows, cols
-
-
-class RoiProvider(abc.ABC):
-    @abc.abstractmethod
-    def get_roi(
-        self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, NDArray, NDArray]: ...
-
-
-class GeometryRoiProvider(RoiProvider):
-    def __init__(
-        self,
-        geometry,
-        dem_fetch_buffer: float = 0.1,
-        min_width: int = 1024,
-        min_height: int = 512,
-    ):
-        self.geometry = geometry
-        self.dem_fetch_buffer = dem_fetch_buffer
-        self.min_width = min_width
-        self.min_height = min_height
-
-    @override
-    def get_roi(
-        self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, NDArray, NDArray]:
-        dem_bounds = self.geometry.buffer(self.dem_fetch_buffer).bounds
-        dem = dem_source.fetch_dem(dem_bounds)
-
-        # Get the geometry coords
-        geo_coords = geometry_to_geocoords(self.geometry)
-
-        # Get the roi
-        roi, rows, cols = geometry_to_roi(
-            geo_coords,
-            proj_model,
-            dem=dem,
-            min_width=self.min_width,
-            min_height=self.min_height,
-        )
-        return roi, rows, cols
-
-
-class CentroidRoiProvider(RoiProvider):
-    def __init__(
-        self,
-        point: tuple[float, float],
-        w: int,
-        h: int,
-        dem_fetch_buffer_round_point: float = 0.1,
-    ):
-        self.point = point
-        self.w = w
-        self.h = h
-        self.dem_fetch_buffer_round_point = dem_fetch_buffer_round_point
-
-    @override
-    def get_roi(
-        self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, NDArray, NDArray]:
-        dem_bounds = (
-            shapely.Point(*self.point).buffer(self.dem_fetch_buffer_round_point).bounds
-        )
-        dem = dem_source.fetch_dem(dem_bounds)
-
-        lon, lat = self.point
-        alt = dem.elevation(lon, lat)
-        row, col, _ = proj_model.projection(lon, lat, alt)
-        orig = int(col - self.w / 2), int(row - self.h / 2)
-        roi = eos.sar.roi.Roi(*orig, self.w, self.h)
-        rows, cols = roi.to_bounding_points()
-        return roi, rows, cols
-
-
-class PrescribedRoiProvider(RoiProvider):
-    def __init__(self, roi: Optional[Roi] = None, make_valid: bool = False):
-        self.roi = roi
-        self.make_valid = make_valid
-
-    @override
-    def get_roi(
-        self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, NDArray, NDArray]:
-        parent_shape = proj_model.h, proj_model.w
-        if self.roi is None:
-            roi = Roi(0, 0, parent_shape[1], parent_shape[0])
-        else:
-            if self.make_valid:
-                roi = self.roi.make_valid(parent_shape)
-            else:
-                roi = self.roi
-
-        rows, cols = roi.to_bounding_points()
-
-        return roi, rows, cols
 
 
 def roidict_to_tupledict(roi_dict):

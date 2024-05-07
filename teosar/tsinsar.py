@@ -20,7 +20,8 @@ from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.products.sentinel1.overlap import Bsint, Osid
 from eos.products.sentinel1.product import Sentinel1SLCProductInfo
-from teosar import inout, utils
+from eos.sar.roi_provider import GeometryRoiProvider, RoiProvider
+from teosar import inout
 from teosar.workflow import (
     OvlPrimaryPipeline,
     OvlSecondaryPipeline,
@@ -148,7 +149,7 @@ def main(
     primary_id: int = 0,
     ncpu: int = 16,
     last_n_prods: Optional[int] = None,
-    roi_provider: Optional[utils.RoiProvider] = None,
+    roi_provider: Optional[RoiProvider] = None,
     dem_source: Optional[eos.dem.DEMSource] = None,
     product_provider: Optional[ProductProvider] = None,
     cache: Cache = eos.cache.no_cache(),
@@ -200,7 +201,7 @@ def main(
     if last_n_prods is not None:
         product_ids = product_ids[-last_n_prods:]
     if roi_provider is None:
-        roi_provider = utils.GeometryRoiProvider(geometry)
+        roi_provider = GeometryRoiProvider(geometry)
     return run_ts_on_prods(
         dstdir,
         roi_provider,
@@ -248,7 +249,7 @@ def get_orbits(
 
 def run_ts_on_prods(
     dstdir: str,
-    roi_provider: utils.RoiProvider,
+    roi_provider: RoiProvider,
     product_ids: list[list[str]],
     primary_id: int = 0,
     orbit_type: str = "orbpoe",
