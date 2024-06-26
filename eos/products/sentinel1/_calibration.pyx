@@ -4,8 +4,9 @@
 
 cimport cython
 from libc.math cimport sqrt, abs
-cimport numpy as np
 import numpy as np
+cimport numpy as np
+np.import_array()
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

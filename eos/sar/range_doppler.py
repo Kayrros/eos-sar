@@ -282,5 +282,5 @@ def get_step(P, satPos, satV, rng, ell_axis):
     delta[:, 1, :] = 2 * LOS
     delta[:, 2, :] = 2 * P / (ell_axis**2)
     # find the step in xyz
-    step = np.linalg.solve(delta, -F)
+    step = np.linalg.solve(delta, -F[..., None])[..., 0]
     return step
