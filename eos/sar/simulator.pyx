@@ -14,6 +14,7 @@
 from typing import Union
 import numpy as np
 cimport numpy as np
+np.import_array()
 from libc.math cimport M_PI, sin, cos, sqrt, ceil, floor, acos
 
 from eos.sar import const, model
