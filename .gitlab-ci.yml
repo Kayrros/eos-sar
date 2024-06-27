@@ -12,7 +12,7 @@ stages:
   - deploy
 
 variables:
-  PIP_EXTRA_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
+  PIP_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
 
 test:
   stage: test
@@ -68,7 +68,7 @@ deploy-sdist:
   script:
     - python setup.py sdist
     - twine upload
-      --repository-url ${PIP_EXTRA_INDEX_URL}
+      --repository-url ${PIP_INDEX_URL}
       -u ${PYPI_USERNAME}
       -p ${PYPI_PASSWORD}
       dist/*
@@ -84,7 +84,7 @@ deploy-wheel39:
   script:
     - python setup.py bdist_wheel
     - twine upload
-      --repository-url ${PIP_EXTRA_INDEX_URL}
+      --repository-url ${PIP_INDEX_URL}
       -u ${PYPI_USERNAME}
       -p ${PYPI_PASSWORD}
       dist/*
@@ -100,7 +100,7 @@ deploy-wheel310:
   script:
     - python setup.py bdist_wheel
     - twine upload
-      --repository-url ${PIP_EXTRA_INDEX_URL}
+      --repository-url ${PIP_INDEX_URL}
       -u ${PYPI_USERNAME}
       -p ${PYPI_PASSWORD}
       dist/*
@@ -116,7 +116,7 @@ deploy-wheel311:
   script:
     - python setup.py bdist_wheel
     - twine upload
-      --repository-url ${PIP_EXTRA_INDEX_URL}
+      --repository-url ${PIP_INDEX_URL}
       -u ${PYPI_USERNAME}
       -p ${PYPI_PASSWORD}
       dist/*
@@ -132,7 +132,7 @@ deploy-wheel312:
   script:
     - python setup.py bdist_wheel
     - twine upload
-      --repository-url ${PIP_EXTRA_INDEX_URL}
+      --repository-url ${PIP_INDEX_URL}
       -u ${PYPI_USERNAME}
       -p ${PYPI_PASSWORD}
       dist/*
