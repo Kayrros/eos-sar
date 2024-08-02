@@ -32,7 +32,14 @@ setuptools.setup(
     entry_points="",
     extras_require={
         # dependencies that teosar requires
-        "teosar": ["tqdm", "tifffile", "tensorflow-cpu", "tensorflow_probability"],
+        "teosar": [
+            "tqdm",
+            "tifffile",
+            "tensorflow-probability",
+            "tensorflow",
+            "tf-keras~=2.0",
+            "pyopencl",
+        ],
         # dependencies for usage at Kayrros
         "kayrros": ["kayrros-phoenix[source-s3,plugin-burster]", "kayrros-bursterio"],
     },
