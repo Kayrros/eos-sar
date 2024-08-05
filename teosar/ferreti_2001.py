@@ -11,7 +11,7 @@ import tifffile
 import tqdm
 from numpy.typing import NDArray
 
-from teosar import periodogram, psc, psutils
+from teosar import periodogram, periodogram_cl, psc, psutils
 
 """
 Ferreti 2001
@@ -279,6 +279,41 @@ def iterative_alternate_periodogram(
     residual = psutils.wrap(Delta_phi_no_q_v_estimation - APS_estimated)
     return q_estimation, v_estimation, APS_estimated, ak, p_dzeta, p_eta, residual
 
+
+def exhaustive_search_cl(phi_ps_mat,
+                         Cq,
+                         date_normal_baseline,
+                         Cv,
+                         years_since_ref,
+                         weights_per_date,
+                         v_test, q_test):
+    """
+    Helper function to use periodogram_cl
+    """
+    num_dates, num_PS = phi_ps_mat.shape
+
+    # Convert inputs to the format periodogram_cl expects.
+    constants = np.zeros([num_PS, num_dates, 3], dtype=np.float32)
+    constants[:, :, 0] = phi_ps_mat.transpose((1, 0))
+    constants[:, :, 1] = -Cq[:, np.newaxis] * date_normal_baseline.transpose((1, 0))
+    constants[:, :, 2] = -Cv * years_since_ref
+    variables = np.zeros([v_test.shape[0], q_test.shape[0], 2], dtype=np.float32)
+    variables[:, :, 0] = q_test[np.newaxis, :]
+    variables[:, :, 1] = v_test[:, np.newaxis]
+    variables = np.reshape(variables, [-1, 2])
+
+    periodogram_cl_instance = periodogram_cl(enable_profile=False, interactive_device_selection=False)
+    result = periodogram_cl_instance.find_maximum_on_grid(constants, variables, weights_per_date)
+
+    # Interprete outputs
+    maximums = result[:, 0]
+    maximums_indices = np.array(result[:, 1], dtype=np.int32)
+    maximums_q = variables[maximums_indices, 0]
+    maximums_v = variables[maximums_indices, 1]
+
+    v_estimated = maximums_v
+    q_estimated = maximums_q
+    return v_estimated, q_estimated
 
 # Here I add stuff to complete ferreti2001 quickly but not necessarily in a clean manner
 
