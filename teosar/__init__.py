@@ -4,6 +4,7 @@ from teosar import inout as inout
 from teosar import neighbors as neighbors
 from teosar import overlap_utils as overlap_utils
 from teosar import periodogram as periodogram
+from teosar import periodogram_cl import periodogram_cl
 from teosar import prepare_overlap_db as prepare_overlap_db
 from teosar import psc as psc
 from teosar import psutils as psutils
