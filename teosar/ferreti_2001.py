@@ -328,9 +328,11 @@ def velo_topo_periodogram(
     *,
     use_tensorflow=True,
     ncpu=1,
-    batch_size=128,
+    batch_size=1024,
 ):
     num_dates, num_PS = phi_ps_mat.shape
+    v_test = periodogram.get_test_vals(300, 10)
+    q_test = periodogram.get_test_vals(80, 10)
 
     if use_tensorflow:
         import tensorflow as tf
@@ -343,14 +345,36 @@ def velo_topo_periodogram(
             # normalize weights
             weights_per_date /= np.sum(weights_per_date)
 
-        # Here we use tensorflow, which has a fixed cost when calling (graph compilation),
-        # but then is much faster. We have a lot of variables to minimize, thus it makes sense.
+        # Perform a first exhaustive search to initialize
+        v_init, q_init = exhaustive_search_cl(phi_ps_mat,
+                         Cq,
+                         date_normal_baseline,
+                         Cv,
+                         years_since_ref,
+                         weights_per_date,
+                         v_test, q_test)
+
+        """
+        Refine using tensorflow.
+        The advantage of using tensorflow is that we get automatically
+        a compiled version of the gradient of the periodogram. This is
+        used for the optimization and enables high accuracy.
+        """
+
+
+        # Import all the variables in tensorflow.
+        # Using double precision enables high accuracy.
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
         tf_Cq = tf.cast(Cq, tf.float64)
         tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
+        tf_weights_per_date = tf.cast(weights_per_date, tf.float64)
+        tf_init = tf.cast(np.concatenate([q_init[:, np.newaxis], v_init[:, np.newaxis]], axis=1), tf.float64)
 
-        @tf.function(jit_compile=True)
-        def periodogram_to_optimize(
+        # Define the tensorflow graph.
+        # Each function gets only called once
+
+        # Used to compute the final gamma.
+        def periodogram_to_optimize_batch(
             q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
         ):  # _b stands for batch
             res = 0
@@ -367,6 +391,22 @@ def velo_topo_periodogram(
                 )
             return res
 
+        # Defined for a single element/PS
+        def periodogram_to_optimize(
+            q_e, v_e, tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_mat_e
+        ):
+            res = weights_per_date * tf.exp(
+                    tf.dtypes.complex(
+                        tf.zeros(num_dates, tf.float64),
+                        (
+                            tf_phi_ps_mat_e
+                            - tf_Cq_e * tf_date_normal_baseline_e * q_e
+                            - tf.cast(Cv * years_since_ref, tf.float64) * v_e
+                        ),
+                    )
+                )
+            return tf.reduce_sum(res)
+
         def make_val_and_grad_fn(value_fn):
             @functools.wraps(value_fn)
             def val_and_grad(x):
@@ -374,46 +414,61 @@ def velo_topo_periodogram(
 
             return val_and_grad
 
-        @tf.function(jit_compile=True)
-        def subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice):
-            per = periodogram_to_optimize(
-                q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice
-            )
-            return -tf.reduce_sum(tf.math.abs(per))
-
         # slice in batches
         start_indices = np.arange(0, num_PS, batch_size)
         end_indices = np.append(start_indices[1:], num_PS)
         q = np.zeros((num_PS,), dtype=np.float64)
         v = np.zeros((num_PS,), dtype=np.float64)
-        for s, e in tqdm.tqdm(
-            zip(start_indices, end_indices), total=len(start_indices)
-        ):
-            nps = e - s
-            tf_Cq_slice = tf_Cq[s:e]
-            tf_date_slice = tf_date_normal_baseline[:, s:e]
-            tf_phi_ps_slice = tf_phi_ps_mat[:, s:e]
+        gammas = np.zeros((num_PS,), dtype=np.float64)
+
+        # Encapsulating the lbfgs_minimize call means the
+        # lbfgs optimisation itself will get compiled too
+        def optimize_for_element(args):
+            tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_e, tf_init_e = args
 
             @make_val_and_grad_fn
             def loss(x):
-                q_b = x[0:nps]
-                v_b = x[nps:]
-                return subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice)
+                q_e = x[0]
+                v_e = x[1]
+                per = periodogram_to_optimize(
+                    q_e, v_e, tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_e
+                )
+                return -tf.math.abs(per)
 
             res = tfp.optimizer.lbfgs_minimize(
                 loss,
-                initial_position=tf.constant(np.zeros(2 * nps), dtype=tf.float64),
+                initial_position=tf_init_e,
                 tolerance=1e-15,
                 max_iterations=10,
             )
+            return res.position[0], res.position[1], res.objective_value
 
-            x = res.position
-            q[s:e] = x[0:nps].numpy()
-            v[s:e] = x[nps:].numpy()
+        # Compile a tensorflow graph that runs the optimisation iteratively
+        # for each PS. tf.function is used to compile the graph.
+        # jit_compile means XLA is used to compile the graph and gives a huge
+        # speedup in our case.
+        # TODO: parallel_iterations is supposed to distribute computation
+        # accross CPUs, but in practice only one is used.
+        # Investigate what needs to be done to distribute the work.
+        @tf.function(jit_compile=True)
+        def optimize_for_slice(tf_Cq_slice, tf_date_normal_baseline_slice, tf_phi_ps_mat_slice, tf_init_slice):
+            return tf.map_fn(optimize_for_element, (tf_Cq_slice, tf_date_normal_baseline_slice, tf_phi_ps_mat_slice, tf_init_slice), fn_output_signature=(tf.float64, tf.float64, tf.float64), parallel_iterations=ncpu)
+
+        for s, e in tqdm.tqdm(
+            zip(start_indices, end_indices), total=len(start_indices)
+        ):
+            tf_Cq_slice = tf_Cq[s:e]
+            tf_date_normal_baseline_slice = tf.transpose(tf_date_normal_baseline[:, s:e], perm=[1, 0])
+            tf_phi_ps_mat_slice = tf.transpose(tf_phi_ps_mat[:, s:e], perm=[1, 0])
+            tf_init_slice = tf_init[s:e, :]
+            x = optimize_for_slice(tf_Cq_slice, tf_date_normal_baseline_slice, tf_phi_ps_mat_slice, tf_init_slice)
+            q[s:e] = x[0].numpy()
+            v[s:e] = x[1].numpy()
+            gammas[s:e] = -x[2].numpy()
 
         gammas = (
             tf.math.abs(
-                periodogram_to_optimize(
+                periodogram_to_optimize_batch(
                     q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat
                 )
             )
@@ -424,8 +479,6 @@ def velo_topo_periodogram(
         q = np.zeros([num_PS], dtype=np.float32)  # constant dem error
         v = np.zeros([num_PS], dtype=np.float32)  # constant velocity
         gammas = np.zeros([num_PS], dtype=np.float32)  # temporal coherence
-        v_test = periodogram.get_test_vals(300, 10)
-        q_test = periodogram.get_test_vals(80, 10)
         lin_defo_model = periodogram.LinearTermModel(Cv, years_since_ref, v_test)
         mp_context = multiprocessing.get_context("spawn")
         with concurrent.futures.ProcessPoolExecutor(
