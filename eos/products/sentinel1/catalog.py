@@ -185,7 +185,7 @@ def _cdse_list_items(request: str) -> list[str]:
     pids = [
         item["Name"].replace(".SAFE", "")
         for item in items
-        if item["EvictionDate"] == "" and item["Online"]
+        if item["EvictionDate"] in ("", "9999-12-31T23:59:59.999Z") and item["Online"]
     ]
     return pids
 
