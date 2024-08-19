@@ -150,7 +150,7 @@ class PeriodogramCL:
         Inputs:
         . constants: 3D array [num_ps, sum_size, num_constants_per_sum_term]
         . variables: 2D array [num_values_to_test, num_variables_per_sum_term]
-        . weights: 1D array [num_ps]
+        . weights: 1D array [sum_size]
 
         Outputs:
         . results: 2D array [num_ps, 2] where results[i] contains for the i-th PS
@@ -158,7 +158,7 @@ class PeriodogramCL:
           table that attain this maximum.
           The maximized function is the selected periodogram function.
           Currently the periodogram function is:
-              || sum_j exp_imag(c[i,j,0] + c[i,j,1] * v[k, 0] + c[i,j,2] * v[k, 1]) || / sum_size
+              || sum_j w[j] * exp_imag(c[i,j,0] + c[i,j,1] * v[k, 0] + c[i,j,2] * v[k, 1]) || / sum_j w[j]
 
         Note:
         The code can be modified to add a num_ps dimension to variables if needed
@@ -181,6 +181,7 @@ class PeriodogramCL:
         constants = np.ascontiguousarray(constants, dtype=self.dtype)
         variables = np.ascontiguousarray(variables, dtype=self.dtype)
         weights = np.ascontiguousarray(weights, dtype=self.dtype)
+        weights /= np.sum(weights)
 
         # Allocate the OpenCL buffers
         constants_cl = cl.Buffer(

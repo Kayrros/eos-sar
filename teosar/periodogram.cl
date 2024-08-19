@@ -102,7 +102,7 @@ __kernel void compute_periodograms(__global TYPE * restrict result,
     /* Required layout:
      * constants: flattened 2D table constants[p, n, k] with p the PS index, n the sum index and k the tuple element index
      * variables: flattened 2D table variables[i, j] with i the tested variable tuple and j the tuple element index
-     * weights: 1D table of size sum_size
+     * weights: 1D table of size sum_size that should verify sum(weights) = 1
      * result: flattened 2D table result[p, i] with p the PS index and i the tuple index where
      *         the tuple is (found_maximum, variable tuple index)
      * 0 <= p < num_ps
@@ -172,7 +172,7 @@ __kernel void compute_periodograms(__global TYPE * restrict result,
          * The min call can be optimized out of the loop as well and might not even be needed because of the W. */
         # pragma unroll
         for (i = 0; i < NUM_SUMS_PER_THREAD; i++) {
-            value = sqrt(accumulator_real[i] * accumulator_real[i] + accumulator_imag[i] * accumulator_imag[i]) / (TYPE)sum_size;
+            value = sqrt(accumulator_real[i] * accumulator_real[i] + accumulator_imag[i] * accumulator_imag[i]);
             /* Each thread computes its own maximum */
             if (value > best_maximum) {
                 best_maximum = value;
