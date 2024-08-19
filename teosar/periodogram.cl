@@ -9,8 +9,12 @@
 #define TYPE float
 #endif /* USE_DOUBLE */
 
+/* Use ifdefs to correctly set these constants */
+#ifndef CONSTANTS_PER_SUM_TERM
+#define CONSTANTS_PER_SUM_TERM 3
+#endif
 
-
+#define VARIABLES_PER_SUM_TERM (CONSTANTS_PER_SUM_TERM - 1)
 
 /***
  * Efficient periodogram computation with OpenCL for GPU or CPU.
@@ -20,40 +24,40 @@
  * could use hundreds of dates, and thus have hundreds of elements to sum.
  * 
  * For each PS p, the periodogram is of the form:
- * | sum_n w[n] exp(i * ( c0[p, n] + c1[p, n] * x1 + c2[p, n] * x2) ) |
+ * | sum_n w[n] exp(i * ( c0[p, n] + c1[p, n] * x1 + c2[p, n] * x2 + ... + ck[p, n] * xk) ) |
  * 
- * where w is a weight, c* are constants and x1, x2 the variables.
+ * where w is a weight, c* are constants and x1, x2, .., xk the variables.
  * 
  * As a result there is a lot of variables to load, and at least c0 is specific to each
  * individual element of the loop.
  * 
  * Finally as there are hundreds of elements to sum, there are too many variables
  * to cache in registers, local memory or L1 cache, except if each variable load
- * is compensated with computing various (x1, x2) at the same time.
+ * is compensated with computing various (x1, x2, ..xk) at the same time.
  * 
  * This can be achieved with two different ways: either have several threads
- * compute in parallel the results for the same PS and different (x1, x2),
+ * compute in parallel the results for the same PS and different (x1, x2, ..xk),
  * or have each thread accumulate the same time the results of the sum
- * for various (x1, x2).
+ * for various (x1, x2, ..xk).
  * Both can also be done at the same time.
  * 
  * As all parameters for a given PS should fit L1 cache, we will always have
  * low latency and fast bandwidth to load the variables. However only treating
- * one (x1, x2) pair per thread will be severely cache bandwidth limited,
+ * one (x1, x2, ..xk) pair per thread will be severely cache bandwidth limited,
  * due to the significant cache line size.
  * 
  * To reduce this issue we must have each thread accumulate at the same time
- * the results for various (x1, x2). In addition it will help that c0, c1, c2
+ * the results for various (x1, x2, ..xk). In addition it will help that c0, c1, c2,...ck
  * can be accessed in a single memory call and thus should be stored contiguously
  * in memory.
  * 
  * There is a third way that could lead to better performance but is complex:
- * The sum could be divided among threads. The each thread computes its share
- * of the sum for various (x1, x2). Finally the partial results are combined.
+ * The sum could be divided among threads. Then each thread computes its share
+ * of the sum for various (x1, x2, ..xk). Finally the partial results are combined.
  * This technique would reduce the number of memory access calls, but is quite
  * complex to write efficiently.
  * 
- * In addition saving the results of the computations for all (x1, x2) pairs might
+ * In addition saving the results of the computations for all (x1, x2, ..xk) pairs might
  * take a significant amount of space, thus reduction amount threads working on
  * the same PS before saving the result could help greatly.
  * 
@@ -67,19 +71,18 @@ inline void periodogram_sum_term(__private TYPE *constants,
 {
     TYPE real_part, imag_part;
     /* HERE use ifdefs to choose what the periodogram should look like */
-    TYPE inside_exp = constants[0] + constants[1] * variables[0] + constants[2] * variables[1];
+    TYPE inside_exp = constants[0];
+    # pragma unroll
+    for (int j=0; j<VARIABLES_PER_SUM_TERM; j++){
+         inside_exp += constants[j + 1] * variables[j];
+     }
+     
     imag_part = sincos(inside_exp, &real_part); // imag_part gets the sin and real_part the cos
     real_part = real_part * weight;
     imag_part = imag_part * weight;
     *accumulator_real = *accumulator_real + real_part;
     *accumulator_imag = *accumulator_imag + imag_part;
 }
-
-
-/* Use ifdefs to correctly set these constants */
-#define CONSTANTS_PER_SUM_TERM 3
-#define VARIABLES_PER_SUM_TERM 2
-
 
 
 /* Number of sums to compute per thread at a given time.

@@ -1,5 +1,4 @@
 import concurrent.futures
-import functools
 import multiprocessing
 import os
 from dataclasses import dataclass
@@ -12,7 +11,6 @@ import tqdm
 from numpy.typing import NDArray
 
 from teosar import periodogram, psc, psutils
-from teosar.periodogram_cl import PeriodogramCL
 
 """
 Ferreti 2001
@@ -281,48 +279,6 @@ def iterative_alternate_periodogram(
     return q_estimation, v_estimation, APS_estimated, ak, p_dzeta, p_eta, residual
 
 
-def exhaustive_search_cl(
-    phi_ps_mat,
-    Cq,
-    date_normal_baseline,
-    Cv,
-    years_since_ref,
-    weights_per_date,
-    v_test,
-    q_test,
-):
-    """
-    Helper function to use PeriodogramCL
-    """
-    num_dates, num_PS = phi_ps_mat.shape
-
-    # Convert inputs to the format PeriodogramCL expects.
-    constants = np.zeros([num_PS, num_dates, 3], dtype=np.float32)
-    constants[:, :, 0] = phi_ps_mat.transpose((1, 0))
-    constants[:, :, 1] = -Cq[:, np.newaxis] * date_normal_baseline.transpose((1, 0))
-    constants[:, :, 2] = -Cv * years_since_ref
-    variables = np.zeros([v_test.shape[0], q_test.shape[0], 2], dtype=np.float32)
-    variables[:, :, 0] = q_test[np.newaxis, :]
-    variables[:, :, 1] = v_test[:, np.newaxis]
-    variables = np.reshape(variables, [-1, 2])
-
-    periodogram_cl_instance = PeriodogramCL(
-        enable_profile=False, interactive_device_selection=False
-    )
-    result = periodogram_cl_instance.find_maximum_on_grid(
-        constants, variables, weights_per_date
-    )
-
-    # Interprete outputs
-    maximums_indices = np.array(result[:, 1], dtype=np.int32)
-    maximums_q = variables[maximums_indices, 0]
-    maximums_v = variables[maximums_indices, 1]
-
-    v_estimated = maximums_v
-    q_estimated = maximums_q
-    return v_estimated, q_estimated
-
-
 # Here I add stuff to complete ferreti2001 quickly but not necessarily in a clean manner
 
 
@@ -343,8 +299,12 @@ def velo_topo_periodogram(
     q_test = periodogram.get_test_vals(80, 10)
 
     if use_tensorflow:
-        import tensorflow as tf
-        import tensorflow_probability as tfp
+        from teosar.periodogram_cl import (
+            PeriodogramCL,
+            create_constants,
+            create_variables,
+        )
+        from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
 
         if weights_per_date is None:
             weights_per_date = np.ones((num_dates,), dtype=np.float64) / num_dates
@@ -353,160 +313,26 @@ def velo_topo_periodogram(
             # normalize weights
             weights_per_date /= np.sum(weights_per_date)
 
-        # Perform a first exhaustive search to initialize
-        v_init, q_init = exhaustive_search_cl(
-            phi_ps_mat,
-            Cq,
-            date_normal_baseline,
-            Cv,
-            years_since_ref,
-            weights_per_date,
-            v_test,
-            q_test,
+        # Convert inputs to the format PeriodogramCL expects.
+        constants = create_constants(
+            num_PS,
+            num_dates,
+            phi_ps_mat.T,
+            [-(Cq * date_normal_baseline).T, -Cv * years_since_ref],
+            dtype=np.float64,
         )
 
-        """
-        Refine using tensorflow.
-        The advantage of using tensorflow is that we get automatically
-        a compiled version of the gradient of the periodogram. This is
-        used for the optimization and enables high accuracy.
-        """
-
-        # Import all the variables in tensorflow.
-        # Using double precision enables high accuracy.
-        tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
-        tf_Cq = tf.cast(Cq, tf.float64)
-        tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
-        tf_init = tf.cast(
-            np.concatenate([q_init[:, np.newaxis], v_init[:, np.newaxis]], axis=1),
-            tf.float64,
+        variables = create_variables([q_test, v_test], dtype=np.float64)
+        periodo_cl = PeriodogramCL(num_constants_per_sum_term=3)
+        periodo_tf = PeriodogramTF(
+            num_constants_per_sum_term=3, batch_size=batch_size, ncpu=ncpu
         )
-
-        # Define the tensorflow graph.
-        # Each function gets only called once
-
-        # Used to compute the final gamma.
-        def gamma_inference(
-            q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
-        ):  # _b stands for batch
-            res = 0
-            for k in range(num_dates):
-                res += weights_per_date[k] * tf.exp(
-                    tf.dtypes.complex(
-                        tf.cast(0.0, tf.float64),
-                        (
-                            tf_phi_ps_mat_b[k, :]
-                            - tf_Cq_b * tf_date_normal_baseline_b[k] * q_b
-                            - tf.cast(Cv * years_since_ref[k], tf.float64) * v_b
-                        ),
-                    )
-                )
-            return res
-
-        # Defined for a single element/PS
-        def periodogram_to_optimize(
-            q_e, v_e, tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_mat_e
-        ):
-            res = weights_per_date * tf.exp(
-                tf.dtypes.complex(
-                    tf.zeros(num_dates, tf.float64),
-                    (
-                        tf_phi_ps_mat_e
-                        - tf_Cq_e * tf_date_normal_baseline_e * q_e
-                        - tf.cast(Cv * years_since_ref, tf.float64) * v_e
-                    ),
-                )
-            )
-            return tf.reduce_sum(res)
-
-        def make_val_and_grad_fn(value_fn):
-            @functools.wraps(value_fn)
-            def val_and_grad(x):
-                return tfp.math.value_and_gradient(value_fn, x)
-
-            return val_and_grad
-
-        # slice in batches
-        start_indices = np.arange(0, num_PS, batch_size)
-        end_indices = np.append(start_indices[1:], num_PS)
-        q = np.zeros((num_PS,), dtype=np.float64)
-        v = np.zeros((num_PS,), dtype=np.float64)
-        gammas = np.zeros((num_PS,), dtype=np.float64)
-
-        # Encapsulating the lbfgs_minimize call means the
-        # lbfgs optimisation itself will get compiled too
-        def optimize_for_element(args):
-            tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_e, tf_init_e = args
-
-            @make_val_and_grad_fn
-            def loss(x):
-                q_e = x[0]
-                v_e = x[1]
-                per = periodogram_to_optimize(
-                    q_e, v_e, tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_e
-                )
-                return -tf.math.abs(per)
-
-            res = tfp.optimizer.lbfgs_minimize(
-                loss,
-                initial_position=tf_init_e,
-                tolerance=1e-15,
-                max_iterations=10,
-            )
-            return res.position[0], res.position[1], res.objective_value
-
-        # Compile a tensorflow graph that runs the optimisation iteratively
-        # for each PS. tf.function is used to compile the graph.
-        # jit_compile means XLA is used to compile the graph and gives a huge
-        # speedup in our case.
-        # TODO: parallel_iterations is supposed to distribute computation
-        # accross CPUs, but in practice only one is used.
-        # Investigate what needs to be done to distribute the work.
-        @tf.function(jit_compile=True)
-        def optimize_for_slice(
-            tf_Cq_slice,
-            tf_date_normal_baseline_slice,
-            tf_phi_ps_mat_slice,
-            tf_init_slice,
-        ):
-            return tf.map_fn(
-                optimize_for_element,
-                (
-                    tf_Cq_slice,
-                    tf_date_normal_baseline_slice,
-                    tf_phi_ps_mat_slice,
-                    tf_init_slice,
-                ),
-                fn_output_signature=(tf.float64, tf.float64, tf.float64),
-                parallel_iterations=ncpu,
-            )
-
-        for s, e in tqdm.tqdm(
-            zip(start_indices, end_indices), total=len(start_indices)
-        ):
-            tf_Cq_slice = tf_Cq[s:e]
-            tf_date_normal_baseline_slice = tf.transpose(
-                tf_date_normal_baseline[:, s:e], perm=[1, 0]
-            )
-            tf_phi_ps_mat_slice = tf.transpose(tf_phi_ps_mat[:, s:e], perm=[1, 0])
-            tf_init_slice = tf_init[s:e, :]
-            x = optimize_for_slice(
-                tf_Cq_slice,
-                tf_date_normal_baseline_slice,
-                tf_phi_ps_mat_slice,
-                tf_init_slice,
-            )
-            q[s:e] = x[0].numpy()
-            v[s:e] = x[1].numpy()
-            gammas[s:e] = -x[2].numpy()
-
-        gammas = (
-            tf.math.abs(
-                gamma_inference(q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat)
-            )
-            .numpy()
-            .squeeze()
+        periodo_par = PeriodogramPar(periodo_cl, periodo_tf)
+        opt_vars, gammas = periodo_par.find_maximum(
+            constants, variables, weights_per_date
         )
+        q = opt_vars[:, 0]
+        v = opt_vars[:, 1]
     else:
         q = np.zeros([num_PS], dtype=np.float32)  # constant dem error
         v = np.zeros([num_PS], dtype=np.float32)  # constant velocity

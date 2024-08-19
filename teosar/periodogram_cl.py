@@ -1,9 +1,17 @@
+from __future__ import annotations
+
 import math
 import os
-from typing import Any, Optional
+from typing import (
+    Any,  # noqa
+    Optional,
+)
 
 import numpy as np
 import pyopencl as cl
+from numpy.typing import NDArray
+
+RealArray = NDArray["np.floating[Any]"]
 
 mf = cl.mem_flags
 
@@ -87,11 +95,12 @@ def DIVUP(a, b):
 class PeriodogramCL:
     def __init__(
         self,
-        ctx=None,
-        queue=None,
-        use_double_precision=False,
-        interactive_device_selection=False,
-        enable_profile=False,
+        ctx: cl.Context = None,
+        queue: cl.CommandQueue = None,
+        use_double_precision: bool = False,
+        interactive_device_selection: bool = False,
+        enable_profile: bool = False,
+        num_constants_per_sum_term: int = 3,
     ):
         # Create an OpenCL context if None given
         if ctx is None:
@@ -127,9 +136,10 @@ class PeriodogramCL:
         fstr = "".join(f.readlines())
         build_options = "-DUSE_DOUBLE" if use_double_precision else ""
         build_options += " -DLOCAL_SIZE=%d" % self.num_threads_per_ps
+        build_options += " -DCONSTANTS_PER_SUM_TERM=%d" % num_constants_per_sum_term
 
-        self.num_constants_per_sum_term = 3
-        self.num_variables_per_sum_term = 2
+        self.num_constants_per_sum_term = num_constants_per_sum_term
+        self.num_variables_per_sum_term = num_constants_per_sum_term - 1
         # See code on how to compile for other periodogram computations
 
         program = cl.Program(ctx, fstr).build(options=build_options)
@@ -145,7 +155,12 @@ class PeriodogramCL:
         self.dtype = np.float64 if use_double_precision else np.float32
         self.dtype_size = 8 if use_double_precision else 4
 
-    def find_maximum_on_grid(self, constants, variables, weights):
+    def find_maximum_on_grid(
+        self,
+        constants: RealArray,
+        variables: RealArray,
+        weights: Optional[RealArray] = None,
+    ) -> RealArray:
         """
         Inputs:
         . constants: 3D array [num_ps, sum_size, num_constants_per_sum_term]
@@ -157,25 +172,38 @@ class PeriodogramCL:
           the maximum and the index (1st dimension) of the values in the variables
           table that attain this maximum.
           The maximized function is the selected periodogram function.
-          Currently the periodogram function is:
-              || sum_j w[j] * exp_imag(c[i,j,0] + c[i,j,1] * v[k, 0] + c[i,j,2] * v[k, 1]) || / sum_j w[j]
+          The periodogram function is:
+          gamma = || sum_n w[n] * exp_imag(c[p,n,0] + c[p,n,1] * v[p, 0] + ... c[p,n,j] * v[p, j]) || / sum_n w[n]
 
-        Note:
-        The code can be modified to add a num_ps dimension to variables if needed
         """
         num_ps = constants.shape[0]
         sum_size = constants.shape[1]
         num_values_to_test = variables.shape[0]
 
-        assert (
-            constants.shape[2] == self.num_constants_per_sum_term
-            and len(constants.shape) == 3
-        )
-        assert (
-            variables.shape[1] == self.num_variables_per_sum_term
-            and len(variables.shape) == 2
-        )
-        assert weights.shape[0] == sum_size and len(weights.shape) == 1
+        if (
+            len(constants.shape) != 3
+            or constants.shape[2] != self.num_constants_per_sum_term
+        ):
+            raise WrongShape.from_msg(
+                "constants",
+                f"(num_ps, sum_size, {self.num_constants_per_sum_term})",
+                constants.shape,
+            )
+
+        if (
+            len(variables.shape) != 2
+            or variables.shape[1] != self.num_variables_per_sum_term
+        ):
+            raise WrongShape.from_msg(
+                "variables",
+                f"(num_values_to_test, {self.num_variables_per_sum_term})",
+                variables.shape,
+            )
+
+        if weights is None:
+            weights = np.ones((sum_size,), dtype=self.dtype)
+        elif len(weights.shape) != 1 or weights.shape[0] != sum_size:
+            raise WrongShape.from_msg("weights", f"({sum_size},) ", weights.shape)
 
         # Ensure we have contiguous allocation and the correct dtype
         constants = np.ascontiguousarray(constants, dtype=self.dtype)
@@ -259,3 +287,48 @@ class PeriodogramCL:
         print_profile_info(self.events)
 
         return results
+
+
+class WrongShape(ValueError):
+    @staticmethod
+    def from_msg(
+        varname: str, expected_shape: str, var_shape: tuple[int, ...]
+    ) -> WrongShape:
+        msg = f"Wrong shape for {varname}. Expected shape: {expected_shape}, got {var_shape}"
+        return WrongShape(msg)
+
+
+def create_constants(
+    num_ps: int,
+    sum_size: int,
+    phi_ps_mat: RealArray,
+    const_list: list[RealArray],
+    dtype=np.float32,
+) -> RealArray:
+    constants = np.zeros([num_ps, sum_size, len(const_list) + 1], dtype=dtype)
+
+    if phi_ps_mat.shape == (num_ps, sum_size):
+        constants[:, :, 0] = phi_ps_mat
+    elif phi_ps_mat.shape == (sum_size, num_ps):
+        constants[:, :, 0] = phi_ps_mat.T
+    else:
+        raise WrongShape.from_msg(
+            "phi_ps_mat", str((num_ps, sum_size)), phi_ps_mat.shape
+        )
+
+    for i, const in enumerate(const_list):
+        try:
+            const_view = np.broadcast_to(const, (num_ps, sum_size))
+        except ValueError as e:
+            raise WrongShape(
+                f"Could not broadcast const {i} of shape {const.shape} to (num_ps, sum_size)\n{e}"
+            )
+        else:
+            constants[:, :, 1 + i] = const_view
+    return constants
+
+
+def create_variables(test_vars_list: list[RealArray], dtype=np.float32) -> RealArray:
+    variables = np.stack(np.meshgrid(*test_vars_list), axis=-1, dtype=dtype)
+    variables = np.reshape(variables, [-1, len(test_vars_list)])
+    return variables
