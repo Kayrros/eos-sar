@@ -386,7 +386,7 @@ def velo_topo_periodogram(
         # Each function gets only called once
 
         # Used to compute the final gamma.
-        def periodogram_to_optimize_batch(
+        def gamma_inference(
             q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
         ):  # _b stands for batch
             res = 0
@@ -502,9 +502,7 @@ def velo_topo_periodogram(
 
         gammas = (
             tf.math.abs(
-                periodogram_to_optimize_batch(
-                    q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat
-                )
+                gamma_inference(q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat)
             )
             .numpy()
             .squeeze()
