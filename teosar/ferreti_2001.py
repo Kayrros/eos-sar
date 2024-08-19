@@ -12,7 +12,7 @@ import tqdm
 from numpy.typing import NDArray
 
 from teosar import periodogram, psc, psutils
-from teosar.periodogram_cl import periodogram_cl
+from teosar.periodogram_cl import PeriodogramCL
 
 """
 Ferreti 2001
@@ -292,11 +292,11 @@ def exhaustive_search_cl(
     q_test,
 ):
     """
-    Helper function to use periodogram_cl
+    Helper function to use PeriodogramCL
     """
     num_dates, num_PS = phi_ps_mat.shape
 
-    # Convert inputs to the format periodogram_cl expects.
+    # Convert inputs to the format PeriodogramCL expects.
     constants = np.zeros([num_PS, num_dates, 3], dtype=np.float32)
     constants[:, :, 0] = phi_ps_mat.transpose((1, 0))
     constants[:, :, 1] = -Cq[:, np.newaxis] * date_normal_baseline.transpose((1, 0))
@@ -306,7 +306,7 @@ def exhaustive_search_cl(
     variables[:, :, 1] = v_test[:, np.newaxis]
     variables = np.reshape(variables, [-1, 2])
 
-    periodogram_cl_instance = periodogram_cl(
+    periodogram_cl_instance = PeriodogramCL(
         enable_profile=False, interactive_device_selection=False
     )
     result = periodogram_cl_instance.find_maximum_on_grid(

@@ -84,7 +84,7 @@ def DIVUP(a, b):
     return int(math.ceil(float(a) / float(b)))
 
 
-class periodogram_cl:
+class PeriodogramCL:
     def __init__(
         self,
         ctx=None,
