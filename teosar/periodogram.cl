@@ -100,7 +100,7 @@ __kernel void compute_periodograms(__global TYPE * restrict result,
                                    int sum_size)
 {
     /* Required layout:
-     * constants: flattened 2D table constants[p, n, k] with p the PS index, n the sum index and k the tuple element index
+     * constants: flattened 3D table constants[p, n, k] with p the PS index, n the sum index and k the tuple element index
      * variables: flattened 2D table variables[i, j] with i the tested variable tuple and j the tuple element index
      * weights: 1D table of size sum_size that should verify sum(weights) = 1
      * result: flattened 2D table result[p, i] with p the PS index and i the tuple index where
