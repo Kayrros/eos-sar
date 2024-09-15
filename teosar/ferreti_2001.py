@@ -11,7 +11,8 @@ import tifffile
 import tqdm
 from numpy.typing import NDArray
 
-from teosar import periodogram, periodogram_cl, psc, psutils
+from teosar import periodogram, psc, psutils
+from teosar.periodogram_cl import PeriodogramCL
 
 """
 Ferreti 2001
@@ -280,19 +281,22 @@ def iterative_alternate_periodogram(
     return q_estimation, v_estimation, APS_estimated, ak, p_dzeta, p_eta, residual
 
 
-def exhaustive_search_cl(phi_ps_mat,
-                         Cq,
-                         date_normal_baseline,
-                         Cv,
-                         years_since_ref,
-                         weights_per_date,
-                         v_test, q_test):
+def exhaustive_search_cl(
+    phi_ps_mat,
+    Cq,
+    date_normal_baseline,
+    Cv,
+    years_since_ref,
+    weights_per_date,
+    v_test,
+    q_test,
+):
     """
-    Helper function to use periodogram_cl
+    Helper function to use PeriodogramCL
     """
     num_dates, num_PS = phi_ps_mat.shape
 
-    # Convert inputs to the format periodogram_cl expects.
+    # Convert inputs to the format PeriodogramCL expects.
     constants = np.zeros([num_PS, num_dates, 3], dtype=np.float32)
     constants[:, :, 0] = phi_ps_mat.transpose((1, 0))
     constants[:, :, 1] = -Cq[:, np.newaxis] * date_normal_baseline.transpose((1, 0))
@@ -302,11 +306,14 @@ def exhaustive_search_cl(phi_ps_mat,
     variables[:, :, 1] = v_test[:, np.newaxis]
     variables = np.reshape(variables, [-1, 2])
 
-    periodogram_cl_instance = periodogram_cl(enable_profile=False, interactive_device_selection=False)
-    result = periodogram_cl_instance.find_maximum_on_grid(constants, variables, weights_per_date)
+    periodogram_cl_instance = PeriodogramCL(
+        enable_profile=False, interactive_device_selection=False
+    )
+    result = periodogram_cl_instance.find_maximum_on_grid(
+        constants, variables, weights_per_date
+    )
 
     # Interprete outputs
-    maximums = result[:, 0]
     maximums_indices = np.array(result[:, 1], dtype=np.int32)
     maximums_q = variables[maximums_indices, 0]
     maximums_v = variables[maximums_indices, 1]
@@ -314,6 +321,7 @@ def exhaustive_search_cl(phi_ps_mat,
     v_estimated = maximums_v
     q_estimated = maximums_q
     return v_estimated, q_estimated
+
 
 # Here I add stuff to complete ferreti2001 quickly but not necessarily in a clean manner
 
@@ -346,13 +354,16 @@ def velo_topo_periodogram(
             weights_per_date /= np.sum(weights_per_date)
 
         # Perform a first exhaustive search to initialize
-        v_init, q_init = exhaustive_search_cl(phi_ps_mat,
-                         Cq,
-                         date_normal_baseline,
-                         Cv,
-                         years_since_ref,
-                         weights_per_date,
-                         v_test, q_test)
+        v_init, q_init = exhaustive_search_cl(
+            phi_ps_mat,
+            Cq,
+            date_normal_baseline,
+            Cv,
+            years_since_ref,
+            weights_per_date,
+            v_test,
+            q_test,
+        )
 
         """
         Refine using tensorflow.
@@ -361,20 +372,21 @@ def velo_topo_periodogram(
         used for the optimization and enables high accuracy.
         """
 
-
         # Import all the variables in tensorflow.
         # Using double precision enables high accuracy.
         tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
         tf_Cq = tf.cast(Cq, tf.float64)
         tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
-        tf_weights_per_date = tf.cast(weights_per_date, tf.float64)
-        tf_init = tf.cast(np.concatenate([q_init[:, np.newaxis], v_init[:, np.newaxis]], axis=1), tf.float64)
+        tf_init = tf.cast(
+            np.concatenate([q_init[:, np.newaxis], v_init[:, np.newaxis]], axis=1),
+            tf.float64,
+        )
 
         # Define the tensorflow graph.
         # Each function gets only called once
 
         # Used to compute the final gamma.
-        def periodogram_to_optimize_batch(
+        def gamma_inference(
             q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
         ):  # _b stands for batch
             res = 0
@@ -396,15 +408,15 @@ def velo_topo_periodogram(
             q_e, v_e, tf_Cq_e, tf_date_normal_baseline_e, tf_phi_ps_mat_e
         ):
             res = weights_per_date * tf.exp(
-                    tf.dtypes.complex(
-                        tf.zeros(num_dates, tf.float64),
-                        (
-                            tf_phi_ps_mat_e
-                            - tf_Cq_e * tf_date_normal_baseline_e * q_e
-                            - tf.cast(Cv * years_since_ref, tf.float64) * v_e
-                        ),
-                    )
+                tf.dtypes.complex(
+                    tf.zeros(num_dates, tf.float64),
+                    (
+                        tf_phi_ps_mat_e
+                        - tf_Cq_e * tf_date_normal_baseline_e * q_e
+                        - tf.cast(Cv * years_since_ref, tf.float64) * v_e
+                    ),
                 )
+            )
             return tf.reduce_sum(res)
 
         def make_val_and_grad_fn(value_fn):
@@ -451,26 +463,46 @@ def velo_topo_periodogram(
         # accross CPUs, but in practice only one is used.
         # Investigate what needs to be done to distribute the work.
         @tf.function(jit_compile=True)
-        def optimize_for_slice(tf_Cq_slice, tf_date_normal_baseline_slice, tf_phi_ps_mat_slice, tf_init_slice):
-            return tf.map_fn(optimize_for_element, (tf_Cq_slice, tf_date_normal_baseline_slice, tf_phi_ps_mat_slice, tf_init_slice), fn_output_signature=(tf.float64, tf.float64, tf.float64), parallel_iterations=ncpu)
+        def optimize_for_slice(
+            tf_Cq_slice,
+            tf_date_normal_baseline_slice,
+            tf_phi_ps_mat_slice,
+            tf_init_slice,
+        ):
+            return tf.map_fn(
+                optimize_for_element,
+                (
+                    tf_Cq_slice,
+                    tf_date_normal_baseline_slice,
+                    tf_phi_ps_mat_slice,
+                    tf_init_slice,
+                ),
+                fn_output_signature=(tf.float64, tf.float64, tf.float64),
+                parallel_iterations=ncpu,
+            )
 
         for s, e in tqdm.tqdm(
             zip(start_indices, end_indices), total=len(start_indices)
         ):
             tf_Cq_slice = tf_Cq[s:e]
-            tf_date_normal_baseline_slice = tf.transpose(tf_date_normal_baseline[:, s:e], perm=[1, 0])
+            tf_date_normal_baseline_slice = tf.transpose(
+                tf_date_normal_baseline[:, s:e], perm=[1, 0]
+            )
             tf_phi_ps_mat_slice = tf.transpose(tf_phi_ps_mat[:, s:e], perm=[1, 0])
             tf_init_slice = tf_init[s:e, :]
-            x = optimize_for_slice(tf_Cq_slice, tf_date_normal_baseline_slice, tf_phi_ps_mat_slice, tf_init_slice)
+            x = optimize_for_slice(
+                tf_Cq_slice,
+                tf_date_normal_baseline_slice,
+                tf_phi_ps_mat_slice,
+                tf_init_slice,
+            )
             q[s:e] = x[0].numpy()
             v[s:e] = x[1].numpy()
             gammas[s:e] = -x[2].numpy()
 
         gammas = (
             tf.math.abs(
-                periodogram_to_optimize_batch(
-                    q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat
-                )
+                gamma_inference(q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat)
             )
             .numpy()
             .squeeze()
