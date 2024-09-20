@@ -401,7 +401,7 @@ class SensorModel(abc.ABC):
         return buffered_geom
 
 
-def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM):
+def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM, raise_error: bool = True):
     """
     Computes the error between localized point at a certain height and the dem.
 
@@ -428,7 +428,7 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
         querying for points at various altitudes along the line of sight.
     """
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - dem.elevation(lon, lat)
+    return alt - dem.elevation(lon, lat, raise_error=raise_error)
 
 
 def shrink_interval(
@@ -494,13 +494,15 @@ def shrink_interval(
         utils.hrepeat(cols, num_alt).ravel(),
         potential_alt.ravel(),
         dem,
+        raise_error=False
     )
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
     # check if any of the potential alts
     # yielded points exactly on the dem
-    zero_id = utils.first_nonzero(alt_diff == 0, axis=1)
+    # FIXME is 1e-6 sufficient?
+    zero_id = utils.first_nonzero(np.abs(alt_diff) < 1e-6, axis=1)
     zero_mask = zero_id != -1
 
     # Check for sign change in alt_diff
@@ -509,6 +511,7 @@ def shrink_interval(
     # points that don't have a zero crossing anywhere
     # this can only happen if your alt_min, alt_max range doesn't intersect
     # the dem
+    # FIXME this should also include "your dem is too small" as well
     invalid_mask = id_best == -1
 
     # points remaining where we can shrink the interval
