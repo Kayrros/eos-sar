@@ -265,32 +265,7 @@ def process(input: CropperInput) -> None:
 
     roi: Roi
     dst_geom = input.destination_geometry
-    if isinstance(dst_geom, BboxDestinationGeometry):
-        bbox = dst_geom.bbox
-        crs = dst_geom.crs
-        if crs is None:
-            crs = _utm_zone_of_bbox(bbox)
-
-        transform, shape, _ = _compute_transform_shape(
-            crs, dst_geom.resolution, bbox, dst_geom.align
-        )
-
-        # TODO: how remove the buffer?
-        buffered_bbox = shapely.geometry.box(*bbox).buffer(0.3).bounds
-        dem = input.dem_source.fetch_dem(buffered_bbox)
-
-        geometry = shapely.geometry.box(*bbox)
-        roi = geom_to_roi(geometry, proj_model, dem)
-        roi = roi.add_margin(20)  # TODO: avoid this
-        orthorectifier = Orthorectifier.from_transform(
-            proj_model,
-            roi,
-            transform=transform,
-            shape=shape,
-            dem=dem,
-            crs=crs,
-        )
-    elif isinstance(dst_geom, FromImageRoiDestinationGeometry):
+    if isinstance(dst_geom, FromImageRoiDestinationGeometry):
         roi = dst_geom.roi
         dem = proj_model.fetch_dem(input.dem_source, roi)
         orthorectifier = Orthorectifier.from_roi(
@@ -301,31 +276,45 @@ def process(input: CropperInput) -> None:
             crs=dst_geom.crs,
             align=dst_geom.align,
         )
-    elif isinstance(dst_geom, ShapeTransformDestinationGeometry):
-        crs = dst_geom.crs
+    else:
+        bbox: tuple[float, float, float, float]
+        if isinstance(dst_geom, BboxDestinationGeometry):
+            bbox = dst_geom.bbox
+            crs = dst_geom.crs
+            if crs is None:
+                crs = _utm_zone_of_bbox(bbox)
 
-        # compute a bbox, used for fetching the DEM and identifying a ROI
-        bbox = rasterio.transform.array_bounds(*dst_geom.shape, dst_geom.transform)
-        bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
+            transform, shape, _ = _compute_transform_shape(
+                crs, dst_geom.resolution, bbox, dst_geom.align
+            )
+        elif isinstance(dst_geom, ShapeTransformDestinationGeometry):
+            transform = dst_geom.transform
+            shape = dst_geom.shape
+            crs = dst_geom.crs
 
-        # TODO: how remove the buffer?
-        buffered_bbox = shapely.geometry.box(*bbox).buffer(0.3).bounds
-        dem = input.dem_source.fetch_dem(buffered_bbox)
+            # compute a bbox, used for fetching the DEM and identifying a ROI
+            bbox = rasterio.transform.array_bounds(*dst_geom.shape, dst_geom.transform)
+            bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
+        else:
+            assert_never(dst_geom)
 
         geometry = shapely.geometry.box(*bbox)
+
+        # download a dem, with a large buffer to ensure we can use localize_without_alt
+        # for example, 0.5 is half the tile size of GLO30, this make sure we have plenty of DEM available
+        dem = input.dem_source.fetch_dem(geometry.buffer(0.5).bounds)
+
+        # estimate a Roi for the requested geometry
         roi = geom_to_roi(geometry, proj_model, dem)
-        roi = roi.add_margin(20)  # TODO: avoid this
 
         orthorectifier = Orthorectifier.from_transform(
             proj_model,
             roi,
-            crs=crs,
-            transform=dst_geom.transform,
-            shape=dst_geom.shape,
+            transform=transform,
+            shape=shape,
             dem=dem,
+            crs=crs,
         )
-    else:
-        assert_never(dst_geom)
 
     for pol in input.params.polarizations:
         reader = product.get_image_reader(pol)
