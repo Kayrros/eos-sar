@@ -127,7 +127,7 @@ deploy-wheel312:
   stage: deploy
   image: python:3.12
   before_script:
-    - pip install twine
+    - pip install twine setuptools
     - pip install cython numpy
   script:
     - python setup.py bdist_wheel
