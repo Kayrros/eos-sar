@@ -290,10 +290,16 @@ class DEMSource(abc.ABC):
         """
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class SRTM4Source(DEMSource):
-    def fetch_dem(self, bounds: Bounds) -> DEM:
+    def __init__(self):
+        self.dst_area_or_point = "Area"
+    def fetch_dem(self, bounds: Bounds, fill_sea=False) -> DEM:
         array, transform, crs = srtm4.crop(bounds, datum="ellipsoidal")
+        
+        # Set 0 in sea areas where the SRTM4 tiles are filled with np.nan
+        if fill_sea:
+            array[np.isnan(array)] = 0.
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert transform is not None
