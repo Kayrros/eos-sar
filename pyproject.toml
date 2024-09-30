@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools", "cython", "numpy"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = [
+    # defaults
+    "F",
+    "E",
+    # isort
+    "I001",
+]
+ignore = [
+    "E741",  # Ambiguous variable name
+    # line too long; ruff will still format what it can anyway
+    # so this mostly to avoid triggers on comments
+    "E501",
+]
+ignore-init-module-imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"*.ipynb" = ["E402"]  # it's OK if imports are not at the top of the file for notebooks
+
+[tool.mypy]
+install_types = true
+ignore_missing_imports = true
+check_untyped_defs = true
+allow_redefinition = true
+pretty = true
+python_version = "3.9"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:Deprecated call to `pkg_resources\\.declare_namespace\\('.*'\\):DeprecationWarning",
+    "ignore::DeprecationWarning:google.rpc",
+]
