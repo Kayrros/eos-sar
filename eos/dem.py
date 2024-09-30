@@ -124,6 +124,8 @@ class DEM:
     """ the transform associated with the raster, expressed in the "pixel is area" convention (GDAL default) """
     crs: str = "EPSG:4326"
     """ always "EPSG:4326" """
+    dst_area_or_point: str = "Area"
+    """ "pixel is area" convention by default """
 
     def __post_init__(self):
         # make the array read-only, just in case
