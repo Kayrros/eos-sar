@@ -362,20 +362,33 @@ class MultidemSource(DEMSource):
         return multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class DEMStitcherSource(DEMSource):
-    dem_name: str = "glo30"
-    """ see https://github.com/ACCESS-Cloud-Based-InSAR/dem-stitcher#dems-supported """
 
+    """ see https://github.com/ACCESS-Cloud-Based-InSAR/dem-stitcher#dems-supported """
+    def __init__(self, dem_name="glo_30", fill_in_glo_30=True, dst_resolution=None, dst_area_or_point=None):
+        self.dem_name = dem_name
+        self.fill_in_glo_30 = fill_in_glo_30
+        self.dst_resolution = dst_resolution
+        self.dst_area_or_point = dst_area_or_point
     def fetch_dem(self, bounds: Bounds) -> DEM:
+        # Add the pixel convention (area or point) if it was not defined at instantiation
+        if self.dst_area_or_point is None:
+            dem_POINT = np.array(["glo_30", "glo_90", "glo_90_missing"])
+            if np.sum(dem_POINT == self.dem_name) > 0:
+                self.dst_area_or_point = "Point"
+            else:
+                self.dst_area_or_point = "Area"
         array, profile = dem_stitcher.stitch_dem(
-            list(bounds), "glo_30", merge_nodata_value=0
+            bounds=list(bounds), dem_name=self.dem_name, merge_nodata_value=0, 
+            dst_area_or_point=self.dst_area_or_point, dst_resolution=self.dst_resolution,
+            fill_in_glo_30=self.fill_in_glo_30
         )
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
         transform = profile["transform"]
-        return DEM(array=array, transform=transform)
+        return DEM(array=array, transform=transform, dst_area_or_point=self.dst_area_or_point)
 
 
 def get_any_source() -> DEMSource:
