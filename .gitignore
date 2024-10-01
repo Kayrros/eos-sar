@@ -139,3 +139,8 @@ cython_debug/
 
 # tutorial folder 
 tutorial
+
+# Git files
+.DS_Store
+eos/.DS_Store
+eos/products/.DS_Store
