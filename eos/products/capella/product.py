@@ -1140,3 +1140,71 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
             """
             
             self.wgs84extent = [tuple(corner) for corner in gdal.Info(self.path_to_image, format='json')['wgs84Extent']['coordinates'][0]]
+            
+            
+            
+        def image2wgs84(self, row_index, col_index):
+            """
+            Get the longitude(s) and latitude(s) of points knowing their position(s) in the image 
+            and assuming that they are on the WGS84 ellipsoid.
+
+            Parameters
+            ----------
+            row_index: float or list
+                Row index (or indices) of the point(s) of interest.
+            col_index: float or list
+                Column index (or indices) of the point(s) of interest.
+
+            Returns
+            -------
+            lon: float or list
+                Longitude(s) of the point(s) if it were on the WGS84 ellipsoid.
+            lat: float or list
+                Latitude(s) of the point(s) if it were on the WGS84 ellipsoid.
+            """
+             
+            # Go from image coordinates to proj_init
+            x_utm, y_utm = self.geotransform * np.array([row_index, col_index])
+            
+            # Get the transform to go from proj_init to EPSG:4326 (2D CRS, longitude and latitude on the WGS84 ellipsoid)
+            trf = pyproj.Transformer.from_crs(f"epsg:{self.proj_init}", "epsg:4326")
+            if len(np.atleast_1d(x_utm)) > 1:
+                lat, lon, _ = trf.transform(x_utm, y_utm, np.zeros(len(x_utm)))
+            else:
+                lat, lon, _ = trf.transform(x_utm, y_utm, 0)
+
+            return lon, lat
+        
+        
+        
+        def wgs842image(self, lon, lat):
+            """
+            Get the position of a point in the image knowing its longitude and latitude.
+
+            Parameters
+            ----------
+            lon: float or list
+                Longitude(s) of the point(s) of interest.
+            lat: float or list
+                Latitude(s) of the point(s) of interest.
+
+            Returns
+            -------
+            row_index: float or list
+                Row index (or indices) of the point(s).
+            col_index: float or list
+                Column index (or indices) of the point(s).
+            """
+            
+            # Go from EPSG:4326 (2D CRS, longitude and latitude on the WGS84 ellipsoid) to proj_init
+            trf = pyproj.Transformer.from_crs("epsg:4326", f"epsg:{self.proj_init}")
+            if len(np.atleast_1d(lon)) > 1:
+                x_utm, y_utm, _ = trf.transform(lat, lon, np.zeros(len(lon)))
+                x_utm, y_utm = list(x_utm), list(y_utm)
+            else:
+                x_utm, y_utm, _ = trf.transform(lat, lon, 0)
+            
+            # Go to proj_init to image coordinates 
+            col_index, row_index = ~self.geotransform * np.array([x_utm, y_utm])
+
+            return row_index, col_index
