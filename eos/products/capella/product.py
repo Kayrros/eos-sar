@@ -1465,3 +1465,165 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
         
         gec_image = self.get_image(set_nan=True)
         return remove_nan_rows_and_cols(gec_image, return_indices=return_indices)
+    
+    
+    
+    def get_corners_positions(self, which_index="mean"):
+        """
+        Get the positions of the image's corners in image coordinates (row, col).
+
+        Parameters
+        ----------
+        which_index: str, optional
+            Either "min", "mean" or "max". The default is "mean".
+
+        Returns
+        -------
+        corners_positions: list of (row, col) tuples
+            List of the image corners positions (row, col). 
+            First position: the northern corner. Second: eastern. Third: southern. Fourth: western.
+        """
+        
+        # Get the image without rows and columns full of np.nan
+        gec_image_truncated, row_min, row_max, col_min, col_max = self.get_image_no_nan_frame(return_indices=True)
+        
+        # Get the indices of the pixels that are not np.nan on the first/last row and on the first/last column of the truncated image
+        col_indices_row_min = np.arange(gec_image_truncated.shape[1])[~np.isnan(gec_image_truncated[0,:])]
+        col_indices_row_max = np.arange(gec_image_truncated.shape[1])[~np.isnan(gec_image_truncated[-1,:])]
+        row_indices_col_min = np.arange(gec_image_truncated.shape[0])[~np.isnan(gec_image_truncated[:,0])]
+        row_indices_col_max = np.arange(gec_image_truncated.shape[0])[~np.isnan(gec_image_truncated[:,-1])]
+        
+        # Get the positions of the image corners ("min", "mean" or "max" of the indices)
+        corners_positions = [(row_min, eval(f"np.{which_index}(col_indices_row_min)") + col_min),
+                             (eval(f"np.{which_index}(row_indices_col_max)") + row_min, col_max),
+                             (row_max, eval(f"np.{which_index}(col_indices_row_max)") + col_min),
+                             (eval(f"np.{which_index}(row_indices_col_min)") + row_min, col_min)]
+        
+        return corners_positions
+    
+    
+    
+    def get_gec_sides_lengths(self):
+        """
+        Get the lengths of the sides of the GEC image.
+
+        Returns
+        -------
+        wn_es_sides: float
+            Average length of the sides going from the western (resp. eastern) to the northern (resp. southern) corners.
+        ne_sw_sides: float
+            Average length of the sides going from the northern (resp. southern) to the eastern (resp. western) corners.
+        """
+        
+        # Get the positions of the GEC image's corners
+        corners_positions = self.get_corners_positions()
+        
+        # Compute the length of each side
+        side_lengths = []
+        for i in range(len(corners_positions)):
+            vector = np.array(corners_positions[i]) - np.array(corners_positions[i-1])
+            side_lengths.append(np.sqrt(np.sum(vector**2)))  
+    
+        # Compute the average length of parallel sides
+        wn_es_sides = np.mean([side_lengths[0], side_lengths[2]]) # sides going from the western (resp. eastern) to the northern (resp. southern) corners
+        ne_sw_sides = np.mean([side_lengths[1], side_lengths[3]]) # sides going from the northern (resp. southern) to the eastern (resp. western) corners
+        
+        return wn_es_sides, ne_sw_sides
+
+    
+    
+    def get_gec_geometry(self, ordered_as_slc=True, return_corners_positions=False):
+        """
+        Get the geometry of the GEC image (without considering the "NoData" frame).
+
+        Parameters
+        ----------
+        ordered_as_slc: bool, optional
+            Set to True if you want the image corners to be ordered as in the SLC metadata. The default is True.
+        return_corners_positions: bool, optional
+            Set to True if you want to get the corners positions in image coordinates. The default is False.
+
+        Returns
+        -------
+        geometry: list of (lon, lat) tuples
+            Geographical coordinates of the image corners as (lon, lat) on the WGS84 ellipsoid.
+        corners_positions: list of (row, col) tuples, optional
+            Coordinates of the image corners as (row, col). 
+            This is returned only when return_corners_positions is True.
+        """
+        
+        # Get the geographical positions of the corners as (lon, lat) on WGS84
+        corners_positions = self.get_corners_positions()
+        geometry = []
+        for pos in corners_positions:
+            geometry.append(self.image2wgs84(pos[0], pos[1]))
+        
+        
+        # Sort them as for the SLC if asked
+        if ordered_as_slc:
+            slc_product_info = self.get_corresponding_slc_productinfo()
+            if slc_product_info is not None:
+                if slc_product_info.geometry is None:
+                    slc_product_info.set_image_geometry(origin="gcps")
+                    
+                # Find the indices of the eastern, western, northern and southern corners of the SLC
+                slc_geometry = np.array(slc_product_info.geometry)[:-1]
+                lons_slc, lats_slc = slc_geometry[:,0], slc_geometry[:,1]
+                idx_east_slc, idx_west_slc = np.nanargmax(lons_slc), np.nanargmin(lons_slc)
+                idx_north_slc, idx_south_slc = np.nanargmax(lats_slc), np.nanargmin(lats_slc)
+                
+                # Find the indices of the eastern, western, northern and southern corners of the GEC
+                gec_geometry = np.array(geometry)
+                lons_gec, lats_gec = gec_geometry[:,0], gec_geometry[:,1]
+                idx_east_gec, idx_west_gec = np.nanargmax(lons_gec), np.nanargmin(lons_gec)
+                idx_north_gec, idx_south_gec = np.nanargmax(lats_gec), np.nanargmin(lats_gec)
+                
+                # Order the corners of the GEC in the same way as the corners of the SLC
+                new_geometry = [None, None, None, None]
+                new_corners_positions = [None, None, None, None]
+                for idx_slc, idx_gec, c in zip([idx_east_slc, idx_west_slc, idx_north_slc, idx_south_slc], 
+                                               [idx_east_gec, idx_west_gec, idx_north_gec, idx_south_gec], 
+                                               corners_positions):
+                    new_geometry[idx_slc] = (lons_gec[idx_gec], lats_gec[idx_gec])
+                    new_corners_positions[idx_slc] = c
+                geometry = new_geometry
+                corners_positions = new_corners_positions
+        
+        # Close the polygon
+        geometry.append(geometry[0])
+        corners_positions.append(corners_positions[0])
+        
+        if return_corners_positions:
+            return geometry, corners_positions
+        else:
+            return geometry
+    
+    
+    
+    def get_gec_shape(self):
+        """
+        Get the shape of the GEC image.
+
+        Returns
+        -------
+        nb_rows: int
+            GEC length in the direction perpendicular to the LOS.
+        nb_cols: int
+            GEC width in the direction parallel to the LOS.
+        """
+        
+        # Get the positions of the corners of the GEC image
+        _, corners_positions = self.get_gec_geometry(ordered_as_slc=True, return_corners_positions=True)
+        corners_positions = corners_positions[:-1]
+        
+        # Compute the length of each side
+        side_lengths = []
+        for i in range(len(corners_positions)):
+            vector = np.array(corners_positions[i]) - np.array(corners_positions[i-1])
+            side_lengths.append(np.sqrt(np.sum(vector**2)))  
+    
+        # Compute the average length of parallel sides
+        nb_cols = int(np.mean([side_lengths[0], side_lengths[2]]))
+        nb_rows = int(np.mean([side_lengths[1], side_lengths[3]]))
+        
+        return nb_rows, nb_cols
