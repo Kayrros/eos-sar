@@ -415,3 +415,18 @@ class CapellaSLCProductInfo(CapellaMetadata):
             print("Please use the metadata .json file ('json') or the SLC Ground Control Points ('gcps') to get the geometry.")
             geometry = None
         return geometry
+            
+    
+        
+    def get_image_reader(self):
+        """
+        Get an image reader.
+
+        Returns
+        -------
+        image_reader : rasterio.DatasetReader
+            Opened image.
+        """
+        
+        image_reader = io.open_image(self.path_to_image)
+        return image_reader
