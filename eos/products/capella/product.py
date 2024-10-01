@@ -212,3 +212,206 @@ class CapellaMetadata:
                           'velocity':list(state_vectors_vel[i])}
                 self.state_vectors.append(dic_sv)        
 
+
+
+
+#------------------------------------------------------------------------------------------------------------------
+# Class for SLC metadata
+#------------------------------------------------------------------------------------------------------------------
+
+class CapellaSLCProductInfo(CapellaMetadata):
+    
+    def __init__(self, path_to_image_folder, geometry_origin="json"):
+        """
+        CapellaSLCProductInfo is a class used to access the metadata of a Capella SLC image 
+        and get extra information relative to the image geometry.
+
+        Parameters
+        ----------
+        path_to_image_folder: str
+            Path to the folder containing the image and its metadata stored in 
+            the '_extended.json' and '.json' files.
+        geometry_origin: str, optional
+            Set to "gec" if you want to compute the SLC image geometry from the GEC metadata.
+            Set to "gcps" if you want to get it from the Ground Control Points. 
+            Set to "json" if you want to get it from the metadata .json file. The default is "json".
+        """
+        
+        # Get the name of the image
+        self.image_name = os.path.splitext(os.path.basename(path_to_image_folder))[0]
+        
+        # Get the metadata
+        path_to_image = os.path.join(path_to_image_folder, self.image_name)
+        self.path_to_image = path_to_image + ".tif"
+        self.parse_metadata(path_to_image, product_type="slc")
+                        
+        # Image geometry
+        self.set_image_geometry(origin=geometry_origin)
+            
+                
+            
+    def path_to_other_products(self, product_type="GEC"):
+        """
+        Get the path to another product type of the same acquisition (e.g. GEC).
+
+        Parameters
+        ----------
+        product_type: str, optional
+            Product type you are looking for (e.g. "GEC", "GEO", "SIDD", "SICD", "CPHD"). The default is "GEC".
+
+        Returns
+        -------
+        path_to_other_product_folder: str
+            Path to the folder containing the product you are looking for.
+
+        """
+        
+        # Decompose the name of the image
+        list_name = self.image_name.split("_")
+        
+        # Change the product type
+        list_name[3] = product_type
+        list_name[5] = list_name[5][:8] + "*"
+        list_name[6] = list_name[6][:8] + "*"
+        name_other_product = ""
+        for word in list_name:
+            name_other_product += word + "_"
+        name_other_product = name_other_product[:-1]
+        
+        # Create the path to the other product type
+        path_to_folder = self.path_to_image.split("/")[:-2]
+        path_to_other_product_folder = ""
+        for word in path_to_folder:
+            path_to_other_product_folder += word + "/"
+        path_to_other_product_folder += name_other_product
+        path_to_other_product_folder = glob.glob(path_to_other_product_folder)
+        if len(path_to_other_product_folder) == 0:
+            print(f"The {product_type} product could not be found.")
+            return None
+        else:
+            return path_to_other_product_folder[0]
+        
+        
+        
+    def set_image_geometry(self, origin="json"):
+        """
+        Set the geometry of the SLC to the self.geometry attribute.
+        
+        Parameters
+        ----------
+        origin: str, optional
+            Set to "gec" if you want to compute the SLC image geometry from the GEC metadata.
+            Set to "gcps" if you want to get it from the Ground Control Points. 
+            Set to "json" if you want to get it from the metadata .json file. The default is "json".
+        """
+        
+        self.geometry_origin = origin
+        
+        if origin == "json":
+            self.geometry = self.get_geometry_from_json()
+        elif origin == "gcps":
+            self.geometry = self.get_geometry_from_gcps(return_alt=False)
+        elif origin == "gec":
+            self.geometry = self.get_geometry_from_gec()
+        else:
+            self.geometry = None
+            print("Origin should be either 'json', 'gcps' or 'gec'.")
+            print("Use 'json' to extract the image geometry from the metadata .json file.")
+            print("Use 'gcps' to get the image geometry from the SLC Ground Control Points (GCPs).")
+            print("Use 'gec' to compute the image geometry from the GEC metadata.")
+            
+            
+            
+    def get_geometry_from_json(self):
+        """
+        Get the geometry of the SLC from the metadata .json file.
+            
+        Returns
+        -------
+        geometry: list of 5 (lon,lat) tuples
+            The four first elements contain the coordinates (lon, lat) of the four image corners. 
+            The last element is the same as the first one in order to close the polygon.
+        """
+        
+        json_file = self.path_to_image[:-3] + "json"
+        if not os.path.exists(json_file):
+            print(json_file + " does not exist.")
+            print("Please use the SLC Ground Control Points ('gcps') or the GEC product ('gec') to get the geometry.")
+            geometry = None
+        else:
+            with open(json_file) as opened_json_file:
+                meta = json.load(opened_json_file)
+                geometry = [tuple(coords) for coords in meta['geometry']['coordinates'][0]]
+        return geometry
+
+            
+
+    def get_geometry_from_gcps(self, return_alt=False):    
+        """
+        Get the geometry of the SLC from the Ground Control Points (GCPs).
+        
+        Parameters
+        ----------
+        return_alt: bool, optional
+            Set to True if you want to get the altitudes of the GCPs located at the corners of the image.
+            
+        Returns
+        -------
+        geometry: list of 5 (lon,lat) tuples
+            The four first elements contain the coordinates (lon, lat) of the four image corners. 
+            The last element is the same as the first one in order to close the polygon.
+        corners_alt: list of 5 floats, optional (when return_alt=True)
+            The four first elements are the altitudes of the four image corners.
+            The last element is the same as the first one in order to close the polygon.
+        """
+        
+        gcps_list = gdal.Info(self.path_to_image, format="json")["gcps"]["gcpList"]
+        
+        gcps_row = np.array([gcp["line"] for gcp in gcps_list])
+        gcps_col = np.array([gcp["pixel"] for gcp in gcps_list])
+        
+        gcps_lon = np.array([gcp["x"] for gcp in gcps_list])
+        gcps_lat = np.array([gcp["y"] for gcp in gcps_list])
+        gcps_alt = np.array([gcp["z"] for gcp in gcps_list])
+    
+        row_indices = [0, self.file_length]
+        col_indices = [0, self.width]
+        geometry, corners_alt = [], []
+        for row_idx in row_indices:
+            for col_idx in col_indices:
+                lon = gcps_lon[(gcps_row == row_idx) * (gcps_col == col_idx)][0]
+                lat = gcps_lat[(gcps_row == row_idx) * (gcps_col == col_idx)][0]
+                alt = gcps_alt[(gcps_row == row_idx) * (gcps_col == col_idx)][0]
+                geometry.append((lon, lat))
+                corners_alt.append(alt)
+        geometry[3], geometry[2] = geometry[2], geometry[3]
+        geometry.append(geometry[0])
+        corners_alt[3], corners_alt[2] = corners_alt[2], corners_alt[3]
+        corners_alt.append(corners_alt[0])
+    
+        if return_alt:
+            return geometry, corners_alt
+        else:
+            return geometry
+        
+        
+        
+    def get_geometry_from_gec(self):    
+        """
+        Get the geometry of the SLC from the GEC metadata.
+            
+        Returns
+        -------
+        geometry: list of 5 (lon,lat) tuples
+            The four first elements contain the coordinates (lon, lat) of the four image corners. 
+            The last element is the same as the first one in order to close the polygon.
+        """
+        
+        path_gec = self.path_to_other_products(product_type="GEC")        
+        if path_gec is not None:
+            gec_product_info = CapellaGECProductInfo(path_gec)
+            geometry = gec_product_info.get_gec_geometry(ordered_as_slc=True, return_corners_positions=False)
+        else:
+            print("Please use the metadata .json file ('json') or the SLC Ground Control Points ('gcps') to get the geometry.")
+            geometry = None
+        return geometry
