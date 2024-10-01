@@ -430,3 +430,65 @@ class CapellaSLCProductInfo(CapellaMetadata):
         
         image_reader = io.open_image(self.path_to_image)
         return image_reader
+    
+    
+    
+    def vertical2slantrange_shift(self, delta_z):
+        """
+        Estimate slant range shift associated with a vertical shift.
+
+        Parameters
+        ----------
+        delta_z: float
+            Vertical shift (in [m], positive upward).
+
+        Returns
+        -------
+        delta_slant_range_pixel: float
+            Slant range shift (in [number of pixels]).
+        """
+        
+        delta_slant_range = - delta_z * np.cos(self.incidence_angle * np.pi/180.)
+        delta_slant_range_pixel = delta_slant_range/self.range_pixel_size
+        return delta_slant_range_pixel
+    
+    
+    
+    def groundrange2slantrange_shift(self, delta_ground_range):
+        """
+        Estimate slant range shift associated with a ground range shift.
+
+        Parameters
+        ----------
+        delta_ground_range: float
+            Ground range shift (in [m], positive when going away from the satellite).
+
+        Returns
+        -------
+        delta_slant_range_pixel: float
+            Slant range shift (in [number of pixels]).
+        """
+        
+        delta_slant_range = delta_ground_range * np.sin(self.incidence_angle * np.pi/180.)
+        delta_slant_range_pixel = delta_slant_range/self.range_pixel_size
+        return delta_slant_range_pixel
+    
+    
+    
+    def alongtrack2azimuth_shift(self, delta_along_track):
+        """
+        Estimate azimuth shift associated with an along-track shift.
+
+        Parameters
+        ----------
+        delta_along_track: float
+            Along-track shift (in [m]).
+
+        Returns
+        -------
+        delta_azimuth_pixel: float
+            Azimuth shift (in [number of pixels]).
+        """
+    
+        delta_azimuth_pixel = delta_along_track/self.azimuth_pixel_size
+        return delta_azimuth_pixel
