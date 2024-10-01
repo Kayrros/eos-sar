@@ -896,6 +896,50 @@ class CapellaSLCProductInfo(CapellaMetadata):
         
         
         
+        def sample_image(self, nb_samples=100, random=False, region_to_sample=None):
+            """
+            Sample the SLC image.
+
+            Parameters
+            ----------
+            nb_samples: int, optional
+                Number of samples you want. The default is 100.
+            random: bool, optional
+                If False the samples are taken on a regular grid. If True random sampling is done.
+                The default is False.
+            region_to_sample: tuple, optional
+                Tuple (row_min, row_max, col_min, col_max) to define the part of the image you want to sample.
+                row_min and col_min are included whereas row_max and col_max are excluded. 
+                The default is None so that the whole image is taken.
+
+            Returns
+            -------
+            row_indices: list
+                List containing the row indices of the samples.
+            col_indices: list
+                List containing the column indices of the samples.
+            """
+            
+            if region_to_sample is None:
+                region_to_sample = (0, self.file_length, 0, self.width)
+            row_min, row_max, col_min, col_max = region_to_sample
+            
+            if random:
+                row_indices = np.random.randint(row_min, row_max, nb_samples)
+                col_indices = np.random.randint(col_min, col_max, nb_samples)
+            else:
+                nb_per_side = int(np.round(np.sqrt(nb_samples)))
+                if nb_per_side**2 != nb_samples:
+                    print(f"{nb_per_side**2} points were sampled instead of {nb_samples} since the latter is not a square number.")
+                row_indices = np.linspace(row_min, row_max-1, nb_per_side).astype(int)
+                col_indices = np.linspace(col_min, col_max-1, nb_per_side).astype(int)
+                col_indices, row_indices = np.meshgrid(col_indices, row_indices)
+                col_indices, row_indices = col_indices.flatten(), row_indices.flatten()
+                
+            return row_indices, col_indices
+        
+        
+        
         def plot_image_geometry(self, figsize=(5,5), aspect="equal", delta_lon=0., delta_lat=0., label_fontsize=12, 
                                 title_fontsize=14, title_fontweight="bold", title="Image geometry", 
                                 show_title=True, show_grid=True, factor_los=0.2, factor_az=0.4, arrow_scale=15, add_los_label=False,
@@ -1240,3 +1284,35 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
             row_gec, col_gec = self.wgs842image(list(lons), list(lats))
 
             return row_gec, col_gec
+        
+        
+        
+        def adjust_slc2gec_trf(self, nb_pts=100, random=False):
+            """
+            Adjust an affine transformation to pass from the SLC to the GEC.
+
+            Parameters
+            ----------
+            nb_pts: int, optional
+                Number of points you want to use to adjust the transformation. The default is 100.
+            random: bool, optional
+                If False the points are taken on a regular grid. If True random sampling is done.
+                The default is False.
+
+            Returns
+            -------
+            slc2gec_trf: 3x3 ndarray
+                Adjusted affine transformation that maps from the SLC to the GEC image.
+            """
+            
+            # Sample the corresponding SLC product
+            row_indices_slc, col_indices_slc = self.get_corresponding_slc_productinfo().sample_image(nb_samples=nb_pts, random=random, region_to_sample=None)
+            
+            # Find the corresponding indices in the GEC geometry
+            row_indices_gec, col_indices_gec = self.slc2gec(list(row_indices_slc), list(col_indices_slc))
+            
+            # Adjust the transformation
+            slc2gec_trf = regist.affine_transformation(np.vstack((row_indices_slc, col_indices_slc)).T,
+                                                       np.vstack((row_indices_gec, col_indices_gec)).T)
+
+            return slc2gec_trf
