@@ -19,6 +19,7 @@ import pandas as pd
 import datetime as datetime
 from osgeo import gdal
 import pyproj
+import xarray as xr
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -40,7 +41,6 @@ path = ""
 for folder in split_path:
     path += folder + "/"
 sys.path.append(path[:-1])
-from useful_functions import get_elevations_from_dem, remove_nan_rows_and_cols
 
 C = float(const.LIGHT_SPEED_M_PER_SEC) # speed of light
 
@@ -48,7 +48,7 @@ C = float(const.LIGHT_SPEED_M_PER_SEC) # speed of light
 
 
 #------------------------------------------------------------------------------------------------------------------
-# Parse metadata
+# Some functions
 #------------------------------------------------------------------------------------------------------------------
 
 def UTC_time_since_midnight(mydate):
@@ -72,6 +72,113 @@ def UTC_time_since_midnight(mydate):
     return time_since_midnight
 
 
+
+def get_elevations_from_dem(lons, lats, dem_source=None, interpolation="bilinear", use_srtm=True):
+    """
+    Function to interpolate the altitudes on a given grid from a Digital Elevation Model (DEM).
+    
+    Parameters
+    ----------
+    lons: np.array or list of floats
+        Longitudes of the grid points.
+    lats: np.array or list of floats
+        Latitudes of the grid points.
+    dem_source: eos.dem.DEM object
+        Digital Elevation Model (DEM) used to estimate the altitudes of the grid points. The default is None.
+        In this case the SRTM90 DEM is used.
+    interpolation: str
+        Interpolation method ("bilinear" or "nearest") used to estimate the altitude of a point from the DEM. 
+        The default is "bilinear".
+    use_srtm : bool, optional
+        Set to True if you want to use the SRTM4 DEM to evaluate elevations in areas that are not covered by your DEM. 
+        The default is True.
+    
+    Returns
+    -------
+    dem_ds: xarray.Dataset
+        Dataset containing the altitudes on the grid (lons,lats).
+    """
+    
+    # If no DEM was given as argument ...
+    if dem_source is None:
+        # ... load one
+        dem_source = eos.dem.get_any_source()
+        # ... define a (lons,lats) grid
+        lons2D, lats2D = np.meshgrid(lons, lats)
+        # ... compute elevations at the nodes of the grid
+        elevations = dem_source.elevation(lons2D.flatten(), lats2D.flatten(), interpolation=interpolation)
+        elevations = np.array(elevations).reshape((len(lats), (len(lons))))
+        elevations = elevations[::-1,:]
+
+    # If a DEM was given ...
+    else:
+        # ... prepare the storage of the altitudes
+        elevations = np.zeros((len(lats), len(lons)))
+        # ... take latitudes one by one ...
+        for i in range(len(lats)):
+            # ... and for each latitude, compute elevations for all the longitudes
+            elevations[i,:] = dem_source.elevation(lons, [lats[i]]*len(lons), interpolation=interpolation, use_srtm=use_srtm)
+        elevations = elevations[::-1,:]
+        
+    # Store the elevations in a xr.Dataset
+    dem_ds = xr.Dataset(data_vars=dict(altitudes=(["lat", "lon"], elevations)), 
+                        coords=dict(lon=(["lon"], lons), lat=(["lat"], lats)),
+                        attrs=dict(altitudes="Altitudes of the points of the DEM (look at DEM CRS), in [m].", 
+                                   lon="Longitudes, in [deg].", 
+                                   lat="Latitudes, in [deg]."))
+    
+    return dem_ds
+
+
+
+def remove_nan_rows_and_cols(matrix, return_indices=False):
+    """
+    Function to remove rows and columns of a matrix that are full of np.nan.
+    
+    Parameters
+    ----------
+    matrix: np.array
+        Matrix from which you want to remove the np.nan frame.
+    return_indices: bool, optional
+        Set to True if you want to get the indices (fisrt row, last row, first column, last column) corresponding to the matrix without the np.nan frame.
+        
+    Returns
+    -------
+    matrix_no_nan_frame: np.array
+        Matrix from which the np.nan frame has been removed.
+    """
+    
+    # Prepare variables
+    if return_indices:
+        row_min, row_max, col_min, col_max = None, None, None, None
+    
+    # Rows
+    sum_no_nan = np.nansum(matrix, axis=1)
+    if return_indices:
+        indices = np.arange(np.shape(matrix)[0])[sum_no_nan>0]
+        row_min = indices[0]
+        row_max = indices[-1]
+    matrix = matrix[sum_no_nan>0,:]
+
+    # Columns
+    sum_no_nan = np.nansum(matrix, axis=0)
+    if return_indices:
+        indices = np.arange(np.shape(matrix)[1])[sum_no_nan>0]
+        col_min = indices[0]
+        col_max = indices[-1]
+    matrix = matrix[:,sum_no_nan>0]
+    
+    if return_indices:
+        return matrix, row_min, row_max, col_min, col_max
+    else:
+        return matrix
+
+
+
+
+#------------------------------------------------------------------------------------------------------------------
+# Parse metadata
+#------------------------------------------------------------------------------------------------------------------
 
 class CapellaMetadata:
 
