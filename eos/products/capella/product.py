@@ -492,3 +492,109 @@ class CapellaSLCProductInfo(CapellaMetadata):
     
         delta_azimuth_pixel = delta_along_track/self.azimuth_pixel_size
         return delta_azimuth_pixel
+    
+    
+    
+    def get_corners_lon_lat(self):
+        """
+        Get the (lon,lat) coordinates of the corners of the image.
+
+        Returns
+        -------
+        lons: np.array of size (4,)
+            Longitudes (deg) of the corners of the image.
+        lats: np.array of size (4,)
+            Latitudes (deg) of the corners of the image.
+        """
+        
+        if self.geometry is not None:    
+            image_geometry = self.geometry[1:]
+            lons = np.array([coords[0] for coords in image_geometry])
+            lats = np.array([coords[1] for coords in image_geometry])
+            return lons, lats
+        else:
+            print("Choose another 'origin' to get the image geometry.")
+            return None, None
+    
+    
+    
+    def get_los_vector(self):
+        """
+        Get the normalised horizontal component of the LOS vector.
+
+        Returns
+        -------
+        los_vector: np.array of shape (2,)
+            Horizontal component of the LOS vector in the basis (east, north).
+        """
+        
+        # Get the (lon,lat) coordinates of the corners of the image
+        lons, lats = self.get_corners_lon_lat()
+        
+        # Get the LOS vector
+        los_vector = np.array([lons[0] - lons[-1], lats[0] - lats[-1]])
+        los_vector = los_vector/np.sqrt(np.dot(los_vector, los_vector)) # normalise
+        return los_vector
+    
+    
+    
+    def get_los_vector_3D(self):
+        """
+        Get the 3D LOS vector.
+
+        Returns
+        -------
+        los_vector_3D: np.array of shape (3,)
+            LOS vector in the basis (east, north, up).
+        """
+        
+        # Get the horizontal component of the LOS vector
+        los_vector_horiz = self.get_los_vector()
+        
+        # Compute the "heading" (azimuth angle) of the LOS vector
+        heading = np.arctan2(los_vector_horiz[0], los_vector_horiz[1])
+        
+        # Compute the 3D LOS vector
+        incidence = self.incidence_angle * np.pi/180.
+        los_vector_3D = np.array([np.sin(incidence)*np.sin(heading), np.sin(incidence)*np.cos(heading), -np.cos(incidence)])
+        return los_vector_3D
+    
+    
+    
+    def get_track_vector(self): 
+        """
+        Get the normalised track vector.
+
+        Returns
+        -------
+        track_vector: np.array of shape (2,)
+            Vector showing the along-track direction, written in the basis (east, north).
+
+        """
+        
+        # Get the (lon,lat) coordinates of the corners of the image
+        lons, lats = self.get_corners_lon_lat()
+        
+        # Get the along-track vector
+        track_vector = np.array([lons[2] - lons[-1], lats[2] - lats[-1]])
+        track_vector = track_vector/np.sqrt(np.dot(track_vector, track_vector)) # normalise
+        return track_vector
+    
+    
+    
+    def get_track_vector_3D(self):
+        """
+        Get the 3D track vector.
+
+        Returns
+        -------
+        track_vector_3D: np.array of shape (3,)
+            Vector showing the along-track direction, written in the basis (east, north, up).
+        """
+        
+        # Get the horizontal component of the track vector
+        track_vector_horiz = self.get_track_vector()
+        
+        # Add a 0 for the "up" component
+        track_vector_3D = np.array(list(track_vector_horiz) + [0])
+        return track_vector_3D
