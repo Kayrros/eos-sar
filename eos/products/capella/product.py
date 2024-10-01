@@ -598,3 +598,199 @@ class CapellaSLCProductInfo(CapellaMetadata):
         # Add a 0 for the "up" component
         track_vector_3D = np.array(list(track_vector_horiz) + [0])
         return track_vector_3D
+    
+    
+    
+    def horizontal2rangedoppler_shift(self, delta_east=0, delta_north=0):
+        """
+        Estimate the range-doppler shift (in image coordinates) associated to a geographical horizontal shift.
+
+        Parameters
+        ----------
+        delta_east: float or array, optional
+            Shift along the East direction (in [m], positive towards the East). The default is 0.
+        delta_north: float or array, optional
+            Shift along the North direction (in [m], positive towards the North). The default is 0.
+
+        Returns
+        -------
+        delta_slant_range_pixel: float
+            Slant range shift (in [number of pixels]).
+        delta_azimuth_pixel: float
+            Azimuth shift (in [number of pixels]).
+        """
+        
+        # Get the LOS vector
+        los_vector = self.get_los_vector()
+        
+        # Get the along-track vector
+        track_vector = self.get_track_vector()
+        
+        # Compute the slant range shift (in [number of pixels])
+        delta_ground_range = delta_east * los_vector[0] + delta_north * los_vector[1]
+        delta_slant_range_pixel = self.groundrange2slantrange_shift(delta_ground_range)
+        
+        # Compute the azimuth shift (in [number of pixels])
+        delta_along_track = delta_east * track_vector[0] + delta_north * track_vector[1]
+        delta_azimuth_pixel = self.alongtrack2azimuth_shift(delta_along_track)
+        
+        return delta_slant_range_pixel, delta_azimuth_pixel
+    
+    
+    
+    def azimuth2horizontal_shift(self, delta_azimuth_pixel):
+        """
+        Estimate the geographical horizontal shift associated to a shift along azimuth in the image.
+
+        Parameters
+        ----------
+        delta_azimuth_pixel: float or array
+            Azimuth shift (in [number of pixels]).
+
+        Returns
+        -------
+        delta_east: float or array
+            Shift along the East direction (in [m], positive towards the East).
+        delta_north: float or array
+            Shift along the North direction (in [m], positive towards the North).
+        """
+        
+        # Get the along-track vector
+        track_vector = self.get_track_vector()
+        
+        # Compute the horizontal shift vector
+        delta_east = delta_azimuth_pixel * self.azimuth_pixel_size * track_vector[0]
+        delta_north = delta_azimuth_pixel * self.azimuth_pixel_size * track_vector[1]
+        
+        return delta_east, delta_north
+    
+    
+    
+    def slantrange2horizontal_shift(self, delta_slant_range_pixel):
+        """
+        Estimate the geographical horizontal shift associated to a shift along slant range in the image.
+        In this case we assume that the slant range shift is only due to a horizontal shift.
+
+        Parameters
+        ----------
+        delta_slant_range_pixel: float or array
+            Slant range shift (in [number of pixels]).
+
+        Returns
+        -------
+        delta_east: float or array
+            Shift along the East direction (in [m], positive towards the East).
+        delta_north: float or array
+            Shift along the North direction (in [m], positive towards the North).
+        """
+        
+        # Get the LOS vector
+        los_vector = self.get_los_vector()
+        
+        # Compute the horizontal shift vector
+        delta_east = delta_slant_range_pixel * self.range_pixel_size * los_vector[0] / np.sin(self.incidence_angle * np.pi/180.) 
+        delta_north = delta_slant_range_pixel * self.range_pixel_size * los_vector[1] / np.sin(self.incidence_angle * np.pi/180.) 
+        
+        return delta_east, delta_north
+    
+    
+    
+    def rangedoppler2horizontal_shift(self, delta_slant_range_pixel=0, delta_azimuth_pixel=0):
+        """
+        Estimate the geographical horizontal shift associated to a shift both along slant range and azimuth in the image.
+        In this case we assume that the slant range shift is only due to a horizontal shift.
+
+        Parameters
+        ----------
+        delta_slant_range_pixel : float or array, optional
+            Slant range shift (in [number of pixels]). The default is 0.
+        delta_azimuth_pixel : float or array, optional
+            Azimuth shift (in [number of pixels]). The default is 0.
+
+        Returns
+        -------
+        delta_east : float or array
+            Shift along the East direction (in [m], positive towards the East).
+        delta_north : float or array
+            Shift along the North direction (in [m], positive towards the North).
+        """
+        
+        # Get the horizontal shift corresponding to the slant range shift (assuming that there is no vertical shift)
+        delta_east_slant_range, delta_north_slant_range = self.slantrange2horizontal_shift(delta_slant_range_pixel)
+        
+        # Get the horizontal shift corresponding to the azimuth shift
+        delta_east_azimuth, delta_north_azimuth = self.azimuth2horizontal_shift(delta_azimuth_pixel)
+        
+        # Sum the two contributions
+        delta_east = delta_east_slant_range + delta_east_azimuth
+        delta_north = delta_north_slant_range + delta_north_azimuth
+        
+        return delta_east, delta_north
+    
+    
+    
+    def slantrange2vertical_shift(self, delta_slant_range_pixel):
+        """
+        Estimate the geographical vertical shift associated to a shift along slant range in the image.
+        In this case we assume that the slant range shift is only due to a vertical shift.
+
+        Parameters
+        ----------
+        delta_slant_range_pixel: float or array
+            Slant range shift (in [number of pixels]).
+
+        Returns
+        -------
+        delta_z: float or array
+            Vertical shift (in [m], positive upward).
+        """
+        
+        # Compute the vertical shift
+        delta_z = - delta_slant_range_pixel * self.range_pixel_size / np.cos(self.incidence_angle * np.pi/180.)
+        
+        return delta_z
+    
+    
+    
+    def slantrange2geographical_shift(self, delta_slant_range_pixel, delta_east=None, delta_north=None, delta_z=None):
+        """
+        Estimate the geographical vertical (resp. horizontal) shift associated to a shift along slant range in the image, 
+        assuming that we already know the geographical horizontal (resp. vertical) shift
+
+        Parameters
+        ----------
+        delta_slant_range_pixel : float or array
+            Slant range shift (in [number of pixels]).
+        delta_east : float or array, optional
+            Shift along the East direction (in [m], positive towards the East). The default is None.
+        delta_north : float or array, optional
+            Shift along the North direction (in [m], positive towards the North). The default is None.
+        delta_z : float or array, optional
+            Vertical shift (in [m], positive upward). The default is None.
+
+        Returns
+        -------
+        delta_z if it is None as argument and (delta_east and delta_north are not None).
+        (delta_east and delta_north) if they are None as argument and delta_z is not None.
+        """
+        
+        # In case we are looking for a vertical shift, knowing the horizontal shift ...
+        if delta_z is None and ~(delta_east is None or delta_north is None):
+            # ... get the slant range shift associated to the horizontal shift that you put as argument
+            delta_slant_range_pixel_horizontal, _ = self.horizontal2rangedoppler_shift(delta_east=delta_east, 
+                                                                                       delta_north=delta_north)
+            # ... compute the residual between the slant range shift you put as argument and the one we just computed
+            residual_delta_slant_range_pixel = delta_slant_range_pixel - delta_slant_range_pixel_horizontal
+            # ... get the vertical shift that fits the residual slant range shift
+            delta_z = self.slantrange2vertical_shift(residual_delta_slant_range_pixel)
+            return delta_z
+        
+        # In case we are looking for a horizontal shift, knowing the vertical shift ...
+        elif (delta_east is None and delta_north is None) and delta_z is not None:
+            # ... get the slant range shift associated to the vertical shift that you put as argument
+            delta_slant_range_pixel_vertical = self.vertical2slantrange_shift(delta_z)
+            # ... compute the residual between the slant range shift you put as argument and the one we just computed
+            residual_delta_slant_range_pixel = delta_slant_range_pixel - delta_slant_range_pixel_vertical
+            # ... get the vertical shift that fits the residual slant range shift
+            delta_east, delta_north = self.slantrange2horizontal_shift(residual_delta_slant_range_pixel)
+            return delta_east, delta_north
