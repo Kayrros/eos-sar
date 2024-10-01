@@ -522,7 +522,7 @@ class CapellaSLCProductInfo(CapellaMetadata):
             print("Please use the metadata .json file ('json') or the SLC Ground Control Points ('gcps') to get the geometry.")
             geometry = None
         return geometry
-            
+        
     
         
     def get_image_reader(self):
@@ -904,304 +904,304 @@ class CapellaSLCProductInfo(CapellaMetadata):
         
         
         
-        def get_atmos_delay(self, altitude):
-            """
-            Compute the atmospheric path delay in the LOS direction using the empriric model described by Jehle et al in 
-            “Estimation of Atmospheric Path Delays in TerraSAR-X Data using Models vs Measurements". Sensors 8, 8479-8491 (2008).
-            
-            Parameters
-            ----------
-            altitude: float
-                Altitude for which you want to compute the atmospheric path delay.
-                
-            Returns
-            -------
-            Atmospheric path delay in the LOS direction (in [m]) for the altitude given as argument.
-            """
-            return (altitude * altitude / 8.55e7 - altitude / 3411.0 + 2.41) / np.cos(self.incidence_angle*np.pi/180.)
-            
-            
+    def get_atmos_delay(self, altitude):
+        """
+        Compute the atmospheric path delay in the LOS direction using the empriric model described by Jehle et al in 
+        “Estimation of Atmospheric Path Delays in TerraSAR-X Data using Models vs Measurements". Sensors 8, 8479-8491 (2008).
         
-        def get_orbit(self, orbit_degree=11):
-            """
-            Get the orbit associated to the image.
+        Parameters
+        ----------
+        altitude: float
+            Altitude for which you want to compute the atmospheric path delay.
             
-            Parameters
-            ----------
-            orbit_degree: int
-                Degree of the polynomial fitting the orbit.
-                
-            Returns
-            -------
-            Interpolated orbit.
-            """
-            return eos.sar.orbit.Orbit(self.state_vectors, orbit_degree)
-            
-            
-               
-        def get_proj_model(self, max_iterations=20, tolerance=0.001, apd=False): 
-            """
-            Get a projection model.
-            
-            Parameters
-            ----------
-            max_iterations: int, optional
-                Maximum iterations of the iterative projection and localization
-                algorithms. The default is 20.
-            tolerance: float, optional
-                Tolerance on the geocentric position used as a stopping criterion.
-                For localization, tolerance is taken on 3D point position,
-                iterations stop when the step in x, y, z is less than tolerance.
-                For projection, the tolerance is considered on the satellite
-                position of closest approach. Converted to azimuth time tolerance
-                using the speed. The default is 0.001.
-            apd : bool, optional
-                If True the atmospheric correction (ApdCorrection) is applied.
-            
-            Returns
-            -------
-            proj_model: CapellaSLCBaseModel object
-                Projection model used to perform projection and localization in a Capella image.
-            """
-            
-            # Get the orbit
-            orbit = self.get_orbit()
-            
-            # Corrector object
-            coord_corrections = []
-            if apd:
-                coord_corrections.append(ApdCorrection(orbit))
-            coord_corrector = eos.sar.projection_correction.Corrector(coord_corrections)
-            
-            # Azimuth and range frequencies
-            azimuth_frequency = 1/self.delta_line_utc
-            range_frequency = C/(2*self.range_pixel_size)
-            slc_coordinate = SLCCoordinate(first_row_time=self.first_line_utc,
-                                           first_col_time=self.first_col_time,
-                                           azimuth_frequency=azimuth_frequency,
-                                           range_frequency=range_frequency)
-            
-            # Get the approximate location of the center of the sensor model
-            centroid =  self.center_pixel_target_position
-            transformer = pyproj.Transformer.from_crs("epsg:4978", "epsg:4326", always_xy=True)
-            centroid_lon, centroid_lat, _ = transformer.transform(centroid[0], centroid[1], centroid[2])
-            
-            # Get the projection model
-            proj_model = MyCapellaSLCModel(self.width,
-                                           self.file_length,
-                                           self.wavelength,
-                                           centroid_lon,
-                                           centroid_lat,
-                                           slc_coordinate,
-                                           orbit,
-                                           coord_corrector, 
-                                           max_iterations,
-                                           tolerance)
-               
-            
-            return proj_model
+        Returns
+        -------
+        Atmospheric path delay in the LOS direction (in [m]) for the altitude given as argument.
+        """
+        return (altitude * altitude / 8.55e7 - altitude / 3411.0 + 2.41) / np.cos(self.incidence_angle*np.pi/180.)
         
         
+    
+    def get_orbit(self, orbit_degree=11):
+        """
+        Get the orbit associated to the image.
         
-        def sample_image(self, nb_samples=100, random=False, region_to_sample=None):
-            """
-            Sample the SLC image.
-
-            Parameters
-            ----------
-            nb_samples: int, optional
-                Number of samples you want. The default is 100.
-            random: bool, optional
-                If False the samples are taken on a regular grid. If True random sampling is done.
-                The default is False.
-            region_to_sample: tuple, optional
-                Tuple (row_min, row_max, col_min, col_max) to define the part of the image you want to sample.
-                row_min and col_min are included whereas row_max and col_max are excluded. 
-                The default is None so that the whole image is taken.
-
-            Returns
-            -------
-            row_indices: list
-                List containing the row indices of the samples.
-            col_indices: list
-                List containing the column indices of the samples.
-            """
+        Parameters
+        ----------
+        orbit_degree: int
+            Degree of the polynomial fitting the orbit.
             
-            if region_to_sample is None:
-                region_to_sample = (0, self.file_length, 0, self.width)
-            row_min, row_max, col_min, col_max = region_to_sample
-            
-            if random:
-                row_indices = np.random.randint(row_min, row_max, nb_samples)
-                col_indices = np.random.randint(col_min, col_max, nb_samples)
-            else:
-                nb_per_side = int(np.round(np.sqrt(nb_samples)))
-                if nb_per_side**2 != nb_samples:
-                    print(f"{nb_per_side**2} points were sampled instead of {nb_samples} since the latter is not a square number.")
-                row_indices = np.linspace(row_min, row_max-1, nb_per_side).astype(int)
-                col_indices = np.linspace(col_min, col_max-1, nb_per_side).astype(int)
-                col_indices, row_indices = np.meshgrid(col_indices, row_indices)
-                col_indices, row_indices = col_indices.flatten(), row_indices.flatten()
-                
-            return row_indices, col_indices
+        Returns
+        -------
+        Interpolated orbit.
+        """
+        return eos.sar.orbit.Orbit(self.state_vectors, orbit_degree)
         
         
+           
+    def get_proj_model(self, max_iterations=20, tolerance=0.001, apd=False): 
+        """
+        Get a projection model.
         
-        def plot_image_geometry(self, figsize=(5,5), aspect="equal", delta_lon=0., delta_lat=0., label_fontsize=12, 
-                                title_fontsize=14, title_fontweight="bold", title="Image geometry", 
-                                show_title=True, show_grid=True, factor_los=0.2, factor_az=0.4, arrow_scale=15, add_los_label=False,
-                                los_arrow_color="k", az_arrow_color="r", shrink_arrow=0, frame_color="r", frame_linewidth=1., 
-                                dem_background=True, dem_source=None, dem_interpolation="bilinear", 
-                                dem_step=1.5/3600, dem_cmap="Greys_r", origin=None):
-            """
-            Plot the image geometry.
+        Parameters
+        ----------
+        max_iterations: int, optional
+            Maximum iterations of the iterative projection and localization
+            algorithms. The default is 20.
+        tolerance: float, optional
+            Tolerance on the geocentric position used as a stopping criterion.
+            For localization, tolerance is taken on 3D point position,
+            iterations stop when the step in x, y, z is less than tolerance.
+            For projection, the tolerance is considered on the satellite
+            position of closest approach. Converted to azimuth time tolerance
+            using the speed. The default is 0.001.
+        apd : bool, optional
+            If True the atmospheric correction (ApdCorrection) is applied.
+        
+        Returns
+        -------
+        proj_model: CapellaSLCBaseModel object
+            Projection model used to perform projection and localization in a Capella image.
+        """
+        
+        # Get the orbit
+        orbit = self.get_orbit()
+        
+        # Corrector object
+        coord_corrections = []
+        if apd:
+            coord_corrections.append(ApdCorrection(orbit))
+        coord_corrector = eos.sar.projection_correction.Corrector(coord_corrections)
+        
+        # Azimuth and range frequencies
+        azimuth_frequency = 1/self.delta_line_utc
+        range_frequency = C/(2*self.range_pixel_size)
+        slc_coordinate = SLCCoordinate(first_row_time=self.first_line_utc,
+                                       first_col_time=self.first_col_time,
+                                       azimuth_frequency=azimuth_frequency,
+                                       range_frequency=range_frequency)
+        
+        # Get the approximate location of the center of the sensor model
+        centroid =  self.center_pixel_target_position
+        transformer = pyproj.Transformer.from_crs("epsg:4978", "epsg:4326", always_xy=True)
+        centroid_lon, centroid_lat, _ = transformer.transform(centroid[0], centroid[1], centroid[2])
+        
+        # Get the projection model
+        proj_model = MyCapellaSLCModel(self.width,
+                                       self.file_length,
+                                       self.wavelength,
+                                       centroid_lon,
+                                       centroid_lat,
+                                       slc_coordinate,
+                                       orbit,
+                                       coord_corrector, 
+                                       max_iterations,
+                                       tolerance)
+        
+        
+        return proj_model
+    
+    
+    
+    def sample_image(self, nb_samples=100, random=False, region_to_sample=None):
+        """
+        Sample the SLC image.
+
+        Parameters
+        ----------
+        nb_samples: int, optional
+            Number of samples you want. The default is 100.
+        random: bool, optional
+            If False the samples are taken on a regular grid. If True random sampling is done.
+            The default is False.
+        region_to_sample: tuple, optional
+            Tuple (row_min, row_max, col_min, col_max) to define the part of the image you want to sample.
+            row_min and col_min are included whereas row_max and col_max are excluded. 
+            The default is None so that the whole image is taken.
+
+        Returns
+        -------
+        row_indices: list
+            List containing the row indices of the samples.
+        col_indices: list
+            List containing the column indices of the samples.
+        """
+        
+        if region_to_sample is None:
+            region_to_sample = (0, self.file_length, 0, self.width)
+        row_min, row_max, col_min, col_max = region_to_sample
+        
+        if random:
+            row_indices = np.random.randint(row_min, row_max, nb_samples)
+            col_indices = np.random.randint(col_min, col_max, nb_samples)
+        else:
+            nb_per_side = int(np.round(np.sqrt(nb_samples)))
+            if nb_per_side**2 != nb_samples:
+                print(f"{nb_per_side**2} points were sampled instead of {nb_samples} since the latter is not a square number.")
+            row_indices = np.linspace(row_min, row_max-1, nb_per_side).astype(int)
+            col_indices = np.linspace(col_min, col_max-1, nb_per_side).astype(int)
+            col_indices, row_indices = np.meshgrid(col_indices, row_indices)
+            col_indices, row_indices = col_indices.flatten(), row_indices.flatten()
             
-            Parameters (optional)
-            ----------
-            figsize: tuple of two floats
-                Tuple controlling the size (width, height) of the figure. The default is (5,5).
-            aspect: str
-                String controlling the aspect of the figure. The default is "equal" to have equal scales on the vertical
-                and horizontal axes.
-            delta_lon: float
-                Margin (in deg) to add along the longitude direction. The default is 0.
-            delta_lat: float
-                Margin (in deg) to add along the latitude direction. The default is 0.
-            label_fontsize: float
-                Fontsize of the label. The default is 12.
-            title_fontsize: float
-                Fontsize of the title. The default is 14.
-            title_fontweight: str
-                Fontweight of the title. The default is "bold".
-            title: str
-                Your title. The default is "Image geometry".
-            show_title: bool
-                Set to True if you want to show the title. The default is True.
-            show_grid: bool
-                Set to True if you want to show the grid. The default is True.
-            factor_los: float between 0. and 1.
-                Factor controlling the size of the LOS arrow. The default is 0.2 (ie. 20% of the range side).
-            factor_az: float between 0. and 1.
-                Factor controlling the size of the azimuth arrow. The default is 0.4 (ie. 40% of the azimuth side).
-            arrow_scale: float
-                Value controlling the size of the arrow. The default is 15.
-            add_los_label: bool
-                Set to True if you want to write "LOS" next to the LOS arrow. The default is False.
-            los_arrow_color: str
-                Color of the LOS arrow. The default is "k" (black).
-            az_arrow_color: str
-                Color of the azimuth arrow. The default is "r" (red).
-            shrink_arrow: float
-                Factor controlling the shrinkage of the arrow from both ends. The default is 0.
-            frame_color: str
-                Color of the frame of the image's approximative geometry. The default is "r" (red).
-            frame_linewidth: float
-                Linewidth of the frame. The default is 1.
-            dem_background: bool
-                Set to True if you want to plot a shaded DEM in the background. The default is True.
-            dem_source: eos.dem.DEM object
-                Digital Elevation Model (DEM) used to estimate the altitudes of the grid points. The default is None.
-                In this case the SRTM90 DEM is used.
-            dem_interpolation: str
-                Interpolation method ("bilinear" or "nearest") used to estimate the altitude of a point from the DEM. 
-                The default is "bilinear".
-            dem_step: float
-                Resolution (in deg) of the (lon,lat) grid over which the DEM is resampled. The default is 1.5/3600 deg.
-            dem_cmap: str
-                Colormap for the shaded DEM. The default is "Greys_r" to have radar shadows appearing dark and
-                illuminated areas appearing bright.
-            origin: str
-                Set to "gec" if you want to compute the SLC image geometry from the GEC metadata.
-                Set to "gcps" if you want to get it from the Ground Control Points. 
-                Set to "json" if you want to get it from the metadata .json file. 
-                Set to None if you want to use the self.geometry_origin attribute. The default is None.
-            """
-            
-            # Get the (lon,lat) coordinates of the corners of the image
-            if origin is not None:
-                self.set_image_geometry(origin=origin)
-            lons, lats = self.get_corners_lon_lat()
+        return row_indices, col_indices
+    
 
-            
-            # Prepare the plot
-            fig = plt.figure(figsize=figsize)
-            ax = fig.add_subplot(1, 1, 1, projection=crs.PlateCarree())
-            ax.set_aspect(aspect)
-            if show_title:
-                ax.set_title(title, fontsize=title_fontsize, fontweight=title_fontweight)
-            zorder_grid = 15
-            if not show_grid:
-                zorder_grid = -1
-            gl = ax.gridlines(crs=crs.PlateCarree(), draw_labels=True, linewidth=1, color='k', alpha=0.3, linestyle='-', 
-                              zorder=zorder_grid)
-            gl.top_labels = False
-            gl.right_labels = False
+    
+    def plot_image_geometry(self, figsize=(5,5), aspect="equal", delta_lon=0., delta_lat=0., label_fontsize=12, 
+                            title_fontsize=14, title_fontweight="bold", title="Image geometry", 
+                            show_title=True, show_grid=True, factor_los=0.2, factor_az=0.4, arrow_scale=15, add_los_label=False,
+                            los_arrow_color="k", az_arrow_color="r", shrink_arrow=0, frame_color="r", frame_linewidth=1., 
+                            dem_background=True, dem_source=None, dem_interpolation="bilinear", 
+                            dem_step=1.5/3600, dem_cmap="Greys_r", origin=None):
+        """
+        Plot the image geometry.
+        
+        Parameters (optional)
+        ----------
+        figsize: tuple of two floats
+            Tuple controlling the size (width, height) of the figure. The default is (5,5).
+        aspect: str
+            String controlling the aspect of the figure. The default is "equal" to have equal scales on the vertical
+            and horizontal axes.
+        delta_lon: float
+            Margin (in deg) to add along the longitude direction. The default is 0.
+        delta_lat: float
+            Margin (in deg) to add along the latitude direction. The default is 0.
+        label_fontsize: float
+            Fontsize of the label. The default is 12.
+        title_fontsize: float
+            Fontsize of the title. The default is 14.
+        title_fontweight: str
+            Fontweight of the title. The default is "bold".
+        title: str
+            Your title. The default is "Image geometry".
+        show_title: bool
+            Set to True if you want to show the title. The default is True.
+        show_grid: bool
+            Set to True if you want to show the grid. The default is True.
+        factor_los: float between 0. and 1.
+            Factor controlling the size of the LOS arrow. The default is 0.2 (ie. 20% of the range side).
+        factor_az: float between 0. and 1.
+            Factor controlling the size of the azimuth arrow. The default is 0.4 (ie. 40% of the azimuth side).
+        arrow_scale: float
+            Value controlling the size of the arrow. The default is 15.
+        add_los_label: bool
+            Set to True if you want to write "LOS" next to the LOS arrow. The default is False.
+        los_arrow_color: str
+            Color of the LOS arrow. The default is "k" (black).
+        az_arrow_color: str
+            Color of the azimuth arrow. The default is "r" (red).
+        shrink_arrow: float
+            Factor controlling the shrinkage of the arrow from both ends. The default is 0.
+        frame_color: str
+            Color of the frame of the image's approximative geometry. The default is "r" (red).
+        frame_linewidth: float
+            Linewidth of the frame. The default is 1.
+        dem_background: bool
+            Set to True if you want to plot a shaded DEM in the background. The default is True.
+        dem_source: eos.dem.DEM object
+            Digital Elevation Model (DEM) used to estimate the altitudes of the grid points. The default is None.
+            In this case the SRTM90 DEM is used.
+        dem_interpolation: str
+            Interpolation method ("bilinear" or "nearest") used to estimate the altitude of a point from the DEM. 
+            The default is "bilinear".
+        dem_step: float
+            Resolution (in deg) of the (lon,lat) grid over which the DEM is resampled. The default is 1.5/3600 deg.
+        dem_cmap: str
+            Colormap for the shaded DEM. The default is "Greys_r" to have radar shadows appearing dark and
+            illuminated areas appearing bright.
+        origin: str
+            Set to "gec" if you want to compute the SLC image geometry from the GEC metadata.
+            Set to "gcps" if you want to get it from the Ground Control Points. 
+            Set to "json" if you want to get it from the metadata .json file. 
+            Set to None if you want to use the self.geometry_origin attribute. The default is None.
+        """
+        
+        # Get the (lon,lat) coordinates of the corners of the image
+        if origin is not None:
+            self.set_image_geometry(origin=origin)
+        lons, lats = self.get_corners_lon_lat()
 
-
-            # Plot the (lon,lat) geometry of the image
-            ax.plot(np.concatenate((lons, [lons[0]])), np.concatenate((lats, [lats[0]])), color=frame_color, 
-                    linewidth=frame_linewidth, zorder=10)
-
-
-            # Plot the arrows:
-            # 1. get the corner from which you want to plot the arrows
-            lon_corner, lat_corner = lons[-1], lats[-1]
-            lon_los, lat_los = lons[0], lats[0]
-            lon_az, lat_az = lons[2], lats[2]
-            
-            # 2. plot the azimuth arrow
-            d_lat, d_lon = lat_corner-lat_az, lon_corner-lon_az
-            dist_pts = np.sqrt(d_lat**2 + d_lon**2)
-            track_vector = self.get_track_vector()
-            arr_az = mpatches.FancyArrowPatch(posA=(lon_corner, lat_corner), 
-                                                posB=(lon_corner + factor_az*dist_pts*track_vector[0], 
-                                                      lat_corner + factor_az*dist_pts*track_vector[1]), 
-                                                shrinkA=shrink_arrow, shrinkB=shrink_arrow, 
-                                                color=az_arrow_color, mutation_scale=arrow_scale, zorder=20)
-            ax.add_patch(arr_az)
-            
-            # 3. plot the LOS arrow
-            d_lat, d_lon = lat_corner-lat_los, lon_corner-lon_los
-            dist_pts = np.sqrt(d_lat**2 + d_lon**2)
-            los_vector = self.get_los_vector()
-            arr_los = mpatches.FancyArrowPatch(posA=(lon_corner, lat_corner), 
-                                                posB=(lon_corner + factor_los*dist_pts*los_vector[0], 
-                                                      lat_corner + factor_los*dist_pts*los_vector[1]), 
-                                                shrinkA=shrink_arrow, shrinkB=shrink_arrow, 
-                                                color=los_arrow_color, mutation_scale=arrow_scale, zorder=20)
-            ax.add_patch(arr_los)
-            if add_los_label:
-                ax.annotate("LOS", (0.5, 1.2), xycoords=arr_los, ha="center", va="center", rotation=np.arctan(d_lat/d_lon)*180./np.pi, 
-                            fontweight="bold", color=los_arrow_color, fontsize=label_fontsize, zorder=30)
+        
+        # Prepare the plot
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_subplot(1, 1, 1, projection=crs.PlateCarree())
+        ax.set_aspect(aspect)
+        if show_title:
+            ax.set_title(title, fontsize=title_fontsize, fontweight=title_fontweight)
+        zorder_grid = 15
+        if not show_grid:
+            zorder_grid = -1
+        gl = ax.gridlines(crs=crs.PlateCarree(), draw_labels=True, linewidth=1, color='k', alpha=0.3, linestyle='-', 
+                          zorder=zorder_grid)
+        gl.top_labels = False
+        gl.right_labels = False
 
 
-            # Plot the background
-            lon_min, lon_max = np.array(ax.get_xlim()) + np.array([-delta_lon, delta_lon])
-            lat_min, lat_max = np.array(ax.get_ylim()) + np.array([-delta_lat, delta_lat])
-            extent = [lon_min, lon_max, lat_min, lat_max]
-            ax.set_extent(extent, crs=crs.PlateCarree())
+        # Plot the (lon,lat) geometry of the image
+        ax.plot(np.concatenate((lons, [lons[0]])), np.concatenate((lats, [lats[0]])), color=frame_color, 
+                linewidth=frame_linewidth, zorder=10)
 
-            if dem_background:
-                lons_dem = np.arange(lon_min, lon_max, dem_step)
-                lats_dem = np.arange(lat_min, lat_max, dem_step)
-                dem_ds = get_elevations_from_dem(lons_dem, lats_dem, dem_source=dem_source, interpolation=dem_interpolation)
-                sun_azimuth = np.arccos(los_vector[1]) * 180./np.pi
-                if los_vector[0] > 0:
-                    sun_azimuth = -sun_azimuth
-                shaded_dem = srtm.add_shading(dem_ds.altitudes.data, 
-                                              azimuth=sun_azimuth+180, altitude=90-self.incidence_angle)
-                ax.imshow(shaded_dem, extent=extent, cmap=dem_cmap)
 
-            else:
-                ax.add_feature(cfeature.OCEAN.with_scale("10m"), zorder=1)
-                ax.add_feature(cfeature.LAND.with_scale("10m"), zorder=2)
-                ax.add_feature(cfeature.COASTLINE.with_scale("10m"), zorder=3)
+        # Plot the arrows:
+        # 1. get the corner from which you want to plot the arrows
+        lon_corner, lat_corner = lons[-1], lats[-1]
+        lon_los, lat_los = lons[0], lats[0]
+        lon_az, lat_az = lons[2], lats[2]
+        
+        # 2. plot the azimuth arrow
+        d_lat, d_lon = lat_corner-lat_az, lon_corner-lon_az
+        dist_pts = np.sqrt(d_lat**2 + d_lon**2)
+        track_vector = self.get_track_vector()
+        arr_az = mpatches.FancyArrowPatch(posA=(lon_corner, lat_corner), 
+                                            posB=(lon_corner + factor_az*dist_pts*track_vector[0], 
+                                                  lat_corner + factor_az*dist_pts*track_vector[1]), 
+                                            shrinkA=shrink_arrow, shrinkB=shrink_arrow, 
+                                            color=az_arrow_color, mutation_scale=arrow_scale, zorder=20)
+        ax.add_patch(arr_az)
+        
+        # 3. plot the LOS arrow
+        d_lat, d_lon = lat_corner-lat_los, lon_corner-lon_los
+        dist_pts = np.sqrt(d_lat**2 + d_lon**2)
+        los_vector = self.get_los_vector()
+        arr_los = mpatches.FancyArrowPatch(posA=(lon_corner, lat_corner), 
+                                            posB=(lon_corner + factor_los*dist_pts*los_vector[0], 
+                                                  lat_corner + factor_los*dist_pts*los_vector[1]), 
+                                            shrinkA=shrink_arrow, shrinkB=shrink_arrow, 
+                                            color=los_arrow_color, mutation_scale=arrow_scale, zorder=20)
+        ax.add_patch(arr_los)
+        if add_los_label:
+            ax.annotate("LOS", (0.5, 1.2), xycoords=arr_los, ha="center", va="center", rotation=np.arctan(d_lat/d_lon)*180./np.pi, 
+                        fontweight="bold", color=los_arrow_color, fontsize=label_fontsize, zorder=30)
 
-            plt.show()
-            
-            
-            
-            
+
+        # Plot the background
+        lon_min, lon_max = np.array(ax.get_xlim()) + np.array([-delta_lon, delta_lon])
+        lat_min, lat_max = np.array(ax.get_ylim()) + np.array([-delta_lat, delta_lat])
+        extent = [lon_min, lon_max, lat_min, lat_max]
+        ax.set_extent(extent, crs=crs.PlateCarree())
+
+        if dem_background:
+            lons_dem = np.arange(lon_min, lon_max, dem_step)
+            lats_dem = np.arange(lat_min, lat_max, dem_step)
+            dem_ds = get_elevations_from_dem(lons_dem, lats_dem, dem_source=dem_source, interpolation=dem_interpolation)
+            sun_azimuth = np.arccos(los_vector[1]) * 180./np.pi
+            if los_vector[0] > 0:
+                sun_azimuth = -sun_azimuth
+            shaded_dem = srtm.add_shading(dem_ds.altitudes.data, 
+                                          azimuth=sun_azimuth+180, altitude=90-self.incidence_angle)
+            ax.imshow(shaded_dem, extent=extent, cmap=dem_cmap)
+
+        else:
+            ax.add_feature(cfeature.OCEAN.with_scale("10m"), zorder=1)
+            ax.add_feature(cfeature.LAND.with_scale("10m"), zorder=2)
+            ax.add_feature(cfeature.COASTLINE.with_scale("10m"), zorder=3)
+
+        plt.show()
+        
+        
+        
+        
 #------------------------------------------------------------------------------------------------------------------
 # Class for GEC metadata
 #------------------------------------------------------------------------------------------------------------------
@@ -1257,175 +1257,175 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
             self.get_metadata_from_slc()
             
             
-            
-        def get_corresponding_slc_productinfo(self):
-            """
-            Get the corresponding CapellaSLCProductInfo.
-            """
-            
-            path_slc = self.path_to_other_products(product_type="SLC")
-            if path_slc is not None:
-                return CapellaSLCProductInfo(path_slc, geometry_origin="gcps")
-            else:
-                return None
-            
-            
-            
-        def get_metadata_from_slc(self):
-            """
-            Get missing metadata from the corresponding SLC product.
-            """
-            
-            slc_product_info = self.get_corresponding_slc_productinfo()
-            self.starting_range = slc_product_info.starting_range
-            self.range_pixel_size = (slc_product_info.range_pixel_size * slc_product_info.width) / self.width
-            self.delta_line_utc = (slc_product_info.last_line_utc - slc_product_info.first_line_utc) / self.file_length
-            self.first_line_utc = slc_product_info.first_line_utc
-            self.first_col_time = slc_product_info.first_col_time
-            
-            
-            
-        def set_gec_extent(self):
-            """
-            Store the WGS84 extent of the GEC image (including the "NoData" frame) as an attribute.
-            """
-            
-            self.wgs84extent = [tuple(corner) for corner in gdal.Info(self.path_to_image, format='json')['wgs84Extent']['coordinates'][0]]
-            
-            
-            
-        def image2wgs84(self, row_index, col_index):
-            """
-            Get the longitude(s) and latitude(s) of points knowing their position(s) in the image 
-            and assuming that they are on the WGS84 ellipsoid.
-
-            Parameters
-            ----------
-            row_index: float or list
-                Row index (or indices) of the point(s) of interest.
-            col_index: float or list
-                Column index (or indices) of the point(s) of interest.
-
-            Returns
-            -------
-            lon: float or list
-                Longitude(s) of the point(s) if it were on the WGS84 ellipsoid.
-            lat: float or list
-                Latitude(s) of the point(s) if it were on the WGS84 ellipsoid.
-            """
-             
-            # Go from image coordinates to proj_init
-            x_utm, y_utm = self.geotransform * np.array([row_index, col_index])
-            
-            # Get the transform to go from proj_init to EPSG:4326 (2D CRS, longitude and latitude on the WGS84 ellipsoid)
-            trf = pyproj.Transformer.from_crs(f"epsg:{self.proj_init}", "epsg:4326")
-            if len(np.atleast_1d(x_utm)) > 1:
-                lat, lon, _ = trf.transform(x_utm, y_utm, np.zeros(len(x_utm)))
-            else:
-                lat, lon, _ = trf.transform(x_utm, y_utm, 0)
-
-            return lon, lat
+        
+    def get_corresponding_slc_productinfo(self):
+        """
+        Get the corresponding CapellaSLCProductInfo.
+        """
+        
+        path_slc = self.path_to_other_products(product_type="SLC")
+        if path_slc is not None:
+            return CapellaSLCProductInfo(path_slc, geometry_origin="gcps")
+        else:
+            return None
         
         
         
-        def wgs842image(self, lon, lat):
-            """
-            Get the position of a point in the image knowing its longitude and latitude.
-
-            Parameters
-            ----------
-            lon: float or list
-                Longitude(s) of the point(s) of interest.
-            lat: float or list
-                Latitude(s) of the point(s) of interest.
-
-            Returns
-            -------
-            row_index: float or list
-                Row index (or indices) of the point(s).
-            col_index: float or list
-                Column index (or indices) of the point(s).
-            """
-            
-            # Go from EPSG:4326 (2D CRS, longitude and latitude on the WGS84 ellipsoid) to proj_init
-            trf = pyproj.Transformer.from_crs("epsg:4326", f"epsg:{self.proj_init}")
-            if len(np.atleast_1d(lon)) > 1:
-                x_utm, y_utm, _ = trf.transform(lat, lon, np.zeros(len(lon)))
-                x_utm, y_utm = list(x_utm), list(y_utm)
-            else:
-                x_utm, y_utm, _ = trf.transform(lat, lon, 0)
-            
-            # Go to proj_init to image coordinates 
-            col_index, row_index = ~self.geotransform * np.array([x_utm, y_utm])
-
-            return row_index, col_index
+    def get_metadata_from_slc(self):
+        """
+        Get missing metadata from the corresponding SLC product.
+        """
+        
+        slc_product_info = self.get_corresponding_slc_productinfo()
+        self.starting_range = slc_product_info.starting_range
+        self.range_pixel_size = (slc_product_info.range_pixel_size * slc_product_info.width) / self.width
+        self.delta_line_utc = (slc_product_info.last_line_utc - slc_product_info.first_line_utc) / self.file_length
+        self.first_line_utc = slc_product_info.first_line_utc
+        self.first_col_time = slc_product_info.first_col_time
         
         
         
-        def slc2gec(self, row_slc, col_slc):
-            """
-            Get the position of a point in the GEC image knowing its position in the SLC image.
-
-            Parameters
-            ----------
-            row_slc: float or list
-                Row index/indices in the SLC image.
-            col_slc: float or list
-                Column index/indices in the SLC image.
-
-            Returns
-            -------
-            row_gec: float or list
-                Row index/indices in the GEC image.
-            col_gec: float or list
-                Column index/indices in the GEC image.
-            """
-            
-            # Get the projection model of the corresponding SLC product
-            proj_model = self.get_corresponding_slc_productinfo().get_proj_model()
-            
-            # Use the projection model to localise the point in (lon, lat) on the inflated WGS84 ellipsoid onto which the GEC has been warped
-            lons, lats, _ = proj_model.localization(row_slc, col_slc, np.ones(len(row_slc)) * self.alt_inflated_wgs84)
-            
-            # Get the corresponding position in the GEC image
-            row_gec, col_gec = self.wgs842image(list(lons), list(lats))
-
-            return row_gec, col_gec
+    def set_gec_extent(self):
+        """
+        Store the WGS84 extent of the GEC image (including the "NoData" frame) as an attribute.
+        """
         
-        
-        
-        def adjust_slc2gec_trf(self, nb_pts=100, random=False):
-            """
-            Adjust an affine transformation to pass from the SLC to the GEC.
+        self.wgs84extent = [tuple(corner) for corner in gdal.Info(self.path_to_image, format='json')['wgs84Extent']['coordinates'][0]]
+    
+    
+    
+    def image2wgs84(self, row_index, col_index):
+        """
+        Get the longitude(s) and latitude(s) of points knowing their position(s) in the image 
+        and assuming that they are on the WGS84 ellipsoid.
 
-            Parameters
-            ----------
-            nb_pts: int, optional
-                Number of points you want to use to adjust the transformation. The default is 100.
-            random: bool, optional
-                If False the points are taken on a regular grid. If True random sampling is done.
-                The default is False.
+        Parameters
+        ----------
+        row_index: float or list
+            Row index (or indices) of the point(s) of interest.
+        col_index: float or list
+            Column index (or indices) of the point(s) of interest.
 
-            Returns
-            -------
-            slc2gec_trf: 3x3 ndarray
-                Adjusted affine transformation that maps from the SLC to the GEC image.
-            """
-            
-            # Sample the corresponding SLC product
-            row_indices_slc, col_indices_slc = self.get_corresponding_slc_productinfo().sample_image(nb_samples=nb_pts, random=random, region_to_sample=None)
-            
-            # Find the corresponding indices in the GEC geometry
-            row_indices_gec, col_indices_gec = self.slc2gec(list(row_indices_slc), list(col_indices_slc))
-            
-            # Adjust the transformation
-            slc2gec_trf = regist.affine_transformation(np.vstack((row_indices_slc, col_indices_slc)).T,
-                                                       np.vstack((row_indices_gec, col_indices_gec)).T)
+        Returns
+        -------
+        lon: float or list
+            Longitude(s) of the point(s) if it were on the WGS84 ellipsoid.
+        lat: float or list
+            Latitude(s) of the point(s) if it were on the WGS84 ellipsoid.
+        """
+         
+        # Go from image coordinates to proj_init
+        x_utm, y_utm = self.geotransform * np.array([row_index, col_index])
+        
+        # Get the transform to go from proj_init to EPSG:4326 (2D CRS, longitude and latitude on the WGS84 ellipsoid)
+        trf = pyproj.Transformer.from_crs(f"epsg:{self.proj_init}", "epsg:4326")
+        if len(np.atleast_1d(x_utm)) > 1:
+            lat, lon, _ = trf.transform(x_utm, y_utm, np.zeros(len(x_utm)))
+        else:
+            lat, lon, _ = trf.transform(x_utm, y_utm, 0)
 
-            return slc2gec_trf
+        return lon, lat
+    
+    
+    
+    def wgs842image(self, lon, lat):
+        """
+        Get the position of a point in the image knowing its longitude and latitude.
+
+        Parameters
+        ----------
+        lon: float or list
+            Longitude(s) of the point(s) of interest.
+        lat: float or list
+            Latitude(s) of the point(s) of interest.
+
+        Returns
+        -------
+        row_index: float or list
+            Row index (or indices) of the point(s).
+        col_index: float or list
+            Column index (or indices) of the point(s).
+        """
         
+        # Go from EPSG:4326 (2D CRS, longitude and latitude on the WGS84 ellipsoid) to proj_init
+        trf = pyproj.Transformer.from_crs("epsg:4326", f"epsg:{self.proj_init}")
+        if len(np.atleast_1d(lon)) > 1:
+            x_utm, y_utm, _ = trf.transform(lat, lon, np.zeros(len(lon)))
+            x_utm, y_utm = list(x_utm), list(y_utm)
+        else:
+            x_utm, y_utm, _ = trf.transform(lat, lon, 0)
         
+        # Go to proj_init to image coordinates 
+        col_index, row_index = ~self.geotransform * np.array([x_utm, y_utm])
+
+        return row_index, col_index
+    
+    
+    
+    def slc2gec(self, row_slc, col_slc):
+        """
+        Get the position of a point in the GEC image knowing its position in the SLC image.
+
+        Parameters
+        ----------
+        row_slc: float or list
+            Row index/indices in the SLC image.
+        col_slc: float or list
+            Column index/indices in the SLC image.
+
+        Returns
+        -------
+        row_gec: float or list
+            Row index/indices in the GEC image.
+        col_gec: float or list
+            Column index/indices in the GEC image.
+        """
         
+        # Get the projection model of the corresponding SLC product
+        proj_model = self.get_corresponding_slc_productinfo().get_proj_model()
+        
+        # Use the projection model to localise the point in (lon, lat) on the inflated WGS84 ellipsoid onto which the GEC has been warped
+        lons, lats, _ = proj_model.localization(row_slc, col_slc, np.ones(len(row_slc)) * self.alt_inflated_wgs84)
+        
+        # Get the corresponding position in the GEC image
+        row_gec, col_gec = self.wgs842image(list(lons), list(lats))
+
+        return row_gec, col_gec
+    
+    
+    
+    def adjust_slc2gec_trf(self, nb_pts=100, random=False):
+        """
+        Adjust an affine transformation to pass from the SLC to the GEC.
+
+        Parameters
+        ----------
+        nb_pts: int, optional
+            Number of points you want to use to adjust the transformation. The default is 100.
+        random: bool, optional
+            If False the points are taken on a regular grid. If True random sampling is done.
+            The default is False.
+
+        Returns
+        -------
+        slc2gec_trf: 3x3 ndarray
+            Adjusted affine transformation that maps from the SLC to the GEC image.
+        """
+        
+        # Sample the corresponding SLC product
+        row_indices_slc, col_indices_slc = self.get_corresponding_slc_productinfo().sample_image(nb_samples=nb_pts, random=random, region_to_sample=None)
+        
+        # Find the corresponding indices in the GEC geometry
+        row_indices_gec, col_indices_gec = self.slc2gec(list(row_indices_slc), list(col_indices_slc))
+        
+        # Adjust the transformation
+        slc2gec_trf = regist.affine_transformation(np.vstack((row_indices_slc, col_indices_slc)).T,
+                                                   np.vstack((row_indices_gec, col_indices_gec)).T)
+
+        return slc2gec_trf
+    
+    
+    
     def get_image(self, set_nan=True):
         """
         Get the GEC image.
