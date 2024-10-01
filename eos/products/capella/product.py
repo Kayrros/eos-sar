@@ -1131,3 +1131,12 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
             self.delta_line_utc = (slc_product_info.last_line_utc - slc_product_info.first_line_utc) / self.file_length
             self.first_line_utc = slc_product_info.first_line_utc
             self.first_col_time = slc_product_info.first_col_time
+            
+            
+            
+        def set_gec_extent(self):
+            """
+            Store the WGS84 extent of the GEC image (including the "NoData" frame) as an attribute.
+            """
+            
+            self.wgs84extent = [tuple(corner) for corner in gdal.Info(self.path_to_image, format='json')['wgs84Extent']['coordinates'][0]]
