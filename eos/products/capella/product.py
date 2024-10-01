@@ -1208,3 +1208,35 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
             col_index, row_index = ~self.geotransform * np.array([x_utm, y_utm])
 
             return row_index, col_index
+        
+        
+        
+        def slc2gec(self, row_slc, col_slc):
+            """
+            Get the position of a point in the GEC image knowing its position in the SLC image.
+
+            Parameters
+            ----------
+            row_slc: float or list
+                Row index/indices in the SLC image.
+            col_slc: float or list
+                Column index/indices in the SLC image.
+
+            Returns
+            -------
+            row_gec: float or list
+                Row index/indices in the GEC image.
+            col_gec: float or list
+                Column index/indices in the GEC image.
+            """
+            
+            # Get the projection model of the corresponding SLC product
+            proj_model = self.get_corresponding_slc_productinfo().get_proj_model()
+            
+            # Use the projection model to localise the point in (lon, lat) on the inflated WGS84 ellipsoid onto which the GEC has been warped
+            lons, lats, _ = proj_model.localization(row_slc, col_slc, np.ones(len(row_slc)) * self.alt_inflated_wgs84)
+            
+            # Get the corresponding position in the GEC image
+            row_gec, col_gec = self.wgs842image(list(lons), list(lats))
+
+            return row_gec, col_gec
