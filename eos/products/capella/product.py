@@ -893,3 +893,157 @@ class CapellaSLCProductInfo(CapellaMetadata):
                
             
             return proj_model
+        
+        
+        
+        def plot_image_geometry(self, figsize=(5,5), aspect="equal", delta_lon=0., delta_lat=0., label_fontsize=12, 
+                                title_fontsize=14, title_fontweight="bold", title="Image geometry", 
+                                show_title=True, show_grid=True, factor_los=0.2, factor_az=0.4, arrow_scale=15, add_los_label=False,
+                                los_arrow_color="k", az_arrow_color="r", shrink_arrow=0, frame_color="r", frame_linewidth=1., 
+                                dem_background=True, dem_source=None, dem_interpolation="bilinear", 
+                                dem_step=1.5/3600, dem_cmap="Greys_r", origin=None):
+            """
+            Plot the image geometry.
+            
+            Parameters (optional)
+            ----------
+            figsize: tuple of two floats
+                Tuple controlling the size (width, height) of the figure. The default is (5,5).
+            aspect: str
+                String controlling the aspect of the figure. The default is "equal" to have equal scales on the vertical
+                and horizontal axes.
+            delta_lon: float
+                Margin (in deg) to add along the longitude direction. The default is 0.
+            delta_lat: float
+                Margin (in deg) to add along the latitude direction. The default is 0.
+            label_fontsize: float
+                Fontsize of the label. The default is 12.
+            title_fontsize: float
+                Fontsize of the title. The default is 14.
+            title_fontweight: str
+                Fontweight of the title. The default is "bold".
+            title: str
+                Your title. The default is "Image geometry".
+            show_title: bool
+                Set to True if you want to show the title. The default is True.
+            show_grid: bool
+                Set to True if you want to show the grid. The default is True.
+            factor_los: float between 0. and 1.
+                Factor controlling the size of the LOS arrow. The default is 0.2 (ie. 20% of the range side).
+            factor_az: float between 0. and 1.
+                Factor controlling the size of the azimuth arrow. The default is 0.4 (ie. 40% of the azimuth side).
+            arrow_scale: float
+                Value controlling the size of the arrow. The default is 15.
+            add_los_label: bool
+                Set to True if you want to write "LOS" next to the LOS arrow. The default is False.
+            los_arrow_color: str
+                Color of the LOS arrow. The default is "k" (black).
+            az_arrow_color: str
+                Color of the azimuth arrow. The default is "r" (red).
+            shrink_arrow: float
+                Factor controlling the shrinkage of the arrow from both ends. The default is 0.
+            frame_color: str
+                Color of the frame of the image's approximative geometry. The default is "r" (red).
+            frame_linewidth: float
+                Linewidth of the frame. The default is 1.
+            dem_background: bool
+                Set to True if you want to plot a shaded DEM in the background. The default is True.
+            dem_source: eos.dem.DEM object
+                Digital Elevation Model (DEM) used to estimate the altitudes of the grid points. The default is None.
+                In this case the SRTM90 DEM is used.
+            dem_interpolation: str
+                Interpolation method ("bilinear" or "nearest") used to estimate the altitude of a point from the DEM. 
+                The default is "bilinear".
+            dem_step: float
+                Resolution (in deg) of the (lon,lat) grid over which the DEM is resampled. The default is 1.5/3600 deg.
+            dem_cmap: str
+                Colormap for the shaded DEM. The default is "Greys_r" to have radar shadows appearing dark and
+                illuminated areas appearing bright.
+            origin: str
+                Set to "gec" if you want to compute the SLC image geometry from the GEC metadata.
+                Set to "gcps" if you want to get it from the Ground Control Points. 
+                Set to "json" if you want to get it from the metadata .json file. 
+                Set to None if you want to use the self.geometry_origin attribute. The default is None.
+            """
+            
+            # Get the (lon,lat) coordinates of the corners of the image
+            if origin is not None:
+                self.set_image_geometry(origin=origin)
+            lons, lats = self.get_corners_lon_lat()
+
+            
+            # Prepare the plot
+            fig = plt.figure(figsize=figsize)
+            ax = fig.add_subplot(1, 1, 1, projection=crs.PlateCarree())
+            ax.set_aspect(aspect)
+            if show_title:
+                ax.set_title(title, fontsize=title_fontsize, fontweight=title_fontweight)
+            zorder_grid = 15
+            if not show_grid:
+                zorder_grid = -1
+            gl = ax.gridlines(crs=crs.PlateCarree(), draw_labels=True, linewidth=1, color='k', alpha=0.3, linestyle='-', 
+                              zorder=zorder_grid)
+            gl.top_labels = False
+            gl.right_labels = False
+
+
+            # Plot the (lon,lat) geometry of the image
+            ax.plot(np.concatenate((lons, [lons[0]])), np.concatenate((lats, [lats[0]])), color=frame_color, 
+                    linewidth=frame_linewidth, zorder=10)
+
+
+            # Plot the arrows:
+            # 1. get the corner from which you want to plot the arrows
+            lon_corner, lat_corner = lons[-1], lats[-1]
+            lon_los, lat_los = lons[0], lats[0]
+            lon_az, lat_az = lons[2], lats[2]
+            
+            # 2. plot the azimuth arrow
+            d_lat, d_lon = lat_corner-lat_az, lon_corner-lon_az
+            dist_pts = np.sqrt(d_lat**2 + d_lon**2)
+            track_vector = self.get_track_vector()
+            arr_az = mpatches.FancyArrowPatch(posA=(lon_corner, lat_corner), 
+                                                posB=(lon_corner + factor_az*dist_pts*track_vector[0], 
+                                                      lat_corner + factor_az*dist_pts*track_vector[1]), 
+                                                shrinkA=shrink_arrow, shrinkB=shrink_arrow, 
+                                                color=az_arrow_color, mutation_scale=arrow_scale, zorder=20)
+            ax.add_patch(arr_az)
+            
+            # 3. plot the LOS arrow
+            d_lat, d_lon = lat_corner-lat_los, lon_corner-lon_los
+            dist_pts = np.sqrt(d_lat**2 + d_lon**2)
+            los_vector = self.get_los_vector()
+            arr_los = mpatches.FancyArrowPatch(posA=(lon_corner, lat_corner), 
+                                                posB=(lon_corner + factor_los*dist_pts*los_vector[0], 
+                                                      lat_corner + factor_los*dist_pts*los_vector[1]), 
+                                                shrinkA=shrink_arrow, shrinkB=shrink_arrow, 
+                                                color=los_arrow_color, mutation_scale=arrow_scale, zorder=20)
+            ax.add_patch(arr_los)
+            if add_los_label:
+                ax.annotate("LOS", (0.5, 1.2), xycoords=arr_los, ha="center", va="center", rotation=np.arctan(d_lat/d_lon)*180./np.pi, 
+                            fontweight="bold", color=los_arrow_color, fontsize=label_fontsize, zorder=30)
+
+
+            # Plot the background
+            lon_min, lon_max = np.array(ax.get_xlim()) + np.array([-delta_lon, delta_lon])
+            lat_min, lat_max = np.array(ax.get_ylim()) + np.array([-delta_lat, delta_lat])
+            extent = [lon_min, lon_max, lat_min, lat_max]
+            ax.set_extent(extent, crs=crs.PlateCarree())
+
+            if dem_background:
+                lons_dem = np.arange(lon_min, lon_max, dem_step)
+                lats_dem = np.arange(lat_min, lat_max, dem_step)
+                dem_ds = get_elevations_from_dem(lons_dem, lats_dem, dem_source=dem_source, interpolation=dem_interpolation)
+                sun_azimuth = np.arccos(los_vector[1]) * 180./np.pi
+                if los_vector[0] > 0:
+                    sun_azimuth = -sun_azimuth
+                shaded_dem = srtm.add_shading(dem_ds.altitudes.data, 
+                                              azimuth=sun_azimuth+180, altitude=90-self.incidence_angle)
+                ax.imshow(shaded_dem, extent=extent, cmap=dem_cmap)
+
+            else:
+                ax.add_feature(cfeature.OCEAN.with_scale("10m"), zorder=1)
+                ax.add_feature(cfeature.LAND.with_scale("10m"), zorder=2)
+                ax.add_feature(cfeature.COASTLINE.with_scale("10m"), zorder=3)
+
+            plt.show()
