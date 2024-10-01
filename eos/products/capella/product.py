@@ -1316,3 +1316,45 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
                                                        np.vstack((row_indices_gec, col_indices_gec)).T)
 
             return slc2gec_trf
+        
+        
+        
+    def get_image(self, set_nan=True):
+        """
+        Get the GEC image.
+        
+        Parameters
+        ----------
+        set_nan: bool, optional 
+            Set to True if you want to put np.nan instead of 0 around the GEC image.
+
+        Returns
+        -------
+        gec_image: np.array
+            GEC image.
+        """
+        
+        gec_image = np.abs(self.get_image_reader().read()[0,:,:]).astype(np.float32)
+        if set_nan:
+            gec_image[gec_image == 0] = np.nan
+        return gec_image
+
+
+            
+    def get_image_no_nan_frame(self, return_indices=False):
+        """
+        Get the GEC image without rows and cols full of np.nan around.
+        
+        Parameters
+        ----------
+        return_indices: bool, optional
+            Set to True if you want to get the indices (fisrt row, last row, first column, last column) corresponding to the matrix without the np.nan frame.
+            
+        Returns
+        -------
+        gec_image: rasterio.DatasetReader
+            Opened image.
+        """
+        
+        gec_image = self.get_image(set_nan=True)
+        return remove_nan_rows_and_cols(gec_image, return_indices=return_indices)
