@@ -1047,3 +1047,60 @@ class CapellaSLCProductInfo(CapellaMetadata):
                 ax.add_feature(cfeature.COASTLINE.with_scale("10m"), zorder=3)
 
             plt.show()
+            
+            
+            
+            
+#------------------------------------------------------------------------------------------------------------------
+# Class for GEC metadata
+#------------------------------------------------------------------------------------------------------------------
+
+class CapellaGECProductInfo(CapellaSLCProductInfo):
+    
+    def __init__(self, path_to_image_folder, compute_missing_metadata_from_slc=True, geometry_origin="gec"):
+        """
+        CapellaGECProductInfo is a class used to access the metadata of a Capella GEC image 
+        and get extra information relative to the image geometry.
+
+        Parameters
+        ----------
+        path_to_image_folder: str
+            Path to the folder containing the image and its metadata stored in 
+            the '_extended.json' and '.json' files.
+        compute_missing_metadata_from_slc: bool, optional
+            Set to True if you want to compute the missing metadata from the SLC. The default is True.
+        geometry_origin: str, optional
+            Set to "json" if you want to get the GEC image geometry from the metadata .json file. 
+            Set to "gcps" if you want to get it from the SLC Ground Control Points. 
+            Set to "gec" if you want to compute it from the GEC metadata. The default is "gec".
+        """
+        
+        # Image path and name
+        self.image_name = os.path.splitext(os.path.basename(path_to_image_folder))[0]
+        path_to_image = os.path.join(path_to_image_folder, self.image_name)
+        self.path_to_image = path_to_image + ".tif"
+        
+        # Get the image projection
+        info = gdal.Info(self.path_to_image, format="json")
+        self.proj_init = info["stac"]["proj:epsg"]
+        geotransform = info["geoTransform"]
+        self.geotransform = affine.Affine(a=geotransform[1], b=geotransform[2], c=geotransform[0], 
+                                          d=geotransform[4], e=geotransform[5], f=geotransform[3])
+        
+        # Get the geometry
+        self.geometry_origin = geometry_origin
+        if geometry_origin == "gcps":
+            slc_product_info = self.get_corresponding_slc_productinfo()
+            slc_product_info.set_image_geometry(origin="gcps")
+            self.geometry = slc_product_info.geometry
+        elif geometry_origin == "json":
+            self.geometry = self.get_geometry_from_json()
+        elif geometry_origin == "gec":
+            self.geometry = self.get_gec_geometry(ordered_as_slc=True, return_corners_positions=False)
+            
+        # Image shape
+        self.parse_metadata(path_to_image, product_type="gec")
+        self.original_file_length, self.original_width = self.file_length, self.width
+        if compute_missing_metadata_from_slc:
+            self.file_length, self.width = self.get_gec_shape()
+            self.get_metadata_from_slc()
