@@ -1104,3 +1104,30 @@ class CapellaGECProductInfo(CapellaSLCProductInfo):
         if compute_missing_metadata_from_slc:
             self.file_length, self.width = self.get_gec_shape()
             self.get_metadata_from_slc()
+            
+            
+            
+        def get_corresponding_slc_productinfo(self):
+            """
+            Get the corresponding CapellaSLCProductInfo.
+            """
+            
+            path_slc = self.path_to_other_products(product_type="SLC")
+            if path_slc is not None:
+                return CapellaSLCProductInfo(path_slc, geometry_origin="gcps")
+            else:
+                return None
+            
+            
+            
+        def get_metadata_from_slc(self):
+            """
+            Get missing metadata from the corresponding SLC product.
+            """
+            
+            slc_product_info = self.get_corresponding_slc_productinfo()
+            self.starting_range = slc_product_info.starting_range
+            self.range_pixel_size = (slc_product_info.range_pixel_size * slc_product_info.width) / self.width
+            self.delta_line_utc = (slc_product_info.last_line_utc - slc_product_info.first_line_utc) / self.file_length
+            self.first_line_utc = slc_product_info.first_line_utc
+            self.first_col_time = slc_product_info.first_col_time
