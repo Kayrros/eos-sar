@@ -435,8 +435,21 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
         eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
         querying for points at various altitudes along the line of sight.
     """
+    # get the (lon,lat) coordinates for the altitudes to test
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - dem.elevation(lon, lat)
+    
+    # get the altitudes of the DEM at these (lon,lat) coordinates
+    elev = dem.elevation(lon, lat)
+    elev = np.atleast_1d(elev)
+
+    # if your DEM is not defined for some (lon,lat) coordinates ...
+    mask = np.isnan(elev)
+    if np.sum(mask) > 0:
+        # ... get the altitudes from a global DEM
+        elev[mask] = eos.dem.get_any_source().elevation(lon[mask], lat[mask])
+    
+    # return the differences between the altitudes to test and the ones from the DEM
+    return alt - elev
 
 
 def shrink_interval(
