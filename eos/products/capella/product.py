@@ -794,3 +794,102 @@ class CapellaSLCProductInfo(CapellaMetadata):
             # ... get the vertical shift that fits the residual slant range shift
             delta_east, delta_north = self.slantrange2horizontal_shift(residual_delta_slant_range_pixel)
             return delta_east, delta_north
+        
+        
+        
+        def get_atmos_delay(self, altitude):
+            """
+            Compute the atmospheric path delay in the LOS direction using the empriric model described by Jehle et al in 
+            “Estimation of Atmospheric Path Delays in TerraSAR-X Data using Models vs Measurements". Sensors 8, 8479-8491 (2008).
+            
+            Parameters
+            ----------
+            altitude: float
+                Altitude for which you want to compute the atmospheric path delay.
+                
+            Returns
+            -------
+            Atmospheric path delay in the LOS direction (in [m]) for the altitude given as argument.
+            """
+            return (altitude * altitude / 8.55e7 - altitude / 3411.0 + 2.41) / np.cos(self.incidence_angle*np.pi/180.)
+            
+            
+        
+        def get_orbit(self, orbit_degree=11):
+            """
+            Get the orbit associated to the image.
+            
+            Parameters
+            ----------
+            orbit_degree: int
+                Degree of the polynomial fitting the orbit.
+                
+            Returns
+            -------
+            Interpolated orbit.
+            """
+            return eos.sar.orbit.Orbit(self.state_vectors, orbit_degree)
+            
+            
+               
+        def get_proj_model(self, max_iterations=20, tolerance=0.001, apd=False): 
+            """
+            Get a projection model.
+            
+            Parameters
+            ----------
+            max_iterations: int, optional
+                Maximum iterations of the iterative projection and localization
+                algorithms. The default is 20.
+            tolerance: float, optional
+                Tolerance on the geocentric position used as a stopping criterion.
+                For localization, tolerance is taken on 3D point position,
+                iterations stop when the step in x, y, z is less than tolerance.
+                For projection, the tolerance is considered on the satellite
+                position of closest approach. Converted to azimuth time tolerance
+                using the speed. The default is 0.001.
+            apd : bool, optional
+                If True the atmospheric correction (ApdCorrection) is applied.
+            
+            Returns
+            -------
+            proj_model: CapellaSLCBaseModel object
+                Projection model used to perform projection and localization in a Capella image.
+            """
+            
+            # Get the orbit
+            orbit = self.get_orbit()
+            
+            # Corrector object
+            coord_corrections = []
+            if apd:
+                coord_corrections.append(ApdCorrection(orbit))
+            coord_corrector = eos.sar.projection_correction.Corrector(coord_corrections)
+            
+            # Azimuth and range frequencies
+            azimuth_frequency = 1/self.delta_line_utc
+            range_frequency = C/(2*self.range_pixel_size)
+            slc_coordinate = SLCCoordinate(first_row_time=self.first_line_utc,
+                                           first_col_time=self.first_col_time,
+                                           azimuth_frequency=azimuth_frequency,
+                                           range_frequency=range_frequency)
+            
+            # Get the approximate location of the center of the sensor model
+            centroid =  self.center_pixel_target_position
+            transformer = pyproj.Transformer.from_crs("epsg:4978", "epsg:4326", always_xy=True)
+            centroid_lon, centroid_lat, _ = transformer.transform(centroid[0], centroid[1], centroid[2])
+            
+            # Get the projection model
+            proj_model = MyCapellaSLCModel(self.width,
+                                           self.file_length,
+                                           self.wavelength,
+                                           centroid_lon,
+                                           centroid_lat,
+                                           slc_coordinate,
+                                           orbit,
+                                           coord_corrector, 
+                                           max_iterations,
+                                           tolerance)
+               
+            
+            return proj_model
