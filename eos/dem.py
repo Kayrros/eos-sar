@@ -402,3 +402,263 @@ def get_any_source() -> DEMSource:
     raise RuntimeError(
         "couldn't find a DEM source; please install multidem, srtm4 or dem-stitcher."
     )
+
+
+### Personal class for DEM stored locally 
+### author: Arthur Hauck 22/01/2024
+import rioxarray
+import copy
+
+class MyDEMSource(DEMSource):
+    def __init__(self, path_to_dem, margin=0.1, set_nan=True, geoid_name=None, offset=0, offset_from_metadata=False, apd_topo_correction=False, incidence_angle=0):
+        """
+        Instantiate a MyDEMSource object.
+
+        Parameters
+        ----------
+        path_to_dem : str   
+            Path to the DEM file.
+        margin : float, optional
+            Extent of the margins for the padding around the DEM. 
+            The unit is the one of the horizontal axes of the DEM.
+            The default is 0.1.
+        set_nan : bool, optional
+            Set to True if you want to fill NoData Values of the DEM with np.nan.
+            The default is True.
+        geoid_name : str, optional
+            Name of the geoid relative to which the altitudes of the DEM are given.
+            The height of the geoid will be removed to get ellipsoidal heights (ie. relative to the WGS84 ellipsoid).
+            The default is None.
+        offset : float, optional
+            Vertical offset to add to the DEM. 
+            The default is 0.
+        offset_from_metadata : bool, optional
+            Set to True if you want to shift the DEM vertically according to its Offset metadata.
+            The default is False.
+        apd_topo_correction : bool, optional
+            Set to True if you want to shift downward the points of your DEM in order to take the atmospheric path delay (cf. Jehle et al., 2008) into account for a given incidence angle.
+            The default is False.
+        incidence_angle : float, optional
+            Incidence angle, in [deg], used to compute the atmospheric path delay.
+            The default is 0 (nadir).
+        """
+        # Store metadata
+        self.dem_reader = rasterio.open(path_to_dem)
+        self.transform = self.dem_reader.meta["transform"]
+        self.set_nan = set_nan
+
+        # Get the DEM
+        self.dem = rioxarray.open_rasterio(path_to_dem, masked=set_nan)
+        
+        # Set to ellipsoidal height if the given DEM is referenced relative to a geoid
+        if geoid_name:
+            array = dem_stitcher.geoid.remove_geoid(dem_arr=self.dem.data, dem_profile=self.dem_reader.profile, 
+                                                    geoid_name=geoid_name, dem_area_or_point=self.dem.AREA_OR_POINT)
+            self.dem.data = array
+            del array
+        
+        # Add a vertical offset if asked
+        if offset_from_metadata:
+            self.dem.data += self.dem.add_offset
+        elif offset != 0:
+            self.dem.data += offset
+        
+        # Pad the DEM (add np.nan around by default)
+        lon_min, lon_max = self.dem.x.data.min(), self.dem.x.data.max()
+        lat_min, lat_max = self.dem.y.data.min(), self.dem.y.data.max()
+        self.dem = self.dem.rio.pad_box(minx=lon_min - margin, miny=lat_min - margin,
+                                        maxx=lon_max + margin, maxy=lat_max + margin)     
+
+        # Update the affine.Affine.transform
+        self.transform = affine.Affine(self.transform[0], self.transform[1], self.transform[2] - margin, # minx = lon_min - margin
+                                       self.transform[3], self.transform[4], self.transform[5] + margin) # maxy = lat_max + margin
+        
+        # Keep the DEM as an attribute
+        self.dem = DEM(array=self.dem.data[0,:,:].astype(np.float32), transform=self.transform, dst_area_or_point=self.dem.AREA_OR_POINT)
+        
+        # Shift the DEM points downward to take the atmospheric path delay into account, if asked
+        if apd_topo_correction:
+            delay = self.get_zenith_apd()
+            array = self.dem.array-delay/np.cos(incidence_angle*np.pi/180.)**2
+            del delay
+            self.dem = DEM(array=array, transform=self.dem.transform, dst_area_or_point=self.dem.dst_area_or_point)
+
+
+    def fetch_dem(self, bounds: Bounds) -> DEM:
+        array, transform, crs = self.dem.crop(bounds)
+        assert isinstance(array, np.ndarray)
+        assert array.dtype == np.float32
+        assert transform is not None
+        assert crs == "EPSG:4326"
+        return DEM(array=array, transform=transform, dst_area_or_point=self.dem.dst_area_or_point)
+        
+
+    def get_dem_with_nan(self):
+        if not self.set_nan:
+            array = copy.copy(self.dem.array)
+            mask_nodata = array == self.dem_reader.meta["nodata"]
+            array[mask_nodata] = np.nan
+            return DEM(array=array, transform=self.transform)
+        else:
+            return self.dem
+        
+        
+    def get_extent(self):
+        """
+        Get the extent of the DEM.
+        """
+        lon_min, lat_max = self.transform[2], self.transform[5]
+        lon_max, lat_min = self.transform * self.dem.array.shape[::-1]
+        return lon_min, lat_min, lon_max, lat_max
+
+    
+    def merge_with_external_dem(self, external_dem, return_mask_merging=False, return_dem_diff=False, set_wide_extent=False):
+        """
+        Merge your DEM with an external DEM. The external DEM will be used to fill holes and/or add a padding around your DEM.
+        !! The two DEM should have the same grid step. !!
+
+        Parameters
+        ----------
+        external_dem : eos.dem.DEM object   
+            DEM used for the filling and/or padding.
+        return_mask_merging : bool, optional
+            Set to True if you want to output the mask indicating where the external DEM has been used to build the merged DEM.
+            The default is False.
+        return_dem_diff : bool, optional
+            Set to True if you want to output the difference between the merged DEM and the external DEM.
+            The default is False.
+        set_wide_extent : bool, optional
+            Set to True if you want the merged DEM to have the extent of the external DEM. 
+            The default is False.
+
+        Returns
+        -------
+        to_return : 
+            merged DEM 
+            (+ mask where the external DEM has been used)
+            (+ difference between the merged and the external DEM).
+        """
+        # Crop your DEM and the external one so that they have the same shape
+        n, m = self.dem.array.shape
+        lon_min, lat_min, lon_max, lat_max = self.get_extent()
+        external_transform = external_dem.transform
+        j_min, i_min = np.round(np.array(~external_dem.transform * (lon_min, lat_max))).astype(int)
+        external_dem_crop = external_dem.array[i_min:i_min+n, j_min:j_min+m]
+        
+        # Merge your DEM with the external one
+        new_array = copy.copy(self.dem.array)
+        mask = np.isnan(new_array)
+        new_array[mask] = external_dem_crop[mask]
+        
+        # Keep the extent of the external DEM ...
+        if set_wide_extent:
+            merged_dem = copy.copy(external_dem.array)
+            merged_dem[i_min:i_min+n, j_min:j_min+m] = new_array
+            new_transform = external_transform
+            mask_merging = np.ones(merged_dem.shape).astype(bool)
+            mask_merging[i_min:i_min+n, j_min:j_min+m] = mask
+            dem_diff = merged_dem - external_dem.array
+        
+        # ... or the one of the smaller DEM
+        else:
+            merged_dem = new_array
+            new_lon, new_lat = external_transform * (i_min, j_min)
+            new_transform = affine.Affine(external_transform[0], external_transform[1], new_lon, 
+                                          external_transform[3], external_transform[4], new_lat)
+            mask_merging = mask
+            dem_diff = merged_dem - external_dem_crop
+        
+        # Return a DEM object ...
+        to_return = [DEM(array=merged_dem.astype(np.float32), transform=new_transform, dst_area_or_point=self.dem.dst_area_or_point)] 
+        # ... and the mask where the external DEM has been used, if asked
+        if return_mask_merging:
+            to_return.append(mask_merging)
+        # ... and the difference between the merged and the external DEM, if asked
+        if return_dem_diff:
+            dem_diff[mask_merging] = np.nan
+            to_return.append(dem_diff)
+        if len(to_return) == 1:
+            to_return = to_return[0]
+        return to_return
+
+
+    def merge_with_global_dem(self, global_dem_name="glo_30", margin=None, **kwargs):
+        """
+        Merge your DEM with a global DEM. The global DEM will be used to fill holes and/or add a padding around your DEM.
+        
+        Parameters
+        ----------
+        global_dem_name : str, optional
+            Name of the global DEM you want to use for merging.
+            The default is "glo_30".
+        margin : float, optional
+            Margin (buffer) used to make sure that global DEM is fetched on a region that fully contains the extent of your DEM.
+            The default is None.
+        **kwargs of the merge_with_external_dem method.
+            
+        Returns
+        -------
+        to_return : 
+            merged DEM 
+            (+ mask where the global DEM has been used)
+            (+ difference between the merged and the global DEM).
+        """
+        # Get the DEMSource
+        global_dem_source = DEMStitcherSource(global_dem_name, dst_resolution=self.transform[0], dst_area_or_point=self.dem.dst_area_or_point)    
+        
+        # Get the extent of your DEM and add a buffer (margin)
+        bounds = self.get_extent()
+        if margin is None:
+            margin = 10*self.transform[0]
+            
+        # Get the global DEM
+        global_dem = global_dem_source.fetch_dem(bounds)
+        
+        # Return the merged DEM
+        return self.merge_with_external_dem(external_dem=global_dem, **kwargs)
+    
+    
+    def merge_with_local_dem(self, path_to_external_dem, margin=None, **kwargs):
+        """
+        Merge your DEM with an external DEM stored locally. The external DEM will be used to fill holes and/or add a padding around your DEM.
+        
+        Parameters
+        ----------
+        path_to_external_dem : str, optional
+            Path to the external DEM file.
+        margin : float, optional
+            Margin (buffer) used to make sure that external DEM fully contains the extent of your DEM.
+            The default is None.
+        **kwargs of the merge_with_external_dem method.
+            
+        Returns
+        -------
+        to_return : 
+            merged DEM 
+            (+ mask where the external DEM has been used)
+            (+ difference between the merged and the external DEM).
+        """
+        # Load the DEM to use for merging
+        if margin is None:
+            margin = 10*self.transform[0]
+        external_dem_source = MyDEMSource(path_to_external_dem, margin=margin)
+        
+        # Check that this DEM contains the initial DEM you want to pad
+        lon_min_wider, lat_min_wider, lon_max_wider, lat_max_wider = external_dem_source.get_extent()
+        lon_min, lat_min, lon_max, lat_max = self.get_extent()
+        if lon_min < lon_min_wider or lon_max > lon_max_wider or lat_min < lat_min_wider or lat_max > lat_max_wider:
+            print("The DEM you want to use for merging does not contain the extent of your initial DEM.\nPlease choose a DEM with a larger spatial extent or change the 'margin' paramater.")
+       
+        # Perform merging
+        else:
+            return self.merge_with_external_dem(external_dem=external_dem_source.dem, **kwargs)
+        
+    
+    def get_zenith_apd(self):
+        """
+        Compute the zenith atmospheric path delay from the empriric model described by Jehle et al in 
+        “Estimation of Atmospheric Path Delays in TerraSAR-X Data using Models vs Measurements". Sensors 8, 8479-8491 (2008).
+        """
+        return (self.dem.array * self.dem.array / 8.55e7 - self.dem.array / 3411.0 + 2.41) # in [m]
+        
+        
