@@ -11,7 +11,6 @@ Modified from eos.products.sentinel1.assembler.
 
 import numpy as np
 from tifffile import imwrite
-import copy
 
 import eos.sar
 import eos.dem
@@ -19,7 +18,6 @@ from eos.sar import io
 from eos.sar.roi import Roi
 from eos.sar import const
 
-import sys
 from eos.products.capella.product import CapellaSLCProductInfo, CapellaGECProductInfo
 
 C = float(const.LIGHT_SPEED_M_PER_SEC) # speed of light
@@ -318,3 +316,99 @@ class CapellaGECProduct:
         """
         
         return self.metadata.get_image(set_nan=set_nan)
+    
+    
+    
+    
+#------------------------------------------------------------------------------------------------------------------
+# GEC2SLC product
+#------------------------------------------------------------------------------------------------------------------   
+
+class GEC2SLC(CapellaSLCProduct):
+    
+    def __init__(self, path_to_gec_image_folder, adjust2slc=True, orbit_degree=11, geometry_origin="gec"):
+        """
+        GEC2SLC is a class used to build a "fake" SLC product - that we call a GEC2SLC product - from a GEC product.
+
+        Parameters
+        ----------
+        path_to_gec_image_folder: str
+            Path to the folder containing the GEC image.
+        adjust2slc: bool, optional
+            Set to True if you want the GEC2SLC to have the same shape and metadata as the SLC. 
+            If False, metadata are computed from the GEC product. The default is True.
+        orbit_degree: int, optional
+            Degree of the polynomial to fit the orbit. Default is 11.
+        geometry_origin: str, optional
+            Set to "json" if you want to get the GEC image geometry from the metadata .json file. 
+            Set to "gcps" if you want to get it from the SLC Ground Control Points. 
+        """
+        
+        # Get the metadata from the corresponding GEC
+        gec_metadata = CapellaGECProductInfo(path_to_gec_image_folder, compute_missing_metadata_from_slc=True, geometry_origin=geometry_origin)
+        
+        # Get the metadata from the corresponding SLC
+        slc_metadata = gec_metadata.get_corresponding_slc_productinfo()
+        
+        # Get the orbit from the SLC
+        self.orbit = eos.sar.orbit.Orbit(slc_metadata.state_vectors, orbit_degree)
+        
+        # If the GEC2SLC should be adjusted to the SLC, take the metadata directly from the SLC
+        if adjust2slc:
+            self.metadata = slc_metadata
+        # Else, compute the metadata from both the GEC and the SLC
+        else:
+            self.metadata = gec_metadata
+        
+        # Store the path to the corresponding GEC image folder
+        self.metadata.path_to_gec_image_folder = path_to_gec_image_folder
+        
+        # Store the path to the corresponding SLC image folder
+        self.metadata.path_to_slc_image_folder = self.metadata.path_to_other_products("SLC")
+        self.metadata.path_to_image = ""
+        
+        
+        
+    def get_image(self, nb_pts=100, random=False, dst_shape=None, nan_value=None, **kwargs):
+        """
+        Create a GEC2SLC image from the GEC image.
+        
+        Parameters
+        ----------
+        nb_pts: int, optional
+            Number of points you want to use to adjust the transformation. The default is 100.
+        random: bool, optional
+            If False the points are taken on a regular grid. If True random sampling is done.
+            The default is False.
+        dst_shape: 2-tuple, optional
+            Shape of the destination array. If None the shape of the SLC will be taken.
+            The default is None.
+        nan_value: float, optional
+            Value to set at the place of np.nan. If None, np.nan are kept.
+            The default is None.
+
+        Returns
+        -------
+        gec2slc : np.array
+             GEC2SLC image.
+        """
+        
+        # Get the shape of the destination array
+        if dst_shape is None:
+            dst_shape = (self.metadata.file_length, self.metadata.width)
+        
+        # Get the corresponding GEC product
+        gec_product = CapellaGECProduct(self.metadata.path_to_gec_image_folder)
+        
+        # Get the adjusted transformation to map from the SLC to the GEC
+        slc2gec_trf = gec_product.metadata.adjust_slc2gec_trf(nb_pts=nb_pts, random=random)
+        
+        # Apply the inverse transofrmation to the GEC image
+        gec2slc = eos.sar.regist.apply_affine(gec_product.get_image(set_nan=True), slc2gec_trf, dst_shape)
+        gec2slc -= np.nanmin(gec2slc) - 1e-30
+        
+        # Change the value in np.nan areas if asked
+        if nan_value is not None:
+            gec2slc[np.isnan(gec2slc)] = nan_value
+        
+        return gec2slc
