@@ -276,3 +276,45 @@ class CapellaCropper:
             col, row, w, h = self.roi.col, self.roi.row, self.roi.w, self.roi.h
             cropped_array = self.product.get_image(get_complex=get_complex, **kwargs)[row:row+h, col:col+w]
         return cropped_array
+    
+    
+    
+
+#------------------------------------------------------------------------------------------------------------------
+# GEC product
+#------------------------------------------------------------------------------------------------------------------   
+    
+class CapellaGECProduct:
+    
+    def __init__(self, path_to_image_folder, orbit_degree=11, compute_missing_metadata_from_slc=True, geometry_origin="gec"):
+        """
+        CapellaGECProduct is a class used to access a Capella GEC image and get its metadata.
+
+        Parameters
+        ----------
+        path_to_image_folder: str
+            Path to the folder containing the image and its metadata stored in 
+            the '_extended.json' and '.json' files.
+        orbit_degree: int, optional
+            Degree of the polynomial to fit the orbit. Default is 11.
+        compute_missing_metadata_from_slc: bool, optional
+            Set to True if you want to compute the missing metadata from the SLC. The default is True.
+        geometry_origin: str, optional
+            Set to "json" if you want to get the GEC image geometry from the metadata .json file. 
+            Set to "gcps" if you want to get it from the SLC Ground Control Points. 
+        """
+        
+        # Instantiate a CapellaGECProductInfo object
+        self.metadata = CapellaGECProductInfo(path_to_image_folder, compute_missing_metadata_from_slc=compute_missing_metadata_from_slc, geometry_origin=geometry_origin)
+
+        # Instantiate an Orbit object
+        self.orbit = self.metadata.get_orbit(orbit_degree=orbit_degree)
+        
+        
+        
+    def get_image(self, set_nan=True):
+        """
+        Get the GEC image.
+        """
+        
+        return self.metadata.get_image(set_nan=set_nan)
