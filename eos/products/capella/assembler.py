@@ -174,6 +174,26 @@ class CapellaSLCProduct:
         
         
         
+    def get_cropper(self, roi):
+        """
+        Get a cropper to crop your Capella image on your Region Of Interest (ROI).
+        
+        Parameters
+        ----------
+        roi: eos.sar.roi.Roi object
+            Your region of interest.
+
+        Returns
+        -------
+        cropper: CapellaCropper object
+            Object to crop your image on your region of interest.
+        """
+        
+        cropper = CapellaCropper(self, roi)
+        return cropper
+        
+        
+        
     def compute_synthetic(self, dem, roi=None, path_to_save=None, return_image=False):
         """
         Compute a synthetic image from a DEM on your Region Of Interest (ROI).
@@ -205,3 +225,54 @@ class CapellaSLCProduct:
             imwrite(path_to_save, synth_image)
         if return_image:
             return synth_image
+        
+        
+        
+        
+#------------------------------------------------------------------------------------------------------------------
+# Cropper
+#------------------------------------------------------------------------------------------------------------------    
+
+class CapellaCropper:
+    
+    def __init__(self, product: CapellaSLCProduct, roi: Roi):
+        """
+        CapellaCropper is a class used to crop a Capella image on a specific
+        Region Of Interest (ROI) and read it.
+
+        Parameters
+        ----------
+        product: CapellaSLCProduct object
+            CapellaSLCProduct(path_to_YOUR_image_folder).
+        roi: eos.sar.roi.Roi object
+            Your region of interest.
+        """
+        
+        self.product = product
+        self.roi = roi
+        
+        
+        
+    def crop(self, get_complex=False, **kwargs):
+        """
+        Crop your image.
+        
+        Parameters
+        ----------
+        get_complex: bool, optional
+            Set to True if you want complex values and to False if you only 
+            want the amplitude. The default is False.
+        
+        Returns
+        -------
+        cropped_array : ndarray (np.complex64 or np.float32)
+            Image corresponding to your region of interest.
+        """
+        
+        try:
+            image_reader = self.product.get_image_reader()
+            cropped_array = io.read_window(image_reader, self.roi, get_complex=get_complex)
+        except:
+            col, row, w, h = self.roi.col, self.roi.row, self.roi.w, self.roi.h
+            cropped_array = self.product.get_image(get_complex=get_complex, **kwargs)[row:row+h, col:col+w]
+        return cropped_array
