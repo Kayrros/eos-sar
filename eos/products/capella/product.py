@@ -33,14 +33,8 @@ from eos.sar import const
 from eos.sar import regist
 from eos.sar.atmospheric_correction import ApdCorrection
 from eos.sar.coordinates import SLCCoordinate
-from capella.proj_model import MyCapellaSLCModel
 
-import sys
-split_path = sys.path[0].split("/")[:-2]
-path = ""
-for folder in split_path:
-    path += folder + "/"
-sys.path.append(path[:-1])
+from capella.proj_model import MyCapellaSLCModel
 
 C = float(const.LIGHT_SPEED_M_PER_SEC) # speed of light
 
