@@ -171,3 +171,37 @@ class CapellaSLCProduct:
             return image.astype(np.complex64)
         else:
             return np.abs(image).astype(np.float32)
+        
+        
+        
+    def compute_synthetic(self, dem, roi=None, path_to_save=None, return_image=False):
+        """
+        Compute a synthetic image from a DEM on your Region Of Interest (ROI).
+        
+        Parameters
+        ----------
+        dem: eos.dem.DEM object
+            DEM that will be used to compute the synthetic image.
+        roi: eos.sar.roi.Roi object
+            Your region of interest. If None, the whole image will be considered. The default is None.
+        path_to_save: str
+            Path where you want to save the synthetic image. Set to None if you do not want to save it. The default is None.
+        return_image: bool
+            Set to True if you want to return the synthetic image as output. The default is False.
+
+        Returns
+        -------
+        synth_image: np.2darray
+            Synthetic image.
+        """
+    
+        if roi is None:
+            roi = eos.sar.roi.Roi(col=0, row=0, w=self.metadata.width, h=self.metadata.file_length)
+    
+        synth_simulator = eos.sar.simulator.SARSimulator(self.get_proj_model(), dem=dem)
+        synth_image = synth_simulator.simulate(roi)
+        
+        if path_to_save is not None:
+            imwrite(path_to_save, synth_image)
+        if return_image:
+            return synth_image
