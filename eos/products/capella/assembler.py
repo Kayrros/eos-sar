@@ -132,3 +132,42 @@ class CapellaSLCProduct:
         roi_in_img = Roi.from_bounds_tuple(Roi.points_to_bbox(rows, cols))
 
         return roi_in_img
+    
+    
+    
+    def get_image_reader(self):
+        """
+        Get an image reader using CapellaSLCProductInfo.get_image_reader.
+        
+        Returns
+        -------
+        Reader : rasterio.DatasetReader
+            Opened image.
+        """
+    
+        reader = self.metadata.get_image_reader()
+        return reader
+    
+    
+    
+    def get_image(self, get_complex=False):
+        """
+        Get the SLC image.
+        
+        Parameters
+        ----------
+        get_complex: bool, optional
+            Set to True if you want complex values and to False if you only 
+            want the amplitude. The default is False.
+
+        Returns
+        -------
+        slc_image: np.array
+            SLC image.
+        """
+
+        image = self.get_image_reader().read()[0,:,:]
+        if get_complex:
+            return image.astype(np.complex64)
+        else:
+            return np.abs(image).astype(np.float32)
