@@ -131,7 +131,7 @@ __kernel void compute_periodograms(__global TYPE * restrict result,
     int best_index = 0, best_tmp_index = 0;
 
     int variable_id0, i, j, k, m, n;
-    for (variable_id0 = thread_id; variable_id0 < num_variables_tuples_to_test_per_ps; variable_id0 += NUM_THREADS_PER_PS*NUM_SUMS_PER_THREAD) {
+    for (variable_id0 = thread_id * NUM_SUMS_PER_THREAD; variable_id0 < num_variables_tuples_to_test_per_ps; variable_id0 += NUM_THREADS_PER_PS*NUM_SUMS_PER_THREAD) {
         /* Load the variable values we test in this loop in this thread.
          * Those are the range variable_id0 to variable_id0 + NUM_SUMS_PER_THREAD - 1 */
         # pragma unroll   /* We must ALWAYS unroll a loop whenever the loop index is used to access a __private table as it is stored in registers. Not doing so generates slow code */
