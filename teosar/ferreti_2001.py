@@ -137,14 +137,18 @@ def iterative_alternate_periodogram(
     v_estimation = np.zeros([num_PS], dtype=np.float32)  # constant velocity
     delta_q = delta_v = None
 
-    APS_dzeta_model = periodogram.LinearTermModel(
-        1.0, PS_Y_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
-    )  # odd boundaries to have 0. tested
-    APS_eta_model = periodogram.LinearTermModel(
-        1.0, PS_X_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
-    )
-    atmo_model = periodogram.CompoundModel([APS_dzeta_model, APS_eta_model])
-    atmo_grid = atmo_model.predict_grid()
+    dzeta_test = np.linspace(-0.1, 0.1, 11)
+    eta_test = np.linspace(-0.1, 0.1, 11)
+
+    if not use_tensorflow:
+        APS_dzeta_model = periodogram.LinearTermModel(
+            1.0, PS_Y_coordinates, dzeta_test.tolist()
+        )  # odd boundaries to have 0. tested
+        APS_eta_model = periodogram.LinearTermModel(
+            1.0, PS_X_coordinates, eta_test.tolist()
+        )
+        atmo_model = periodogram.CompoundModel([APS_dzeta_model, APS_eta_model])
+        atmo_grid = atmo_model.predict_grid()
 
     for iteration in range(max_iterations):
         if iteration > 1:
@@ -174,14 +178,42 @@ def iterative_alternate_periodogram(
 
         # (d) Estimate APS+residual phase on the remaining delta phi with current estimation of q and v removed
         # The minimization is independant for each date.
-        p_dzeta = np.empty([num_dates], dtype=np.float32)
-        p_eta = np.empty([num_dates], dtype=np.float32)
-        for i in range(num_dates):
-            period = periodogram.Periodogram(Delta_phi_no_q_v_estimation[i, :])
-            exhaustive = period.exhaustive_gamma(atmo_grid)
-            x, _ = period.refinement(atmo_model, exhaustive, no_failure=True)
-            p_dzeta[i] = x[0]
-            p_eta[i] = x[1]
+        if not use_tensorflow:
+            p_dzeta = np.empty([num_dates], dtype=np.float32)
+            p_eta = np.empty([num_dates], dtype=np.float32)
+            for i in range(num_dates):
+                period = periodogram.Periodogram(Delta_phi_no_q_v_estimation[i, :])
+                exhaustive = period.exhaustive_gamma(atmo_grid)
+                x, _ = period.refinement(atmo_model, exhaustive, no_failure=True)
+                p_dzeta[i] = x[0]
+                p_eta[i] = x[1]
+
+        else:
+            from teosar.periodogram_cl import (
+                PeriodogramCL,
+                create_constants,
+                create_variables,
+            )
+            from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
+
+            constants = create_constants(
+                num_dates,
+                num_PS,
+                Delta_phi_no_q_v_estimation,
+                [-PS_Y_coordinates, -PS_X_coordinates],
+                dtype=np.float64,
+            )
+
+            variables = create_variables([dzeta_test, eta_test], dtype=np.float64)
+
+            periodo_cl = PeriodogramCL(num_constants_per_sum_term=3)
+            periodo_tf = PeriodogramTF(
+                num_constants_per_sum_term=3, batch_size=batch_size, ncpu=ncpu
+            )
+            periodo_par = PeriodogramPar(periodo_cl, periodo_tf)
+            opt_vars, _ = periodo_par.find_maximum(constants, variables)
+            p_dzeta = opt_vars[:, 0].astype(np.float32)
+            p_eta = opt_vars[:, 1].astype(np.float32)
 
         periodogram_for_each_date = np.exp(
             1j
