@@ -11,6 +11,8 @@ import tqdm
 from numpy.typing import NDArray
 
 from teosar import periodogram, psc, psutils
+from teosar.periodogram_cl import PeriodogramCL, create_constants, create_variables
+from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
 
 """
 Ferreti 2001
@@ -189,13 +191,6 @@ def iterative_alternate_periodogram(
                 p_eta[i] = x[1]
 
         else:
-            from teosar.periodogram_cl import (
-                PeriodogramCL,
-                create_constants,
-                create_variables,
-            )
-            from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
-
             constants = create_constants(
                 num_dates,
                 num_PS,
@@ -331,13 +326,6 @@ def velo_topo_periodogram(
     q_test = periodogram.get_test_vals(80, 10)
 
     if use_tensorflow:
-        from teosar.periodogram_cl import (
-            PeriodogramCL,
-            create_constants,
-            create_variables,
-        )
-        from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
-
         if weights_per_date is None:
             weights_per_date = np.ones((num_dates,), dtype=np.float64) / num_dates
         else:
