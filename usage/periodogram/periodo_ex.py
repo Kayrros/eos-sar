@@ -10,8 +10,6 @@ from teosar import periodogram
 from teosar.periodogram_cl import PeriodogramCL, create_constants, create_variables
 from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
 
-# %%
-
 
 @dataclass(frozen=True)
 class ThreeParamSimu:

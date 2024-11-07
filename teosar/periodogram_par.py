@@ -1,14 +1,17 @@
 import functools
+import os
 from dataclasses import dataclass
 from typing import Any, Optional  # noqa
 
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 import tqdm
 from numpy.typing import NDArray
 
 from teosar.periodogram_cl import PeriodogramCL, RealArray, WrongShape
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+import tensorflow as tf  # noqa
+import tensorflow_probability as tfp  # noqa
 
 
 class PeriodogramTF:
