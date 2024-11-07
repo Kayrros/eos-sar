@@ -1,5 +1,4 @@
 import concurrent.futures
-import functools
 import multiprocessing
 import os
 from dataclasses import dataclass
@@ -12,6 +11,8 @@ import tqdm
 from numpy.typing import NDArray
 
 from teosar import periodogram, psc, psutils
+from teosar.periodogram_cl import PeriodogramCL, create_constants, create_variables
+from teosar.periodogram_par import PeriodogramPar, PeriodogramTF
 
 """
 Ferreti 2001
@@ -138,14 +139,18 @@ def iterative_alternate_periodogram(
     v_estimation = np.zeros([num_PS], dtype=np.float32)  # constant velocity
     delta_q = delta_v = None
 
-    APS_dzeta_model = periodogram.LinearTermModel(
-        1.0, PS_Y_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
-    )  # odd boundaries to have 0. tested
-    APS_eta_model = periodogram.LinearTermModel(
-        1.0, PS_X_coordinates, np.linspace(-0.1, 0.1, 11).tolist()
-    )
-    atmo_model = periodogram.CompoundModel([APS_dzeta_model, APS_eta_model])
-    atmo_grid = atmo_model.predict_grid()
+    dzeta_test = np.linspace(-0.1, 0.1, 11)
+    eta_test = np.linspace(-0.1, 0.1, 11)
+
+    if not use_tensorflow:
+        APS_dzeta_model = periodogram.LinearTermModel(
+            1.0, PS_Y_coordinates, dzeta_test.tolist()
+        )  # odd boundaries to have 0. tested
+        APS_eta_model = periodogram.LinearTermModel(
+            1.0, PS_X_coordinates, eta_test.tolist()
+        )
+        atmo_model = periodogram.CompoundModel([APS_dzeta_model, APS_eta_model])
+        atmo_grid = atmo_model.predict_grid()
 
     for iteration in range(max_iterations):
         if iteration > 1:
@@ -175,14 +180,35 @@ def iterative_alternate_periodogram(
 
         # (d) Estimate APS+residual phase on the remaining delta phi with current estimation of q and v removed
         # The minimization is independant for each date.
-        p_dzeta = np.empty([num_dates], dtype=np.float32)
-        p_eta = np.empty([num_dates], dtype=np.float32)
-        for i in range(num_dates):
-            period = periodogram.Periodogram(Delta_phi_no_q_v_estimation[i, :])
-            exhaustive = period.exhaustive_gamma(atmo_grid)
-            x, _ = period.refinement(atmo_model, exhaustive, no_failure=True)
-            p_dzeta[i] = x[0]
-            p_eta[i] = x[1]
+        if not use_tensorflow:
+            p_dzeta = np.empty([num_dates], dtype=np.float32)
+            p_eta = np.empty([num_dates], dtype=np.float32)
+            for i in range(num_dates):
+                period = periodogram.Periodogram(Delta_phi_no_q_v_estimation[i, :])
+                exhaustive = period.exhaustive_gamma(atmo_grid)
+                x, _ = period.refinement(atmo_model, exhaustive, no_failure=True)
+                p_dzeta[i] = x[0]
+                p_eta[i] = x[1]
+
+        else:
+            constants = create_constants(
+                num_dates,
+                num_PS,
+                Delta_phi_no_q_v_estimation,
+                [-PS_Y_coordinates, -PS_X_coordinates],
+                dtype=np.float64,
+            )
+
+            variables = create_variables([dzeta_test, eta_test], dtype=np.float64)
+
+            periodo_cl = PeriodogramCL(num_constants_per_sum_term=3)
+            periodo_tf = PeriodogramTF(
+                num_constants_per_sum_term=3, batch_size=batch_size, ncpu=ncpu
+            )
+            periodo_par = PeriodogramPar(periodo_cl, periodo_tf)
+            opt_vars, _ = periodo_par.find_maximum(constants, variables)
+            p_dzeta = opt_vars[:, 0].astype(np.float32)
+            p_eta = opt_vars[:, 1].astype(np.float32)
 
         periodogram_for_each_date = np.exp(
             1j
@@ -293,14 +319,13 @@ def velo_topo_periodogram(
     *,
     use_tensorflow=True,
     ncpu=1,
-    batch_size=128,
+    batch_size=1024,
 ):
     num_dates, num_PS = phi_ps_mat.shape
+    v_test = periodogram.get_test_vals(300, 10)
+    q_test = periodogram.get_test_vals(80, 10)
 
     if use_tensorflow:
-        import tensorflow as tf
-        import tensorflow_probability as tfp
-
         if weights_per_date is None:
             weights_per_date = np.ones((num_dates,), dtype=np.float64) / num_dates
         else:
@@ -308,89 +333,30 @@ def velo_topo_periodogram(
             # normalize weights
             weights_per_date /= np.sum(weights_per_date)
 
-        # Here we use tensorflow, which has a fixed cost when calling (graph compilation),
-        # but then is much faster. We have a lot of variables to minimize, thus it makes sense.
-        tf_phi_ps_mat = tf.cast(phi_ps_mat, tf.float64)
-        tf_Cq = tf.cast(Cq, tf.float64)
-        tf_date_normal_baseline = tf.cast(date_normal_baseline, tf.float64)
-
-        @tf.function(jit_compile=True)
-        def periodogram_to_optimize(
-            q_b, v_b, tf_Cq_b, tf_date_normal_baseline_b, tf_phi_ps_mat_b
-        ):  # _b stands for batch
-            res = 0
-            for k in range(num_dates):
-                res += weights_per_date[k] * tf.exp(
-                    tf.dtypes.complex(
-                        tf.cast(0.0, tf.float64),
-                        (
-                            tf_phi_ps_mat_b[k, :]
-                            - tf_Cq_b * tf_date_normal_baseline_b[k] * q_b
-                            - tf.cast(Cv * years_since_ref[k], tf.float64) * v_b
-                        ),
-                    )
-                )
-            return res
-
-        def make_val_and_grad_fn(value_fn):
-            @functools.wraps(value_fn)
-            def val_and_grad(x):
-                return tfp.math.value_and_gradient(value_fn, x)
-
-            return val_and_grad
-
-        @tf.function(jit_compile=True)
-        def subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice):
-            per = periodogram_to_optimize(
-                q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice
-            )
-            return -tf.reduce_sum(tf.math.abs(per))
-
-        # slice in batches
-        start_indices = np.arange(0, num_PS, batch_size)
-        end_indices = np.append(start_indices[1:], num_PS)
-        q = np.zeros((num_PS,), dtype=np.float64)
-        v = np.zeros((num_PS,), dtype=np.float64)
-        for s, e in tqdm.tqdm(
-            zip(start_indices, end_indices), total=len(start_indices)
-        ):
-            nps = e - s
-            tf_Cq_slice = tf_Cq[s:e]
-            tf_date_slice = tf_date_normal_baseline[:, s:e]
-            tf_phi_ps_slice = tf_phi_ps_mat[:, s:e]
-
-            @make_val_and_grad_fn
-            def loss(x):
-                q_b = x[0:nps]
-                v_b = x[nps:]
-                return subloss(q_b, v_b, tf_Cq_slice, tf_date_slice, tf_phi_ps_slice)
-
-            res = tfp.optimizer.lbfgs_minimize(
-                loss,
-                initial_position=tf.constant(np.zeros(2 * nps), dtype=tf.float64),
-                tolerance=1e-15,
-                max_iterations=10,
-            )
-
-            x = res.position
-            q[s:e] = x[0:nps].numpy()
-            v[s:e] = x[nps:].numpy()
-
-        gammas = (
-            tf.math.abs(
-                periodogram_to_optimize(
-                    q, v, tf_Cq, tf_date_normal_baseline, tf_phi_ps_mat
-                )
-            )
-            .numpy()
-            .squeeze()
+        # Convert inputs to the format PeriodogramCL expects.
+        constants = create_constants(
+            num_PS,
+            num_dates,
+            phi_ps_mat.T,
+            [-(Cq * date_normal_baseline).T, -Cv * years_since_ref],
+            dtype=np.float64,
         )
+
+        variables = create_variables([q_test, v_test], dtype=np.float64)
+        periodo_cl = PeriodogramCL(num_constants_per_sum_term=3)
+        periodo_tf = PeriodogramTF(
+            num_constants_per_sum_term=3, batch_size=batch_size, ncpu=ncpu
+        )
+        periodo_par = PeriodogramPar(periodo_cl, periodo_tf)
+        opt_vars, gammas = periodo_par.find_maximum(
+            constants, variables, weights_per_date
+        )
+        q = opt_vars[:, 0]
+        v = opt_vars[:, 1]
     else:
         q = np.zeros([num_PS], dtype=np.float32)  # constant dem error
         v = np.zeros([num_PS], dtype=np.float32)  # constant velocity
         gammas = np.zeros([num_PS], dtype=np.float32)  # temporal coherence
-        v_test = periodogram.get_test_vals(300, 10)
-        q_test = periodogram.get_test_vals(80, 10)
         lin_defo_model = periodogram.LinearTermModel(Cv, years_since_ref, v_test)
         mp_context = multiprocessing.get_context("spawn")
         with concurrent.futures.ProcessPoolExecutor(

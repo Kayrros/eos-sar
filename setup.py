@@ -32,7 +32,13 @@ setuptools.setup(
     entry_points="",
     extras_require={
         # dependencies that teosar requires
-        "teosar": ["tqdm", "tifffile", "tensorflow-cpu", "tensorflow_probability"],
+        "teosar": [
+            "tqdm",
+            "tifffile",
+            "tensorflow-probability[tf]",  # see https://github.com/tensorflow/probability/releases/tag/v0.24.0
+            "siphash24",  # pytools is required by pyopencl, and gives a warning: RecommendedHashNotFoundWarning: Unable to import recommended hash 'siphash24.siphash13',
+            "pyopencl",
+        ],
         # dependencies for usage at Kayrros
         "kayrros": ["kayrros-phoenix[source-s3,plugin-burster]", "kayrros-bursterio"],
     },
