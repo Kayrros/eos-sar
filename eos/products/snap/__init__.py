@@ -15,10 +15,7 @@ from typing_extensions import override
 from eos.sar import coordinates, io
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC
 from eos.sar.io import ImageReader, Window
-from eos.sar.model import (
-    Arrayf32,
-    SensorModel,
-)
+from eos.sar.model import Arrayf32, SensorModel
 from eos.sar.model_helper import GenericSensorModelHelper
 from eos.sar.orbit import Orbit, StateVector
 from eos.sar.projection_correction import Corrector
@@ -253,6 +250,10 @@ def parse_snap_metadatas(path: str) -> list[SnapMetadata]:
 
     secondaries = [s for s in sources if s["@name"] == "Slave_Metadata"]
     secondaries = secondaries[0]["MDElem"] if secondaries else []
+
+    if isinstance(secondaries, dict):
+        secondaries = [secondaries]
+
     used_bands: set[str] = set()
     for sec in secondaries:
         metadata = _parse_product(sec, band_path_per_name)
