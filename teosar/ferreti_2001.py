@@ -641,9 +641,17 @@ def run(
     PS_X_coordinates, PS_Y_coordinates = get_psc_coords(amps, da_threshold)
     del amps
 
+    Delta_phi_against_ref = np.array(Delta_phi_against_ref)
+    # remove PS that have a nan phase
+    valid_ps = ~np.any(
+        np.isnan(Delta_phi_against_ref[:, PS_Y_coordinates, PS_X_coordinates]), axis=0
+    )
+    PS_X_coordinates = PS_X_coordinates[valid_ps]
+    PS_Y_coordinates = PS_Y_coordinates[valid_ps]
+
     print("iterative periodogram")
     # estimate atmosphere on candidates
-    Delta_phi_against_ref = np.array(Delta_phi_against_ref)
+
     atmos = get_atmos(
         PS_X_coordinates,
         PS_Y_coordinates,
