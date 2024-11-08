@@ -228,20 +228,27 @@ class SecondaryPipeline(Pipeline):
         roi,
         heights,
     ):
-        self.get_inputs(product_provider, statevectors, polarization)
-        self.register(registrator)
+        try:
+            self.get_inputs(product_provider, statevectors, polarization)
+            self.register(registrator)
 
-        my_bsids = set(self.burst_resampling_matrices.keys())
-        if my_bsids != registrator.bsids:
+            my_bsids = set(self.burst_resampling_matrices.keys())
+            if my_bsids != registrator.bsids:
+                logger.warning(
+                    f"secondary pipeline {self.product_ids}={my_bsids} is missing some bursts {registrator.bsids}"
+                )
+                return False
+
+            self.deburst(deburster, polarization, calibrate, get_complex)
+            self.simulate_phase(primary_proj_model, roi, heights)
+            self.save_log()
+            return True
+
+        except Exception as e:
             logger.warning(
-                f"secondary pipeline {self.product_ids}={my_bsids} is missing some bursts {registrator.bsids}"
+                f" Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
             )
             return False
-
-        self.deburst(deburster, polarization, calibrate, get_complex)
-        self.simulate_phase(primary_proj_model, roi, heights)
-        self.save_log()
-        return True
 
 
 class OvlPrimaryPipeline(Pipeline):
