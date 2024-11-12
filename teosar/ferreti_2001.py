@@ -358,36 +358,52 @@ def velo_topo_periodogram(
         v = np.zeros([num_PS], dtype=np.float32)  # constant velocity
         gammas = np.zeros([num_PS], dtype=np.float32)  # temporal coherence
         lin_defo_model = periodogram.LinearTermModel(Cv, years_since_ref, v_test)
-        mp_context = multiprocessing.get_context("spawn")
-        with concurrent.futures.ProcessPoolExecutor(
-            max_workers=ncpu, mp_context=mp_context
-        ) as executor:
-            future_to_ps = {
-                executor.submit(
-                    process_ps,
+
+        if ncpu == 1:
+            for h in tqdm.trange(num_PS):
+                data = process_ps(
                     Cq[h],
                     date_normal_baseline[:, h],
                     q_test,
                     lin_defo_model,
                     phi_ps_mat[:, h],
                     weights_per_date,
-                ): h
-                for h in range(num_PS)
-            }
+                )
+                _v, _q, gamma_opt = data
+                v[h] = _v
+                q[h] = _q
+                gammas[h] = gamma_opt
+        else:
+            mp_context = multiprocessing.get_context("spawn")
+            with concurrent.futures.ProcessPoolExecutor(
+                max_workers=ncpu, mp_context=mp_context
+            ) as executor:
+                future_to_ps = {
+                    executor.submit(
+                        process_ps,
+                        Cq[h],
+                        date_normal_baseline[:, h],
+                        q_test,
+                        lin_defo_model,
+                        phi_ps_mat[:, h],
+                        weights_per_date,
+                    ): h
+                    for h in range(num_PS)
+                }
 
-            for future in tqdm.tqdm(
-                concurrent.futures.as_completed(future_to_ps), total=num_PS
-            ):
-                h = future_to_ps[future]
-                try:
-                    data = future.result()
-                except Exception as exc:
-                    print(f"PS {h} generated an exception: {exc}")
-                else:
-                    _v, _q, gamma_opt = data
-                    v[h] = _v
-                    q[h] = _q
-                    gammas[h] = gamma_opt
+                for future in tqdm.tqdm(
+                    concurrent.futures.as_completed(future_to_ps), total=num_PS
+                ):
+                    h = future_to_ps[future]
+                    try:
+                        data = future.result()
+                    except Exception as exc:
+                        print(f"PS {h} generated an exception: {exc}")
+                    else:
+                        _v, _q, gamma_opt = data
+                        v[h] = _v
+                        q[h] = _q
+                        gammas[h] = gamma_opt
     return q, v, gammas
 
 
@@ -641,9 +657,17 @@ def run(
     PS_X_coordinates, PS_Y_coordinates = get_psc_coords(amps, da_threshold)
     del amps
 
+    Delta_phi_against_ref = np.array(Delta_phi_against_ref)
+    # remove PS that have a nan phase
+    valid_ps = ~np.any(
+        np.isnan(Delta_phi_against_ref[:, PS_Y_coordinates, PS_X_coordinates]), axis=0
+    )
+    PS_X_coordinates = PS_X_coordinates[valid_ps]
+    PS_Y_coordinates = PS_Y_coordinates[valid_ps]
+
     print("iterative periodogram")
     # estimate atmosphere on candidates
-    Delta_phi_against_ref = np.array(Delta_phi_against_ref)
+
     atmos = get_atmos(
         PS_X_coordinates,
         PS_Y_coordinates,

@@ -3,6 +3,7 @@ from typing import Optional
 
 import numpy as np
 import tifffile
+from burster.goburster import BursterException
 
 import eos.dem
 import eos.products.sentinel1
@@ -238,7 +239,14 @@ class SecondaryPipeline(Pipeline):
             )
             return False
 
-        self.deburst(deburster, polarization, calibrate, get_complex)
+        try:
+            self.deburst(deburster, polarization, calibrate, get_complex)
+        except BursterException as e:
+            logger.warning(
+                f"Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
+            )
+            return False
+
         self.simulate_phase(primary_proj_model, roi, heights)
         self.save_log()
         return True
