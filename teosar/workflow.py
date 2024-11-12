@@ -3,6 +3,7 @@ from typing import Optional
 
 import numpy as np
 import tifffile
+from burster.goburster import BursterException
 
 import eos.dem
 import eos.products.sentinel1
@@ -228,27 +229,27 @@ class SecondaryPipeline(Pipeline):
         roi,
         heights,
     ):
-        try:
-            self.get_inputs(product_provider, statevectors, polarization)
-            self.register(registrator)
+        self.get_inputs(product_provider, statevectors, polarization)
+        self.register(registrator)
 
-            my_bsids = set(self.burst_resampling_matrices.keys())
-            if my_bsids != registrator.bsids:
-                logger.warning(
-                    f"secondary pipeline {self.product_ids}={my_bsids} is missing some bursts {registrator.bsids}"
-                )
-                return False
-
-            self.deburst(deburster, polarization, calibrate, get_complex)
-            self.simulate_phase(primary_proj_model, roi, heights)
-            self.save_log()
-            return True
-
-        except Exception as e:
+        my_bsids = set(self.burst_resampling_matrices.keys())
+        if my_bsids != registrator.bsids:
             logger.warning(
-                f" Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
+                f"secondary pipeline {self.product_ids}={my_bsids} is missing some bursts {registrator.bsids}"
             )
             return False
+
+        try:
+            self.deburst(deburster, polarization, calibrate, get_complex)
+        except BursterException as e:
+            logger.warning(
+                f"Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
+            )
+            return False
+
+        self.simulate_phase(primary_proj_model, roi, heights)
+        self.save_log()
+        return True
 
 
 class OvlPrimaryPipeline(Pipeline):
