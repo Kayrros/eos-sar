@@ -1,15 +1,23 @@
 import os
 from pathlib import Path
 
+import numpy as np
+import pytest
 import rasterio
+import shapely.geometry
 
 import eos.dem
+from eos.products.sentinel1.catalog import CDSESentinel1GRDCatalogBackend
 from eos.products.sentinel1.grd_cropper import (
     BboxDestinationGeometry,
+    CDSEInputProduct,
     CropperInput,
     FilesystemResultDestination,
+    MemoryResultDestination,
     Params,
     PhoenixInputProduct,
+    ProductsAreFromDifferentDatatakes,
+    get_cdse_orbit_catalog_backend,
     get_phoenix_orbit_catalog_backend,
     process,
 )
@@ -91,3 +99,102 @@ def test_grd_cropper_2(phx_client, tmp_path):
     process(input)
     assert os.path.exists(f"{tmp_path}/vv.tif")
     assert os.path.exists(f"{tmp_path}/vh.tif")
+
+
+# this is also a test for the _COG GRD products on CDSE
+def test_grd_cropper_assembly(tmp_path, cdse_auth, cdse_s3_session):
+    pid1 = "S1A_IW_GRDH_1SDV_20241201T132452_20241201T132517_056799_06F90F_0273_COG"
+    pid2 = "S1A_IW_GRDH_1SDV_20241201T132517_20241201T132542_056799_06F90F_8DED_COG"
+
+    cdse_backend = CDSESentinel1GRDCatalogBackend()
+
+    geom = shapely.geometry.shape(
+        {
+            "coordinates": [
+                [
+                    [-108.93034707948136, 44.8850185093938],
+                    [-108.93034707948136, 44.634934452915445],
+                    [-108.57357229127953, 44.634934452915445],
+                    [-108.57357229127953, 44.8850185093938],
+                    [-108.93034707948136, 44.8850185093938],
+                ]
+            ],
+            "type": "Polygon",
+        }
+    )
+    bbox = geom.bounds
+
+    params = Params(
+        polarizations=["VV"],
+        calibration="gamma",
+        orthorectify=True,
+        rtc=None,
+        filtering=None,
+    )
+    input = CropperInput(
+        products=[
+            CDSEInputProduct(
+                product_id=pid1,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            ),
+            CDSEInputProduct(
+                product_id=pid2,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            ),
+        ],
+        params=params,
+        destination_geometry=BboxDestinationGeometry(
+            bbox=bbox,
+            resolution=10,
+            align=None,
+            crs=None,
+        ),
+        result_destination=FilesystemResultDestination(
+            {"VV": Path(f"{tmp_path}/vv.tif")}
+        ),
+        dem_source=eos.dem.SRTM4Source(),
+        orbit_catalog_backend=get_cdse_orbit_catalog_backend(*cdse_auth),
+    )
+
+    process(input)
+
+    # make sure we don't get a lot of nans, thanks to the assembly
+    r = rasterio.open(f"{tmp_path}/vv.tif").read(1)
+    assert np.isnan(r).mean() < 0.001
+
+
+def test_grd_cropper_multiple_datatakes(phx_client):
+    pid1 = "S1A_IW_GRDH_1SDV_20221205T015438_20221205T015503_046190_0587C2_F48B"
+    pid2 = "S1A_IW_GRDH_1SDV_20240125T041457_20240125T041522_052258_065159_C088"
+
+    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
+        "aws:proxima:sentinel-s1-l1c"
+    )
+    item1 = collection.get_item(pid1)
+    item2 = collection.get_item(pid2)
+
+    params = Params(
+        polarizations=["VV", "VH"],
+        calibration="gamma",
+        orthorectify=True,
+        rtc=None,
+        filtering=None,
+    )
+    input = CropperInput(
+        products=[PhoenixInputProduct(item1), PhoenixInputProduct(item2)],
+        params=params,
+        destination_geometry=BboxDestinationGeometry(
+            bbox=(73.73, 70.96, 73.92, 71.02),
+            resolution=10,
+            align=None,
+            crs=None,
+        ),
+        result_destination=MemoryResultDestination.make_empty(),
+        dem_source=eos.dem.DEMStitcherSource(),
+        orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
+    )
+
+    with pytest.raises(ProductsAreFromDifferentDatatakes):
+        process(input)

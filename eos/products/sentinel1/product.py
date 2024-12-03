@@ -88,7 +88,7 @@ def extract_ipf(manifest: str) -> str:
     buf = io.BytesIO(manifest.encode("utf-8"))
 
     version = etree.parse(buf).xpath(
-        "/xfdu:XFDU/metadataSection/metadataObject/metadataWrap/xmlData/safe:processing/safe:facility/safe:software/@version",
+        '//safe:software[@name="Sentinel-1 IPF"]/@version',
         namespaces={
             "xfdu": "urn:ccsds:schema:xfdu:1",
             "safe": "http://www.esa.int/safe/sentinel-1.0",

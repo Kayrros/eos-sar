@@ -19,6 +19,14 @@ def cdse_auth(maybe_skip_cdse):
     return (username, password)
 
 
+@pytest.fixture(scope="session")
+def cdse_s3_session(maybe_skip_cdse):
+    return boto3.Session(
+        aws_access_key_id=os.environ["CDSE_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["CDSE_SECRET_ACCESS_KEY"],
+    )
+
+
 try:
     import boto3
 
@@ -47,7 +55,17 @@ def s3_client(maybe_skip_s3):
 @pytest.fixture(scope="session")
 def maybe_skip_cdse():
     if "CDSE_USERNAME" not in os.environ:
-        pytest.skip("skipped because CDSE credentials are not found")
+        pytest.skip(
+            "skipped because CDSE credentials are not found (CDSE_USERNAME, CDSE_PASSWORD)"
+        )
+
+
+@pytest.fixture(scope="session")
+def maybe_skip_cdse_s3():
+    if "CDSE_ACCESS_KEY_ID" not in os.environ:
+        pytest.skip(
+            "skipped because CDSE S3 credentials are not found (CDSE_ACCESS_KEY_ID, CDSE_SECRET_ACCESS_KEY)"
+        )
 
 
 @pytest.fixture(scope="session")
