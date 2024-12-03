@@ -22,6 +22,9 @@ import eos.dem
 import eos.sar
 from eos.products import sentinel1
 from eos.products.sentinel1 import orbit_catalog
+from eos.products.sentinel1.catalog import CDSESentinel1GRDCatalogBackend
+from eos.products.sentinel1.product import Sentinel1GRDProductInfo
+from eos.sar.io import ImageReader
 from eos.sar.model import SensorModel
 from eos.sar.ortho import Orthorectifier
 from eos.sar.roi import Roi
@@ -30,6 +33,11 @@ logger = logging.getLogger(__name__)
 
 Calibration = Literal["sigma", "gamma", "beta"]
 Polarization = Literal["VV", "VH", "HV", "HH"]
+
+
+@dataclass(frozen=True)
+class ProductsAreFromDifferentDatatakes(Exception):
+    datatakes: set[str]
 
 
 @dataclass(frozen=True)
@@ -56,6 +64,23 @@ class PhoenixInputProduct(InputProduct):
         return sentinel1.product.PhoenixSentinel1GRDProductInfo(
             self.item,
             image_opener=eos.sar.io.open_image,
+        )
+
+
+@dataclass(frozen=True)
+class CDSEInputProduct(InputProduct):
+    product_id: str
+    cdse_backend: CDSESentinel1GRDCatalogBackend
+    s3_session: Any
+
+    @override
+    def into_product_info(self) -> sentinel1.product.Sentinel1GRDProductInfo:
+        return (
+            sentinel1.product.CDSEUnzippedSafeSentinel1GRDProductInfo.from_product_id(
+                product_id=self.product_id,
+                cdse_backend=self.cdse_backend,
+                s3_session=self.s3_session,
+            )
         )
 
 
@@ -230,38 +255,56 @@ def _compute_transform_shape(crs, res, bbox, align=None):
     return transform, shape, extent
 
 
-# TODO: check potential failure cases (invalid AOI vs. product footprint, I/O error, ...)
-def process(input: CropperInput) -> None:
-    # TODO: support GRD assembly
-    if len(input.products) != 1:
-        raise Exception("CropperInput.products should contain only one element")
-    product = input.products[0].into_product_info()
-    product_id = product.product_id
+def _datatake_of(pid: str) -> str:
+    idx = len("S1A_IW_SLC__1SDV_20211202T173302_20211202T173329_040833_")
+    return pid[idx : idx + 6]
 
-    query = orbit_catalog.Sentinel1OrbitCatalogQuery(
-        product_ids=[product_id],
-        quality=orbit_catalog.BestEffort,
-    )
 
-    statevectors = orbit_catalog.search(input.orbit_catalog_backend, query).single()
+def _prepare_reader(
+    product: Sentinel1GRDProductInfo, pol: str, calibration: Optional[Calibration]
+) -> ImageReader:
+    reader = product.get_image_reader(pol)
 
-    pol = input.params.polarizations[0]
-    xml = product.get_xml_annotation(pol)
-    meta = sentinel1.metadata.extract_grd_metadata(xml)
-    if statevectors:
-        meta = meta.with_new_state_vectors(statevectors, "")
-    else:
-        logger.warn(
-            f"couldn't find orbit file for {product_id}, continuing with the product metadata"
+    if calibration:
+        cal_xml = product.get_xml_calibration(pol)
+        noise_xml = product.get_xml_noise(pol)
+        ipf = product.ipf
+        calibrator = sentinel1.calibration.Sentinel1Calibrator(cal_xml, noise_xml, ipf)
+        reader = sentinel1.calibration.CalibrationReader(
+            reader, calibrator, method=calibration
         )
 
-    orbit = eos.sar.orbit.Orbit(meta.state_vectors)
-    corr = [
-        eos.sar.atmospheric_correction.ApdCorrection(orbit),
-    ]
-    corrector = eos.sar.projection_correction.Corrector(corr)
+    return reader
 
-    proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit, corrector)
+
+# TODO: check potential failure cases (invalid AOI vs. product footprint, I/O error, ...)
+def process(input: CropperInput) -> None:
+    products = [p.into_product_info() for p in input.products]
+    product_ids = [p.product_id for p in products]
+
+    datatakes = set(_datatake_of(pid) for pid in product_ids)
+    if len(datatakes) != 1:
+        raise ProductsAreFromDifferentDatatakes(datatakes=datatakes)
+
+    query = orbit_catalog.Sentinel1OrbitCatalogQuery(
+        product_ids=product_ids,
+        quality=orbit_catalog.BestEffort,
+    )
+    statevectors = orbit_catalog.search(input.orbit_catalog_backend, query).single()
+
+    if not statevectors:
+        logger.warn(
+            f"couldn't find orbit file for {product_ids=}, continuing with the product metadata"
+        )
+
+    pol = input.params.polarizations[0]
+    asm = sentinel1.assembler.Sentinel1GRDAssembler.from_products(
+        products, pol, statevectors
+    )
+
+    corr = [eos.sar.atmospheric_correction.ApdCorrection(asm.orbit)]
+    corrector = eos.sar.projection_correction.Corrector(corr)
+    proj_model = asm.get_proj_model(corrector)
 
     roi: Roi
     dst_geom = input.destination_geometry
@@ -317,22 +360,12 @@ def process(input: CropperInput) -> None:
         )
 
     for pol in input.params.polarizations:
-        reader = product.get_image_reader(pol)
+        readers = {
+            p.product_id: _prepare_reader(p, pol, input.params.calibration)
+            for p in products
+        }
 
-        if cal := input.params.calibration:
-            cal_xml = product.get_xml_calibration(pol)
-            noise_xml = product.get_xml_noise(pol)
-            ipf = product.ipf
-            calibrator = sentinel1.calibration.Sentinel1Calibrator(
-                cal_xml, noise_xml, ipf
-            )
-            reader = sentinel1.calibration.CalibrationReader(
-                reader, calibrator, method=cal
-            )
-
-        raster = eos.sar.io.read_window(
-            reader, roi, get_complex=False, out_dtype=np.float32, boundless=True
-        )
+        raster = asm.crop(roi, readers)
         mask = sentinel1.border_noise_grd.compute_border_mask(raster)
         raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)
 
