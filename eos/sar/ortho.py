@@ -6,12 +6,15 @@ from typing import Sequence, TypeVar
 import cv2
 import numpy as np
 import rasterio
+import rasterio.transform
 import rasterio.warp
 import shapely.geometry
 from numpy.typing import NDArray
 
 import eos.dem
-from eos.sar import model, regist
+import eos.sar
+from eos.sar import model
+from eos.sar.roi import Roi
 
 T = TypeVar("T", np.float32, np.complex64)
 
@@ -83,6 +86,9 @@ def _utm_zone_of_bbox(bbox):
 
 
 class _DEMInfo:
+    """The goal of this class is to precompute (and share this precomputation) the raster_xy_grid.
+    This is not a huge speed-up compared to the projection for example."""
+
     x: np.ndarray
     y: np.ndarray
     alt: np.ndarray
@@ -91,17 +97,18 @@ class _DEMInfo:
     shape: tuple
 
     @staticmethod
-    def from_proj_model(proj_model, roi, dem: eos.dem.DEM):
-        refined_geom, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
-        x, y, alt, transform, crs = regist.dem_points(refined_geom, dem=dem)
+    def from_dem(dem: eos.dem.DEM):
+        x, y = eos.sar.utils.raster_xy_grid(
+            dem.array.shape, dem.transform, px_is_area=True
+        )
 
         deminfo = _DEMInfo()
-        deminfo.shape = alt.shape
+        deminfo.shape = dem.array.shape
         deminfo.x = x.flatten()
         deminfo.y = y.flatten()
-        deminfo.alt = alt.flatten()
-        deminfo.transform = transform
-        deminfo.crs = crs
+        deminfo.alt = dem.array.flatten()
+        deminfo.transform = dem.transform
+        deminfo.crs = dem.crs
         return deminfo
 
 
@@ -122,8 +129,14 @@ class Orthorectifier:
             crs = _utm_zone_of_bbox(bbox)
 
         transform, shape, _ = _compute_transform_shape(crs, resolution, bbox, align)
+
+        # subset the dem to the desired shape/transform
+        bounds = rasterio.transform.array_bounds(*shape, transform)
+        bounds = rasterio.warp.transform_bounds(crs, dem.crs, *bounds)
+        dem = dem.subset(bounds)
+        deminfo = _DEMInfo.from_dem(dem)
+
         origin_col, origin_row = roi.get_origin()
-        deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
         ortho = Orthorectifier(
             proj_model, deminfo, origin_col, origin_row, crs, transform, shape
         )
@@ -132,10 +145,10 @@ class Orthorectifier:
     @staticmethod
     def from_transform(
         proj_model,
-        roi,
+        roi: Roi,
         crs,
         transform,
-        shape,
+        shape: tuple[int, int],
         dem: eos.dem.DEM,
         previous_orthorectifier=None,
     ) -> Orthorectifier:
@@ -145,7 +158,11 @@ class Orthorectifier:
             assert previous_orthorectifier.shape == shape
             deminfo = previous_orthorectifier._deminfo
         else:
-            deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
+            # subset the dem to the desired shape/transform
+            bounds = rasterio.transform.array_bounds(*shape, transform)
+            bounds = rasterio.warp.transform_bounds(crs, dem.crs, *bounds)
+            dem = dem.subset(bounds)
+            deminfo = _DEMInfo.from_dem(dem)
 
         origin_col, origin_row = roi.get_origin()
         ortho = Orthorectifier(
