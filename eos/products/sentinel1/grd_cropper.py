@@ -237,7 +237,7 @@ def _compute_transform_shape(crs, res, bbox, align=None):
     left, bottom, right, top = rasterio.warp.transform_bounds("epsg:4326", crs, *bbox)
 
     if align and (align % res > 0):
-        raise Exception("AlignmentError")
+        raise Exception(f"invalid alignment: {align} is not divisible by {res}")
 
     if align is None:
         align = res
