@@ -277,7 +277,6 @@ def _prepare_reader(
     return reader
 
 
-# TODO: check potential failure cases (invalid AOI vs. product footprint, I/O error, ...)
 def process(input: CropperInput) -> None:
     products = [p.into_product_info() for p in input.products]
     product_ids = [p.product_id for p in products]
@@ -330,6 +329,12 @@ def process(input: CropperInput) -> None:
             transform, shape, _ = _compute_transform_shape(
                 crs, dst_geom.resolution, bbox, dst_geom.align
             )
+
+            # recompute the effective bbox needed to crop the product
+            # (different to input.bbox due to the resolution/alignment params,
+            # and due to the CRS)
+            bbox = rasterio.transform.array_bounds(*shape, transform)
+            bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
         elif isinstance(dst_geom, ShapeTransformDestinationGeometry):
             transform = dst_geom.transform
             shape = dst_geom.shape
