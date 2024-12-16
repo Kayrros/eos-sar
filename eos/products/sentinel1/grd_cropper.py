@@ -136,7 +136,7 @@ class FilesystemResultDestination:
 @dataclass
 class MemoryResultDestination:
     """
-    Note: this is a mutable object, to be instanciated by users with 'make_empty'.
+    Note: this is a mutable object, to be instantiated by users with 'make_empty'.
     It can be read after going through the `process` function.
     """
 
