@@ -195,13 +195,29 @@ def get_phoenix_orbit_catalog_backend(
     )
 
 
-def geom_to_roi(geometry, proj_model: SensorModel, dem: eos.dem.DEM) -> Roi:
+def _geom_to_roi(
+    geometry: shapely.Polygon,
+    proj_model: SensorModel,
+    dem: eos.dem.DEM,
+    alt_margin: int,
+    roi_margin: int,
+) -> Roi:
+    # here we need to assume that the dem is roughly corresponding to the desired geometry
+    # and we compute the min/max alt, so that the projections correspond to "worst cases".
+    min_alt = np.nanmin(dem.array) - alt_margin
+    max_alt = np.nanmax(dem.array) + alt_margin
+
     geom_coords = geometry.exterior.coords[:]
-    lons = [c[0] for c in geom_coords]
-    lats = [c[1] for c in geom_coords]
-    alts = np.nan_to_num(dem.elevation(lons, lats))
+    lons = [c[0] for c in geom_coords] * 2
+    lats = [c[1] for c in geom_coords] * 2
+    alts = [min_alt for _ in geom_coords] + [max_alt for _ in geom_coords]
+
     rows, cols, _ = proj_model.projection(lons, lats, alts)
     roi = Roi.from_bounds_tuple(Roi.points_to_bbox(rows, cols))
+
+    # add some small margins, might be needed due to resampling boundary conditions in Orthorectifier
+    roi = roi.add_margin(roi_margin)
+
     return roi
 
 
@@ -329,31 +345,25 @@ def process(input: CropperInput) -> None:
             transform, shape, _ = _compute_transform_shape(
                 crs, dst_geom.resolution, bbox, dst_geom.align
             )
-
-            # recompute the effective bbox needed to crop the product
-            # (different to input.bbox due to the resolution/alignment params,
-            # and due to the CRS)
-            bbox = rasterio.transform.array_bounds(*shape, transform)
-            bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
         elif isinstance(dst_geom, ShapeTransformDestinationGeometry):
             transform = dst_geom.transform
             shape = dst_geom.shape
             crs = dst_geom.crs
-
-            # compute a bbox, used for fetching the DEM and identifying a ROI
-            bbox = rasterio.transform.array_bounds(*dst_geom.shape, dst_geom.transform)
-            bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
         else:
             assert_never(dst_geom)
 
-        geometry = shapely.geometry.box(*bbox)
+        # compute a bbox, used for fetching the DEM and identifying a ROI
+        # it is different than the BboxDestinationGeometry.bbox (which is contained by the new bbox)
+        bbox = rasterio.transform.array_bounds(*shape, transform)
+        bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
 
-        # download a dem, with a large buffer to ensure we can use localize_without_alt
-        # for example, 0.5 is half the tile size of GLO30, this make sure we have plenty of DEM available
-        dem = input.dem_source.fetch_dem(geometry.buffer(0.5).bounds)
+        geometry = shapely.geometry.box(*bbox)  # type: ignore
+
+        # download a dem, with a slightly larger buffer to ensure we can subset it in the Orthorectifier
+        dem = input.dem_source.fetch_dem(geometry.buffer(0.01).bounds)
 
         # estimate a Roi for the requested geometry
-        roi = geom_to_roi(geometry, proj_model, dem)
+        roi = _geom_to_roi(geometry, proj_model, dem, alt_margin=10, roi_margin=5)
 
         orthorectifier = Orthorectifier.from_transform(
             proj_model,
