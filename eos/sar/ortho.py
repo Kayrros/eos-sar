@@ -55,7 +55,7 @@ def _compute_transform_shape(crs, res, bbox, align=None):
     tuple of int
         Shape of the bbox
     tuple of float
-        Extent of the bbox
+        Extent of the bbox in the given CRS
     """
     left, bottom, right, top = rasterio.warp.transform_bounds("epsg:4326", crs, *bbox)
 
@@ -123,10 +123,10 @@ class Orthorectifier:
         The function will determine a relevant UTM zone if the CRS is not provided.
     - Orthorectifier.from_transform:
         Similar to from_roi, but it takes a CRS/transform/shape as input, which might not exactly correspond to the roi that is given.
-        In general, it is recommended to use this function when possible, as it avoids computing a 4326 bounding box based on the sensor model + roi (which is allows tricky).
+        In general, it is recommended to use this function when possible, as it avoids computing a 4326 bounding box based on the sensor model + roi (which is always ricky).
 
     In both cases, the (transform,shape) tuple is then used to subset the DEM: a bounding box that contains the (transform,shape) in 4326 is estimated and `DEM.subset` is used.
-    Each point of the DEM is projected to sensor geometry, which provides row/col points in the DEM CRS (likely 4326). This maps row/col are then reprojected to the desired CRS/transform/shape. The result is coordinate maps that allows to 'pull' the SAR signal to their ground coordinates.
+    Each point of the DEM is projected to sensor geometry, which provides row/col points in the DEM CRS (likely 4326). These maps row/col are then reprojected to the desired CRS/transform/shape. The result is coordinate maps that allows to 'pull' the SAR signal to their ground coordinates.
 
     The DEM used for orthorectification does not need to be larger than the 4326 bounding box that contains the destination geometry, but the roi has to be larger depending on the altitudes. This computation is not done in the Orthorectifier, the user has to take care of this aspect themself.
 
@@ -158,12 +158,11 @@ class Orthorectifier:
         if crs is None:
             crs = _utm_zone_of_bbox(bbox)
 
-        transform, shape, _ = _compute_transform_shape(crs, resolution, bbox, align)
+        transform, shape, bbox = _compute_transform_shape(crs, resolution, bbox, align)
 
-        # subset the dem to the desired shape/transform
-        bounds = rasterio.transform.array_bounds(*shape, transform)
-        bounds = rasterio.warp.transform_bounds(crs, dem.crs, *bounds)
-        dem = dem.subset(bounds)
+        # subset the dem to the bbox of the desired shape/transform
+        bbox = rasterio.warp.transform_bounds(crs, dem.crs, *bbox)
+        dem = dem.subset(bbox)
         deminfo = _DEMInfo.from_dem(dem)
 
         origin_col, origin_row = roi.get_origin()
