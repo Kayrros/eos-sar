@@ -119,7 +119,7 @@ class Orthorectifier:
     Two functions are available to create an Orthorectifier:
     - Orthorectifier.from_roi:
         Takes a sensor model, a Roi, a dem, a desired resolution, and optionally a CRS and an alignment.
-        This function estimates an adequate (transform, shape) tuple according to the desired resolution, CRS, and bounding box (derived from the sensor model + the roi (SensorModel.get_approx_geom)).
+        This function estimates an adequate (transform, shape) tuple according to the desired resolution, CRS, and bounding box (derived from the sensor model + the roi (SensorModel.get_buffered_geom)).
         The function will determine a relevant UTM zone if the CRS is not provided.
     - Orthorectifier.from_transform:
         Similar to from_roi, but it takes a CRS/transform/shape as input, which might not exactly correspond to the roi that is given.
@@ -151,7 +151,7 @@ class Orthorectifier:
         crs: Optional[rasterio.CRS] = None,
         align: Optional[float] = None,
     ) -> Orthorectifier:
-        coords, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
+        coords = proj_model.get_buffered_geom(roi=roi, dem=dem)
         geometry = shapely.geometry.Polygon(coords)
         bbox = geometry.bounds
 
