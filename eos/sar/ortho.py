@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence, TypeVar
+from typing import Optional, Sequence, TypeVar
 
 import cv2
 import numpy as np
 import rasterio
+import rasterio.transform
 import rasterio.warp
 import shapely.geometry
 from numpy.typing import NDArray
 
 import eos.dem
-from eos.sar import model, regist
+import eos.sar
+from eos.sar import model
+from eos.sar.roi import Roi
 
 T = TypeVar("T", np.float32, np.complex64)
 
@@ -52,7 +55,7 @@ def _compute_transform_shape(crs, res, bbox, align=None):
     tuple of int
         Shape of the bbox
     tuple of float
-        Extent of the bbox
+        Extent of the bbox in the given CRS
     """
     left, bottom, right, top = rasterio.warp.transform_bounds("epsg:4326", crs, *bbox)
 
@@ -83,6 +86,9 @@ def _utm_zone_of_bbox(bbox):
 
 
 class _DEMInfo:
+    """The goal of this class is to precompute (and share this precomputation) the raster_xy_grid.
+    This is not a huge speed-up compared to the projection for example."""
+
     x: np.ndarray
     y: np.ndarray
     alt: np.ndarray
@@ -91,39 +97,75 @@ class _DEMInfo:
     shape: tuple
 
     @staticmethod
-    def from_proj_model(proj_model, roi, dem: eos.dem.DEM):
-        refined_geom, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
-        x, y, alt, transform, crs = regist.dem_points(refined_geom, dem=dem)
+    def from_dem(dem: eos.dem.DEM):
+        x, y = eos.sar.utils.raster_xy_grid(
+            dem.array.shape, dem.transform, px_is_area=True
+        )
 
         deminfo = _DEMInfo()
-        deminfo.shape = alt.shape
+        deminfo.shape = dem.array.shape
         deminfo.x = x.flatten()
         deminfo.y = y.flatten()
-        deminfo.alt = alt.flatten()
-        deminfo.transform = transform
-        deminfo.crs = crs
+        deminfo.alt = dem.array.flatten()
+        deminfo.transform = dem.transform
+        deminfo.crs = dem.crs
         return deminfo
 
 
 class Orthorectifier:
-    shape: tuple
+    """
+    Allows to orthorectify a SAR raster onto a CRS.
+
+    Two functions are available to create an Orthorectifier:
+    - Orthorectifier.from_roi:
+        Takes a sensor model, a Roi, a dem, a desired resolution, and optionally a CRS and an alignment.
+        This function estimates an adequate (transform, shape) tuple according to the desired resolution, CRS, and bounding box (derived from the sensor model + the roi (SensorModel.get_buffered_geom)).
+        The function will determine a relevant UTM zone if the CRS is not provided.
+    - Orthorectifier.from_transform:
+        Similar to from_roi, but it takes a CRS/transform/shape as input, which might not exactly correspond to the roi that is given.
+        In general, it is recommended to use this function when possible, as it avoids computing a 4326 bounding box based on the sensor model + roi (which is always ricky).
+
+    In both cases, the (transform,shape) tuple is then used to subset the DEM: a bounding box that contains the (transform,shape) in 4326 is estimated and `DEM.subset` is used.
+    Each point of the DEM is projected to sensor geometry, which provides row/col points in the DEM CRS (likely 4326). These maps row/col are then reprojected to the desired CRS/transform/shape. The result is coordinate maps that allows to 'pull' the SAR signal to their ground coordinates.
+
+    The DEM used for orthorectification does not need to be larger than the 4326 bounding box that contains the destination geometry, but the roi has to be larger depending on the altitudes. This computation is not done in the Orthorectifier, the user has to take care of this aspect themself.
+
+    The methods `apply` and `apply_stack` allow to orthorectify a raster (complex64 or float32).
+    This step is simply the warping of the input raster according to the coordinate maps that were precomputed.
+    The resulting array has a geometry defined by the orthorectifier `shape`, `transform` and `crs` fields.
+
+    An Orthorecifier can be reused for multiple orthorectification, as long as the projection model (SensorModel) and Roi is the same.
+    This is typically true for different polarizations of a single product, or when the products in a timeseries are all registered to a common geometry (for example in an interferometric stack).
+    """
+
+    shape: tuple[int, int]
     transform: rasterio.Affine
     crs: rasterio.CRS
 
     @staticmethod
     def from_roi(
-        proj_model, roi, resolution, dem: eos.dem.DEM, crs=None, align=None
+        proj_model: model.SensorModel,
+        roi: Roi,
+        resolution: float,
+        dem: eos.dem.DEM,
+        crs: Optional[rasterio.CRS] = None,
+        align: Optional[float] = None,
     ) -> Orthorectifier:
-        coords, _, _ = proj_model.get_approx_geom(roi=roi, dem=dem)
+        coords = proj_model.get_buffered_geom(roi=roi, dem=dem)
         geometry = shapely.geometry.Polygon(coords)
         bbox = geometry.bounds
 
         if crs is None:
             crs = _utm_zone_of_bbox(bbox)
 
-        transform, shape, _ = _compute_transform_shape(crs, resolution, bbox, align)
+        transform, shape, bbox = _compute_transform_shape(crs, resolution, bbox, align)
+
+        # subset the dem to the bbox of the desired shape/transform
+        bbox = rasterio.warp.transform_bounds(crs, dem.crs, *bbox)
+        dem = dem.subset(bbox)
+        deminfo = _DEMInfo.from_dem(dem)
+
         origin_col, origin_row = roi.get_origin()
-        deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
         ortho = Orthorectifier(
             proj_model, deminfo, origin_col, origin_row, crs, transform, shape
         )
@@ -131,13 +173,13 @@ class Orthorectifier:
 
     @staticmethod
     def from_transform(
-        proj_model,
-        roi,
-        crs,
-        transform,
-        shape,
+        proj_model: model.SensorModel,
+        roi: Roi,
+        crs: rasterio.CRS,
+        transform: rasterio.Affine,
+        shape: tuple[int, int],
         dem: eos.dem.DEM,
-        previous_orthorectifier=None,
+        previous_orthorectifier: Optional[Orthorectifier] = None,
     ) -> Orthorectifier:
         if previous_orthorectifier:
             assert previous_orthorectifier.crs == crs
@@ -145,7 +187,11 @@ class Orthorectifier:
             assert previous_orthorectifier.shape == shape
             deminfo = previous_orthorectifier._deminfo
         else:
-            deminfo = _DEMInfo.from_proj_model(proj_model, roi, dem=dem)
+            # subset the dem to the desired shape/transform
+            bounds = rasterio.transform.array_bounds(*shape, transform)
+            bounds = rasterio.warp.transform_bounds(crs, dem.crs, *bounds)
+            dem = dem.subset(bounds)
+            deminfo = _DEMInfo.from_dem(dem)
 
         origin_col, origin_row = roi.get_origin()
         ortho = Orthorectifier(

@@ -61,6 +61,9 @@ def test_grd_cropper(phx_client, tmp_path):
     assert os.path.exists(f"{tmp_path}/vv.tif")
     assert os.path.exists(f"{tmp_path}/vh.tif")
 
+    r = rasterio.open(f"{tmp_path}/vv.tif").read(1)
+    assert np.isnan(r).sum() == 0
+
 
 def test_grd_cropper_2(phx_client, tmp_path):
     pid = "S1A_IW_GRDH_1SDV_20221205T015438_20221205T015503_046190_0587C2_F48B"
@@ -99,6 +102,9 @@ def test_grd_cropper_2(phx_client, tmp_path):
     process(input)
     assert os.path.exists(f"{tmp_path}/vv.tif")
     assert os.path.exists(f"{tmp_path}/vh.tif")
+
+    r = rasterio.open(f"{tmp_path}/vv.tif").read(1)
+    assert np.isnan(r).sum() == 0
 
 
 # this is also a test for the _COG GRD products on CDSE
@@ -160,9 +166,9 @@ def test_grd_cropper_assembly(tmp_path, cdse_auth, cdse_s3_session):
 
     process(input)
 
-    # make sure we don't get a lot of nans, thanks to the assembly
+    # make sure we don't get nans, thanks to the assembly
     r = rasterio.open(f"{tmp_path}/vv.tif").read(1)
-    assert np.isnan(r).mean() < 0.001
+    assert np.isnan(r).sum() == 0
 
 
 def test_grd_cropper_multiple_datatakes(phx_client):

@@ -136,7 +136,7 @@ class FilesystemResultDestination:
 @dataclass
 class MemoryResultDestination:
     """
-    Note: this is a mutable object, to be instanciated by users with 'make_empty'.
+    Note: this is a mutable object, to be instantiated by users with 'make_empty'.
     It can be read after going through the `process` function.
     """
 
@@ -195,13 +195,29 @@ def get_phoenix_orbit_catalog_backend(
     )
 
 
-def geom_to_roi(geometry, proj_model: SensorModel, dem: eos.dem.DEM) -> Roi:
+def _geom_to_roi(
+    geometry: shapely.Polygon,
+    proj_model: SensorModel,
+    dem: eos.dem.DEM,
+    alt_margin: int,
+    roi_margin: int,
+) -> Roi:
+    # here we need to assume that the dem is roughly corresponding to the desired geometry
+    # and we compute the min/max alt, so that the projections correspond to "worst cases".
+    min_alt = np.nanmin(dem.array) - alt_margin
+    max_alt = np.nanmax(dem.array) + alt_margin
+
     geom_coords = geometry.exterior.coords[:]
-    lons = [c[0] for c in geom_coords]
-    lats = [c[1] for c in geom_coords]
-    alts = np.nan_to_num(dem.elevation(lons, lats))
+    lons = [c[0] for c in geom_coords] * 2
+    lats = [c[1] for c in geom_coords] * 2
+    alts = [min_alt for _ in geom_coords] + [max_alt for _ in geom_coords]
+
     rows, cols, _ = proj_model.projection(lons, lats, alts)
     roi = Roi.from_bounds_tuple(Roi.points_to_bbox(rows, cols))
+
+    # add some small margins, might be needed due to resampling boundary conditions in Orthorectifier
+    roi = roi.add_margin(roi_margin)
+
     return roi
 
 
@@ -231,13 +247,11 @@ def _compute_transform_shape(crs, res, bbox, align=None):
         Transform of the bbox
     tuple of int
         Shape of the bbox
-    tuple of float
-        Extent of the bbox
     """
     left, bottom, right, top = rasterio.warp.transform_bounds("epsg:4326", crs, *bbox)
 
     if align and (align % res > 0):
-        raise Exception("AlignmentError")
+        raise Exception(f"invalid alignment: {align} is not divisible by {res}")
 
     if align is None:
         align = res
@@ -250,9 +264,8 @@ def _compute_transform_shape(crs, res, bbox, align=None):
 
     transform = rasterio.Affine(res, 0, left, 0, -res, top)
     shape = int((top - bottom) / res), int((right - left) / res)
-    extent = left, bottom, right, top
 
-    return transform, shape, extent
+    return transform, shape
 
 
 def _datatake_of(pid: str) -> str:
@@ -277,7 +290,6 @@ def _prepare_reader(
     return reader
 
 
-# TODO: check potential failure cases (invalid AOI vs. product footprint, I/O error, ...)
 def process(input: CropperInput) -> None:
     products = [p.into_product_info() for p in input.products]
     product_ids = [p.product_id for p in products]
@@ -327,28 +339,28 @@ def process(input: CropperInput) -> None:
             if crs is None:
                 crs = _utm_zone_of_bbox(bbox)
 
-            transform, shape, _ = _compute_transform_shape(
+            transform, shape = _compute_transform_shape(
                 crs, dst_geom.resolution, bbox, dst_geom.align
             )
         elif isinstance(dst_geom, ShapeTransformDestinationGeometry):
             transform = dst_geom.transform
             shape = dst_geom.shape
             crs = dst_geom.crs
-
-            # compute a bbox, used for fetching the DEM and identifying a ROI
-            bbox = rasterio.transform.array_bounds(*dst_geom.shape, dst_geom.transform)
-            bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
         else:
             assert_never(dst_geom)
 
-        geometry = shapely.geometry.box(*bbox)
+        # compute a bbox, used for fetching the DEM and identifying a ROI
+        # it is different than the BboxDestinationGeometry.bbox (which is contained by the new bbox)
+        bbox = rasterio.transform.array_bounds(*shape, transform)
+        bbox = rasterio.warp.transform_bounds(crs, "epsg:4326", *bbox)
 
-        # download a dem, with a large buffer to ensure we can use localize_without_alt
-        # for example, 0.5 is half the tile size of GLO30, this make sure we have plenty of DEM available
-        dem = input.dem_source.fetch_dem(geometry.buffer(0.5).bounds)
+        geometry = shapely.geometry.box(*bbox)  # type: ignore
+
+        # download a dem, with a slightly larger buffer to ensure we can subset it in the Orthorectifier
+        dem = input.dem_source.fetch_dem(geometry.buffer(0.01).bounds)
 
         # estimate a Roi for the requested geometry
-        roi = geom_to_roi(geometry, proj_model, dem)
+        roi = _geom_to_roi(geometry, proj_model, dem, alt_margin=10, roi_margin=5)
 
         orthorectifier = Orthorectifier.from_transform(
             proj_model,
