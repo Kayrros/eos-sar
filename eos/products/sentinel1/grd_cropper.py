@@ -247,8 +247,6 @@ def _compute_transform_shape(crs, res, bbox, align=None):
         Transform of the bbox
     tuple of int
         Shape of the bbox
-    tuple of float
-        Extent of the bbox
     """
     left, bottom, right, top = rasterio.warp.transform_bounds("epsg:4326", crs, *bbox)
 
@@ -266,9 +264,8 @@ def _compute_transform_shape(crs, res, bbox, align=None):
 
     transform = rasterio.Affine(res, 0, left, 0, -res, top)
     shape = int((top - bottom) / res), int((right - left) / res)
-    extent = left, bottom, right, top
 
-    return transform, shape, extent
+    return transform, shape
 
 
 def _datatake_of(pid: str) -> str:
@@ -342,7 +339,7 @@ def process(input: CropperInput) -> None:
             if crs is None:
                 crs = _utm_zone_of_bbox(bbox)
 
-            transform, shape, _ = _compute_transform_shape(
+            transform, shape = _compute_transform_shape(
                 crs, dst_geom.resolution, bbox, dst_geom.align
             )
         elif isinstance(dst_geom, ShapeTransformDestinationGeometry):
