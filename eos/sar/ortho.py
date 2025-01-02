@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, TypeVar
+from typing import Optional, TypeVar
 
 import cv2
 import numpy as np
@@ -130,7 +130,7 @@ class Orthorectifier:
 
     The DEM used for orthorectification does not need to be larger than the 4326 bounding box that contains the destination geometry, but the roi has to be larger depending on the altitudes. This computation is not done in the Orthorectifier, the user has to take care of this aspect themself.
 
-    The methods `apply` and `apply_stack` allow to orthorectify a raster (complex64 or float32).
+    The method `apply` allows to orthorectify a raster (complex64 or float32).
     This step is simply the warping of the input raster according to the coordinate maps that were precomputed.
     The resulting array has a geometry defined by the orthorectifier `shape`, `transform` and `crs` fields.
 
@@ -264,13 +264,3 @@ class Orthorectifier:
                 borderValue=(np.nan,),
             )
         return out
-
-    def apply_stack(
-        self, rasters: Sequence[NDArray[T]], interpolation: Interpolation
-    ) -> NDArray[T]:
-        n = len(rasters)
-        assert n > 0
-        result = np.empty((n, *rasters[0].shape), dtype=rasters[0].dtype)
-        for i in range(n):
-            result[i] = self.apply(rasters[i], interpolation)
-        return result
