@@ -208,7 +208,7 @@ class PeriodogramCL:
         # Ensure we have contiguous allocation and the correct dtype
         constants = np.ascontiguousarray(constants, dtype=self.dtype)
         variables = np.ascontiguousarray(variables, dtype=self.dtype)
-        weights = np.ascontiguousarray(weights, dtype=self.dtype)
+        weights: RealArray = np.ascontiguousarray(weights, dtype=self.dtype)
         weights /= np.sum(weights)
 
         # Allocate the OpenCL buffers
@@ -274,7 +274,7 @@ class PeriodogramCL:
         )
 
         # Wait the results and download them
-        results = np.empty([num_ps * 2], dtype=self.dtype, order="C")
+        results: RealArray = np.empty([num_ps * 2], dtype=self.dtype, order="C")
         profile(
             self.events,
             cl.enqueue_copy(self.queue, results, results_cl),

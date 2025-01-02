@@ -394,7 +394,7 @@ def multilook(
     compute_coherence=False,
     undersample=False,
 ):
-    assert type(filter_size) == tuple, "filter size must be tuple"
+    assert isinstance(filter_size, tuple), "filter size must be tuple"
     nanmask = np.isnan(interf)
     mlooked = np.copy(interf)
     mlooked[nanmask] = 0

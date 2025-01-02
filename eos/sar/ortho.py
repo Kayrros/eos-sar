@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, TypeVar
+from typing import Optional, TypeVar
 
 import cv2
 import numpy as np
@@ -112,6 +112,58 @@ class _DEMInfo:
         return deminfo
 
 
+def _make_orthorectifier(
+    proj_model: model.SensorModel,
+    deminfo: _DEMInfo,
+    origin_col: int,
+    origin_row: int,
+    dst_crs: rasterio.CRS,
+    dst_transform: rasterio.Affine,
+    dst_shape: tuple[int, int],
+) -> Orthorectifier:
+    rows, cols, _ = proj_model.projection(deminfo.x, deminfo.y, deminfo.alt)
+    rows = rows.reshape(deminfo.shape)
+    cols = cols.reshape(deminfo.shape)
+    rows -= origin_row
+    cols -= origin_col
+
+    coordinate_map = np.full((2, *dst_shape), np.nan, dtype=np.float32)
+
+    rasterio.warp.reproject(
+        cols,
+        coordinate_map[0],
+        dtype=np.float32,
+        src_crs=deminfo.crs,
+        src_transform=deminfo.transform,
+        src_nodata=np.nan,
+        dst_crs=dst_crs,
+        dst_transform=dst_transform,
+        dst_nodata=np.nan,
+        resampling=rasterio.warp.Resampling.bilinear,
+    )
+    rasterio.warp.reproject(
+        rows,
+        coordinate_map[1],
+        dtype=np.float32,
+        src_crs=deminfo.crs,
+        src_transform=deminfo.transform,
+        src_nodata=np.nan,
+        dst_crs=dst_crs,
+        dst_transform=dst_transform,
+        dst_nodata=np.nan,
+        resampling=rasterio.warp.Resampling.bilinear,
+    )
+
+    return Orthorectifier(
+        _deminfo=deminfo,
+        shape=dst_shape,
+        crs=dst_crs,
+        transform=dst_transform,
+        coordinate_map=coordinate_map,
+    )
+
+
+@dataclass(frozen=True)
 class Orthorectifier:
     """
     Allows to orthorectify a SAR raster onto a CRS.
@@ -130,7 +182,7 @@ class Orthorectifier:
 
     The DEM used for orthorectification does not need to be larger than the 4326 bounding box that contains the destination geometry, but the roi has to be larger depending on the altitudes. This computation is not done in the Orthorectifier, the user has to take care of this aspect themself.
 
-    The methods `apply` and `apply_stack` allow to orthorectify a raster (complex64 or float32).
+    The method `apply` allows to orthorectify a raster (complex64 or float32).
     This step is simply the warping of the input raster according to the coordinate maps that were precomputed.
     The resulting array has a geometry defined by the orthorectifier `shape`, `transform` and `crs` fields.
 
@@ -141,6 +193,10 @@ class Orthorectifier:
     shape: tuple[int, int]
     transform: rasterio.Affine
     crs: rasterio.CRS
+    coordinate_map: NDArray[np.float32]
+    """ shape is (2, self.shape[0], self.shape[1]). coordinate_map[0] is for X, coordinate_map[1] is for Y """
+
+    _deminfo: Optional[_DEMInfo] = None
 
     @staticmethod
     def from_roi(
@@ -166,7 +222,7 @@ class Orthorectifier:
         deminfo = _DEMInfo.from_dem(dem)
 
         origin_col, origin_row = roi.get_origin()
-        ortho = Orthorectifier(
+        ortho = _make_orthorectifier(
             proj_model, deminfo, origin_col, origin_row, crs, transform, shape
         )
         return ortho
@@ -181,7 +237,7 @@ class Orthorectifier:
         dem: eos.dem.DEM,
         previous_orthorectifier: Optional[Orthorectifier] = None,
     ) -> Orthorectifier:
-        if previous_orthorectifier:
+        if previous_orthorectifier and previous_orthorectifier._deminfo:
             assert previous_orthorectifier.crs == crs
             assert previous_orthorectifier.transform == transform
             assert previous_orthorectifier.shape == shape
@@ -194,59 +250,10 @@ class Orthorectifier:
             deminfo = _DEMInfo.from_dem(dem)
 
         origin_col, origin_row = roi.get_origin()
-        ortho = Orthorectifier(
+        ortho = _make_orthorectifier(
             proj_model, deminfo, origin_col, origin_row, crs, transform, shape
         )
         return ortho
-
-    def __init__(
-        self,
-        proj_model: model.SensorModel,
-        deminfo: _DEMInfo,
-        origin_col,
-        origin_row,
-        dst_crs,
-        dst_transform,
-        dst_shape,
-    ):
-        rows, cols, _ = proj_model.projection(deminfo.x, deminfo.y, deminfo.alt)
-        rows = rows.reshape(deminfo.shape)
-        cols = cols.reshape(deminfo.shape)
-        rows -= origin_row
-        cols -= origin_col
-
-        self._map_x = np.full(dst_shape, np.nan, dtype=np.float32)
-        self._map_y = np.full(dst_shape, np.nan, dtype=np.float32)
-
-        rasterio.warp.reproject(
-            cols,
-            self._map_x,
-            dtype=np.float32,
-            src_crs=deminfo.crs,
-            src_transform=deminfo.transform,
-            src_nodata=np.nan,
-            dst_crs=dst_crs,
-            dst_transform=dst_transform,
-            dst_nodata=np.nan,
-            resampling=rasterio.warp.Resampling.bilinear,
-        )
-        rasterio.warp.reproject(
-            rows,
-            self._map_y,
-            dtype=np.float32,
-            src_crs=deminfo.crs,
-            src_transform=deminfo.transform,
-            src_nodata=np.nan,
-            dst_crs=dst_crs,
-            dst_transform=dst_transform,
-            dst_nodata=np.nan,
-            resampling=rasterio.warp.Resampling.bilinear,
-        )
-
-        self._deminfo = deminfo
-        self.shape = dst_shape
-        self.crs = dst_crs
-        self.transform = dst_transform
 
     def apply(self, raster: NDArray[T], interpolation: Interpolation) -> NDArray[T]:
         if raster.dtype == np.complex64:
@@ -257,20 +264,10 @@ class Orthorectifier:
             assert raster.dtype == np.float32
             out = cv2.remap(
                 raster,
-                self._map_x,
-                self._map_y,
+                self.coordinate_map[0],
+                self.coordinate_map[1],
                 interpolation=interpolation.cv2_flag,
                 borderMode=cv2.BORDER_CONSTANT,
                 borderValue=(np.nan,),
             )
         return out
-
-    def apply_stack(
-        self, rasters: Sequence[NDArray[T]], interpolation: Interpolation
-    ) -> NDArray[T]:
-        n = len(rasters)
-        assert n > 0
-        result = np.empty((n, *rasters[0].shape), dtype=rasters[0].dtype)
-        for i in range(n):
-            result[i] = self.apply(rasters[i], interpolation)
-        return result
