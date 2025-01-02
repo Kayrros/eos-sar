@@ -157,19 +157,19 @@ class OvlDirectoryBuilder(DirectoryBuilder):
     def get_geo_dem_path(self):
         return os.path.join(self.dem_dir, "geo_dem.tif")
 
-    def get_radar_dem_path(self, bsint):
+    def get_radar_dem_path(self, bsint):  # type: ignore[override]
         out_dir = os.path.join(self.dem_dir, "radar_dem")
         if self.makedirs:
             os.makedirs(out_dir, exist_ok=True)
         return os.path.join(out_dir, str(bsint) + ".tif")
 
-    def get_img_path(self, osid, date):
+    def get_img_path(self, osid, date):  # type: ignore[override]
         return self.ovl_array_formatter(self.imgs_dir, osid, date, ".tif")
 
-    def get_flat_path(self, bsint, date):
+    def get_flat_path(self, bsint, date):  # type: ignore[override]
         return self.ovl_simulation_formatter(self.flat_dir, bsint, date, ".tif")
 
-    def get_topo_path(self, bsint, date):
+    def get_topo_path(self, bsint, date):  # type: ignore[override]
         return self.ovl_simulation_formatter(self.topo_dir, bsint, date, ".tif")
 
     def get_proc_path(self):
@@ -267,19 +267,19 @@ class DirectoryReader:
 
 
 class OvlDirectoryReader(DirectoryReader):
-    def read_imgs(self, osid, dates, roi=None, get_complex=True):
+    def read_imgs(self, osid, dates, roi=None, get_complex=True):  # type: ignore[override]
         return [
             self._read(self.dir_builder.get_img_path(osid, date), get_complex, roi)
             for date in dates
         ]
 
-    def read_flat_phase(self, bsint, dates, roi=None):
+    def read_flat_phase(self, bsint, dates, roi=None):  # type: ignore[override]
         def path_provider(date):
             return self.dir_builder.get_flat_path(bsint, date)
 
         return self._read_simulation(dates, path_provider, roi)
 
-    def read_topo_phase(self, bsint, dates, roi=None):
+    def read_topo_phase(self, bsint, dates, roi=None):  # type: ignore[override]
         def path_provider(date):
             return self.dir_builder.get_topo_path(bsint, date)
 
