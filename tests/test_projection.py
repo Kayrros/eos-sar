@@ -396,30 +396,3 @@ def test_projection_corner_reflectors(phx_client):
     assert (
         rows_pred - rows_meas
     ).std() < 0.03, "Row standard deviation higher than expected"
-
-
-def test_deprecated_dict():
-    xml_path = "./tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
-    with open(xml_path) as f:
-        xml_content = f.read()
-    burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
-
-    ref = FullBistaticReference.from_burst_metadata(burst_meta)
-    ref_as_dict = ref.to_dict()
-
-    orbit = Orbit(burst_meta.state_vectors)
-    sentinel1.coordinate_correction.s1_corrections_from_meta(
-        burst_meta,
-        orbit=orbit,
-        doppler=sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit),
-        bistatic=True,
-        full_bistatic_reference=ref,
-    )
-    with pytest.warns(DeprecationWarning):
-        sentinel1.coordinate_correction.s1_corrections_from_meta(
-            burst_meta,
-            orbit=orbit,
-            doppler=sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit),
-            bistatic=True,
-            full_bistatic_reference=ref_as_dict,  # type: ignore
-        )

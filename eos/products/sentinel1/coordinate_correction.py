@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -134,15 +133,6 @@ class FullBistaticReference:
     """Number of columns per burst in the sentinel1 raster of IW2."""
     range_frequency: float
     """Two way range time sampling frequency of IW2."""
-
-    def __getitem__(self, name: str) -> Any:
-        import warnings
-
-        warnings.warn(
-            "Indexing a FullBistaticReference is deprecated (they no longer are dict).",
-            DeprecationWarning,
-        )
-        return self.__dict__[name]
 
     @staticmethod
     def from_burst_metadata(burst: Sentinel1BurstMetadata) -> FullBistaticReference:
@@ -380,14 +370,6 @@ def s1_corrections_from_meta(
     if bistatic:
         bistatic_corr: ImageCorrection
         if full_bistatic_reference is not None:
-            if isinstance(full_bistatic_reference, dict):
-                warnings.warn(
-                    "Using dict for `full_bistatic_reference` is deprecated. Use a full_bistatic_reference object.",
-                    DeprecationWarning,
-                )
-                full_bistatic_reference = FullBistaticReference.from_dict(
-                    full_bistatic_reference
-                )
             bistatic_corr = FullBistatic(
                 full_bistatic_reference, burst_meta.pri, burst_meta.rank
             )
