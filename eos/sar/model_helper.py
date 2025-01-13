@@ -120,7 +120,13 @@ class GenericSensorModelHelper:
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(
+                gx=np.atleast_1d(gx),
+                gy=np.atleast_1d(gy),
+                gz=np.atleast_1d(gz),
+                azt=np.atleast_1d(azt),
+                rng=np.atleast_1d(rng),
+            )
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
@@ -196,7 +202,13 @@ class GenericSensorModelHelper:
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(
+                gx=np.atleast_1d(gx),
+                gy=np.atleast_1d(gy),
+                gz=np.atleast_1d(gz),
+                azt=np.atleast_1d(azt),
+                rng=np.atleast_1d(rng),
+            )
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)

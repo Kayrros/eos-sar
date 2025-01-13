@@ -181,11 +181,11 @@ class Registrator:
             burst_mask = self.pts_in_burst_mask[bsid]
             # create geo_im_pt
             geo_im_pt = eos.sar.projection_correction.GeoImagePoints(
-                self.gx[burst_mask],
-                self.gy[burst_mask],
-                self.gz[burst_mask],
-                self.azt_primary_no_correc[bsid],
-                self.rng_primary_no_correc[bsid],
+                gx=self.gx[burst_mask],
+                gy=self.gy[burst_mask],
+                gz=self.gz[burst_mask],
+                azt=self.azt_primary_no_correc[bsid],
+                rng=self.rng_primary_no_correc[bsid],
             )
 
             # estimate and apply corrections

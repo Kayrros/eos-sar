@@ -2,13 +2,11 @@ import os
 
 import numpy as np
 import pyproj
-import pytest
 
 import eos.dem
 import eos.sar
 from eos.products import sentinel1
 from eos.products.sentinel1 import orbit_catalog
-from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.orbit_catalog import (
     BestEffort,
     Sentinel1OrbitCatalogQuery,

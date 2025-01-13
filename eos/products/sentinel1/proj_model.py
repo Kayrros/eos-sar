@@ -218,7 +218,13 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(
+                gx=np.atleast_1d(gx),
+                gy=np.atleast_1d(gy),
+                gz=np.atleast_1d(gz),
+                azt=np.atleast_1d(azt),
+                rng=np.atleast_1d(rng),
+            )
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
@@ -294,7 +300,13 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(
+                gx=np.atleast_1d(gx),
+                gy=np.atleast_1d(gy),
+                gz=np.atleast_1d(gz),
+                azt=np.atleast_1d(azt),
+                rng=np.atleast_1d(rng),
+            )
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)
@@ -1131,11 +1143,11 @@ def secondary_project_and_correct(
 
         # create geo_im_pt
         geo_im_pt = GeoImagePoints(
-            gx[burst_mask],
-            gy[burst_mask],
-            gz[burst_mask],
-            azt_no_correc[bsid],
-            rng_no_correc[bsid],
+            gx=gx[burst_mask],
+            gy=gy[burst_mask],
+            gz=gz[burst_mask],
+            azt=azt_no_correc[bsid],
+            rng=rng_no_correc[bsid],
         )
 
         # estimate and apply corrections
