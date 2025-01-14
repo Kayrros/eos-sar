@@ -298,8 +298,6 @@ def test_debursting(dem, inputs):
     azt_primary_flat, rng_primary_flat, _ = primary_swath_model.projection(
         x, y, alt, crs=crs, as_azt_rng=True
     )
-    assert isinstance(azt_primary_flat, np.ndarray)
-    assert isinstance(rng_primary_flat, np.ndarray)
 
     pts_in_burst_mask = {}
     azt_primary = {}

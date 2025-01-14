@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from eos.sar import range_doppler, utils
 from eos.sar.coordinates import TwoDCoordinate
+from eos.sar.model import CoordArrayLike
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 from eos.sar.roi import Roi as Roi
@@ -76,14 +77,14 @@ class GenericSensorModelHelper:
 
     def projection(
         self,
-        x: ArrayLike,
-        y: ArrayLike,
-        alt: ArrayLike,
+        x: CoordArrayLike,
+        y: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
         """See SensorModel.projection"""
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
@@ -142,19 +143,23 @@ class GenericSensorModelHelper:
         # convert to row and col
         row, col = self.coordinate.to_row_col(azt, rng)
 
-        return row, col, i
+        return (
+            row,
+            col,
+            i,  # type: ignore
+        )
 
     def localization(
         self,
-        row: ArrayLike,
-        col: ArrayLike,
-        alt: ArrayLike,
+        row: CoordArrayLike,
+        col: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
         """See SensorModel.localization"""
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)

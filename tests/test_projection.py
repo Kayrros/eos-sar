@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import pyproj
+from numpy.typing import NDArray
 
 import eos.dem
 import eos.sar
@@ -226,7 +227,7 @@ def test_projection_corner_reflectors(phx_client):
     # just do plt.scatter(lons, lats)
     cr_ids = [0, 1, 2, 7, 8, 10, 11, 14, 15, 18, 19, 24, 29, 30, 31, 32]
     # coordinates of corner reflectors
-    coords = np.loadtxt(
+    coords: NDArray[np.float64] = np.loadtxt(
         "./tests/data/QLD_corner_reflector_positions_GDA2020.txt",
         skiprows=1,
         usecols=range(1, 7),
@@ -273,8 +274,6 @@ def test_projection_corner_reflectors(phx_client):
     mosaic_model = asm.get_mosaic_model()
 
     rows, cols, _ = mosaic_model.projection(gx, gy, gz, crs="epsg:4978")
-    assert isinstance(rows, np.ndarray)
-    assert isinstance(cols, np.ndarray)
 
     roi_all = eos.sar.roi.Roi.from_bounds_tuple(
         eos.sar.roi.Roi.points_to_bbox(rows, cols)

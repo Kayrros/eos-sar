@@ -135,7 +135,7 @@ def get_registration_dem_pts(
     *,
     dem: eos.dem.DEM,
     outfile=None,
-):
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], str]:
     """
     Get pts sampled on the dem to be used for the registration.
 

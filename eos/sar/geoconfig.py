@@ -184,7 +184,7 @@ def get_geom_config(
 
     # geometric config parameters estim start
     # localize points on ellipsoid
-    alts = [0 for i in range(num_points)]
+    alts = np.asarray([0 for _ in range(num_points)])
     lons, lats, _ = primary_model.localization(rows, cols, alts)
 
     # convert to geocentric cartesian

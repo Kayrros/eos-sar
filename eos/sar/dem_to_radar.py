@@ -95,8 +95,6 @@ def get_radar_dem_interpolator(
 
     # projection of dem
     rows, cols, _ = model.projection(x, y, raster)
-    assert isinstance(rows, np.ndarray)
-    assert isinstance(cols, np.ndarray)
     row_mask = np.logical_and(
         rows >= row_interval[0] - margin, rows <= row_interval[1] + margin
     )

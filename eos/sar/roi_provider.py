@@ -37,12 +37,10 @@ def _geometry_to_roi(
     min_width: int = 1024,
     min_height: int = 512,
 ) -> tuple[Roi, Arrayf64, Arrayf64]:
-    lons = [c[0] for c in geom_coords]
-    lats = [c[1] for c in geom_coords]
+    lons = np.asarray([c[0] for c in geom_coords])
+    lats = np.asarray([c[1] for c in geom_coords])
     alts = np.nan_to_num(dem.elevation(lons, lats))
     rows, cols, _ = proj_model.projection(lons, lats, alts)
-    assert isinstance(rows, np.ndarray)
-    assert isinstance(cols, np.ndarray)
     roi = Roi.from_bounds_tuple(Roi.points_to_bbox(rows, cols))
     col, row, w, h = roi.to_roi()
     nh = max(h, min_height)
@@ -98,6 +96,7 @@ class CentroidRoiProvider(RoiProvider):
 
         lon, lat = self.point
         alt = dem.elevation(lon, lat)
+        assert isinstance(alt, float)
         row, col, _ = proj_model.projection(lon, lat, alt)
         orig = int(col - self.w / 2), int(row - self.h / 2)
         roi = Roi(*orig, self.w, self.h)

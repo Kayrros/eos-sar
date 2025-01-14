@@ -372,8 +372,6 @@ class Sentinel1AssemblyCropper:
         azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(
             x, y, alt, crs=crs, as_azt_rng=True
         )
-        assert isinstance(azt_primary_flat, np.ndarray)
-        assert isinstance(rng_primary_flat, np.ndarray)
 
         pts_in_burst_mask = {}
         azt_primary = {}
