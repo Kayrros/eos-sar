@@ -229,7 +229,10 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
 
-            azt, rng = geo_im_pt.get_azt_rng(squeeze=True)
+            azt, rng = geo_im_pt.get_azt_rng()
+            if azt.size == 1:
+                azt = azt[0]
+                rng = rng[0]
 
         if as_azt_rng:
             return azt, rng, i

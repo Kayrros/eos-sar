@@ -66,10 +66,18 @@ def test_projection():
     assert isinstance(
         ptlon, float
     ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptlat, float
+    ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptalt, float
+    ), "vectorized localization func failed on scalar input"
 
     # check ability to query one point
     ptrow, ptcol, pti = bmod.projection(lon[0], lat[0], alt[0])
     assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
+    assert isinstance(ptcol, float), "vectorized projection func failed on scalar input"
+    assert isinstance(pti, float), "vectorized projection func failed on scalar input"
 
     # check iterative_projection
     transform = pyproj.Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
@@ -78,6 +86,12 @@ def test_projection():
     assert isinstance(
         azt, np.ndarray
     ), "vectorized iterative projection func failed on array input"
+    assert isinstance(
+        rng, np.ndarray
+    ), "vectorized iterative projection func failed on array input"
+    assert isinstance(
+        i, np.ndarray
+    ), "vectorized iterative projection func failed on array input"
 
     gx, gy, gz = range_doppler.iterative_localization(
         bmod.orbit, azt, rng, np.zeros_like(alt), (gx + 10, gy + 2, gz + 3)
@@ -85,10 +99,22 @@ def test_projection():
     assert isinstance(
         gx, np.ndarray
     ), "vectorized iterative localization func failed on array input"
+    assert isinstance(
+        gy, np.ndarray
+    ), "vectorized iterative localization func failed on array input"
+    assert isinstance(
+        gz, np.ndarray
+    ), "vectorized iterative localization func failed on array input"
 
     azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
     assert isinstance(
         azt, float
+    ), "vectorized iterative projection func failed on scalar input"
+    assert isinstance(
+        rng, float
+    ), "vectorized iterative projection func failed on scalar input"
+    assert isinstance(
+        i, float
     ), "vectorized iterative projection func failed on scalar input"
 
     init_gxyz = (gx[0] + 10, gy[0] + 2, gz[0] + 3)
@@ -98,6 +124,12 @@ def test_projection():
     )
     assert isinstance(
         gx, float
+    ), "vectorized iterative localization func failed on scalar input"
+    assert isinstance(
+        gy, float
+    ), "vectorized iterative localization func failed on scalar input"
+    assert isinstance(
+        gz, float
     ), "vectorized iterative localization func failed on scalar input"
 
     # Test bias correction
@@ -166,10 +198,18 @@ def test_projection_grd():
     assert isinstance(
         ptlon, float
     ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptlat, float
+    ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptalt, float
+    ), "vectorized localization func failed on scalar input"
 
     # check ability to query one point
     ptrow, ptcol, pti = proj_model.projection(lon[0], lat[0], alt[0])
     assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
+    assert isinstance(ptcol, float), "vectorized projection func failed on scalar input"
+    assert isinstance(pti, float), "vectorized projection func failed on scalar input"
 
 
 def test_projection_corner_reflectors(phx_client):

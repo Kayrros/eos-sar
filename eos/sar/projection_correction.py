@@ -11,41 +11,24 @@ from typing_extensions import Self, override
 from eos.sar import const, geoconfig
 
 
-class Points:
-    """base class for a set of Points"""
+def _all_len_eq(vals):
+    """Check that all arrays in vals have the same length  \
+        and if the length is one, keep that in mind."""
+    lengths = [len(val) for val in vals if val is not None]
+    if len(lengths) > 1:
+        assert all(len_curr == lengths[0] for len_curr in lengths[1:])
 
-    singleton: bool
 
-    def _all_len_eq(self, vals):
-        """Check that all arrays in vals have the same length  \
-            and if the lenght is one, keep that in mind."""
-        lengths = [len(val) for val in vals if val is not None]
-        if len(lengths) > 1:
-            assert all(len_curr == lengths[0] for len_curr in lengths[1:])
-        # avoid getting errors due to frozen dataclass
-        object.__setattr__(self, "singleton", lengths[0] == 1)
-
-    def _get_vals(self, vals, squeeze):
-        """Get the arrays in vals, optionnaly squeezing if singleton."""
-        if squeeze and self.singleton:
-            return [val[0] for val in vals]
-        else:
-            return vals
-
-    def _get_val(self, val, squeeze):
-        """Get val, optionnaly squeezing if singleton."""
-        return self._get_vals([val], squeeze)[0]
-
-    def _add_val(self, val, d_val):
-        if d_val is None:
-            return val
-        else:
-            assert len(val) == len(d_val), "vals and diff vals have different lengths"
-            return val + d_val
+def _add_val(val, d_val):
+    if d_val is None:
+        return val
+    else:
+        assert len(val) == len(d_val), "vals and diff vals have different lengths"
+        return val + d_val
 
 
 @dataclass(frozen=True)
-class GeoPoints(Points):
+class GeoPoints:
     """Geo Point for correction estimation"""
 
     gx: NDArray[np.float32]
@@ -56,17 +39,13 @@ class GeoPoints(Points):
     """ Z geocentric coord. """
 
     def __post_init__(self):
-        self._all_len_eq([self.gx, self.gy, self.gz])
+        _all_len_eq([self.gx, self.gy, self.gz])
 
-    def get_geo(self, squeeze=False):
+    def get_geo(
+        self,
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]:
         """
         Get the geocentric coordinates.
-
-        Parameters
-        ----------
-        squeeze : Boolean, optional
-            If True, and if only one element in GeoPoints, return float instead of array.
-            The default is False.
 
         Returns
         -------
@@ -78,26 +57,21 @@ class GeoPoints(Points):
             Z geocentric coord.
 
         """
-        gx, gy, gz = self._get_vals([self.gx, self.gy, self.gz], squeeze)
-        return gx, gy, gz
+        return self.gx, self.gy, self.gz
 
-    def get_lon_lat_alt(self, squeeze=False):
+    def get_lon_lat_alt(
+        self,
+    ) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]:
         """
         Get the longitude, latitude and altitude.
 
-        Parameters
-        ----------
-        squeeze : Boolean, optional
-            If True, and if only one element in GeoPoints, return float instead of array.
-            The default is False.
-
         Returns
         -------
-        lon : float or 1darray, optional
+        lon : 1darray
             Longitude.
-        lat : float or 1darray, optional
+        lat : 1darray
             Latitude.
-        alt : float or 1darray, optional
+        alt : 1darray
             Ellipsoid altitude.
 
         """
@@ -106,15 +80,14 @@ class GeoPoints(Points):
         )
         lon, lat, alt = transformer.transform(self.gx, self.gy, self.gz)
 
-        lon, lat, alt = self._get_vals([lon, lat, alt], squeeze)
         return lon, lat, alt
 
     def _add_geo_as_tuple(self, dgx=None, dgy=None, dgz=None):
         """add geo and return it as tuple."""
 
-        new_gx = self._add_val(self.gx, dgx)
-        new_gy = self._add_val(self.gy, dgy)
-        new_gz = self._add_val(self.gz, dgz)
+        new_gx = _add_val(self.gx, dgx)
+        new_gy = _add_val(self.gy, dgy)
+        new_gz = _add_val(self.gz, dgz)
 
         return new_gx, new_gy, new_gz
 
@@ -143,24 +116,18 @@ class GeoPoints(Points):
 
 
 @dataclass(frozen=True)
-class ImagePoints(Points):
+class ImagePoints:
     """Image Points class"""
 
     azt: NDArray[np.float32]
     rng: NDArray[np.float32]
 
     def __post_init__(self):
-        self._all_len_eq([self.azt, self.rng])
+        _all_len_eq([self.azt, self.rng])
 
-    def get_azt_rng(self, squeeze=False):
+    def get_azt_rng(self) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         """
         Get the azimuth and the range.
-
-        Parameters
-        ----------
-        squeeze : Boolean, optional
-            If True, and if only one element in ImagePoints, return float instead of array.
-            The default is False.
 
         Returns
         -------
@@ -170,13 +137,12 @@ class ImagePoints(Points):
             Range distance (meters).
 
         """
-        azt, rng = self._get_vals([self.azt, self.rng], squeeze)
-        return azt, rng
+        return self.azt, self.rng
 
     def _add_azt_rng_as_tuple(self, dazt=None, drng=None):
         """add azt rng and return it as tuple."""
-        new_azt = self._add_val(self.azt, dazt)
-        new_rng = self._add_val(self.rng, drng)
+        new_azt = _add_val(self.azt, dazt)
+        new_rng = _add_val(self.rng, drng)
 
         return new_azt, new_rng
 
@@ -207,9 +173,9 @@ class GeoImagePoints(
     ImagePoints, GeoPoints
 ):  # order kind of matter for the constructor
     def __post_init__(self):
-        self._all_len_eq([self.azt, self.rng, self.gx, self.gy, self.gz])
+        _all_len_eq([self.azt, self.rng, self.gx, self.gy, self.gz])
 
-    def get_cos_i(self, orbit, squeeze=False):
+    def get_cos_i(self, orbit) -> NDArray[np.float32]:
         """
         Compute the cosine incidence.
 
@@ -217,9 +183,6 @@ class GeoImagePoints(
         ----------
         orbit : eos.sar.orbit.Orbit
             Orbit instance.
-         squeeze : Boolean, optional
-             If True, and if only one element in the Geo Point, return float instead of array.
-             The default is False.
 
         Returns
         -------
@@ -232,7 +195,7 @@ class GeoImagePoints(
             np.column_stack([self.gx, self.gy, self.gz]), sat
         )
 
-        return self._get_val(cos_i, squeeze)
+        return cos_i
 
 
 _GeoP = TypeVar("_GeoP", bound=GeoPoints)
