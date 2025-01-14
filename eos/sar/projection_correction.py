@@ -31,11 +31,11 @@ def _add_val(val, d_val):
 class GeoPoints:
     """Geo Point for correction estimation"""
 
-    gx: NDArray[np.float32]
+    gx: NDArray[np.float64]
     """ X geocentric coord. """
-    gy: NDArray[np.float32]
+    gy: NDArray[np.float64]
     """ Y geocentric coord. """
-    gz: NDArray[np.float32]
+    gz: NDArray[np.float64]
     """ Z geocentric coord. """
 
     def __post_init__(self):
@@ -43,7 +43,7 @@ class GeoPoints:
 
     def get_geo(
         self,
-    ) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]:
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """
         Get the geocentric coordinates.
 
@@ -61,7 +61,7 @@ class GeoPoints:
 
     def get_lon_lat_alt(
         self,
-    ) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]:
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """
         Get the longitude, latitude and altitude.
 
@@ -119,13 +119,13 @@ class GeoPoints:
 class ImagePoints:
     """Image Points class"""
 
-    azt: NDArray[np.float32]
-    rng: NDArray[np.float32]
+    azt: NDArray[np.float64]
+    rng: NDArray[np.float64]
 
     def __post_init__(self):
         _all_len_eq([self.azt, self.rng])
 
-    def get_azt_rng(self) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+    def get_azt_rng(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Get the azimuth and the range.
 
@@ -175,7 +175,7 @@ class GeoImagePoints(
     def __post_init__(self):
         _all_len_eq([self.azt, self.rng, self.gx, self.gy, self.gz])
 
-    def get_cos_i(self, orbit) -> NDArray[np.float32]:
+    def get_cos_i(self, orbit) -> NDArray[np.float64]:
         """
         Compute the cosine incidence.
 

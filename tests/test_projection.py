@@ -50,6 +50,9 @@ def test_projection():
 
     # localize the points
     lon, lat, alt = bmod.localization(rows, cols, alts)
+    assert isinstance(lon, np.ndarray)
+    assert isinstance(lat, np.ndarray)
+    assert isinstance(alt, np.ndarray)
 
     # check if localized points are at alt = 0
     np.testing.assert_allclose(alts, alt, atol=1e-5)
@@ -270,6 +273,8 @@ def test_projection_corner_reflectors(phx_client):
     mosaic_model = asm.get_mosaic_model()
 
     rows, cols, _ = mosaic_model.projection(gx, gy, gz, crs="epsg:4978")
+    assert isinstance(rows, np.ndarray)
+    assert isinstance(cols, np.ndarray)
 
     roi_all = eos.sar.roi.Roi.from_bounds_tuple(
         eos.sar.roi.Roi.points_to_bbox(rows, cols)
@@ -293,6 +298,8 @@ def test_projection_corner_reflectors(phx_client):
     azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(
         x, y, alt, crs=crs, as_azt_rng=True
     )
+    assert isinstance(azt_primary_flat, np.ndarray)
+    assert isinstance(rng_primary_flat, np.ndarray)
 
     pts_in_burst_mask = {}
     azt_primary = {}

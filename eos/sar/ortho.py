@@ -122,6 +122,8 @@ def _make_orthorectifier(
     dst_shape: tuple[int, int],
 ) -> Orthorectifier:
     rows, cols, _ = proj_model.projection(deminfo.x, deminfo.y, deminfo.alt)
+    assert isinstance(rows, np.ndarray)
+    assert isinstance(cols, np.ndarray)
     rows = rows.reshape(deminfo.shape)
     cols = cols.reshape(deminfo.shape)
     rows -= origin_row

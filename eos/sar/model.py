@@ -15,7 +15,7 @@ from eos.sar.roi import Roi as Roi
 
 logger = logging.getLogger(__name__)
 
-Arrayf32 = NDArray[np.float32]
+Arrayf64 = NDArray[np.float64]
 
 
 class SensorModel(abc.ABC):
@@ -31,12 +31,12 @@ class SensorModel(abc.ABC):
     @abc.abstractmethod
     def to_azt_rng(
         self, row: ArrayLike, col: ArrayLike
-    ) -> tuple[Arrayf32, Arrayf32]: ...
+    ) -> tuple[Arrayf64, Arrayf64]: ...
 
     @abc.abstractmethod
     def to_row_col(
         self, azt: ArrayLike, rng: ArrayLike
-    ) -> tuple[Arrayf32, Arrayf32]: ...
+    ) -> tuple[Arrayf64, Arrayf64]: ...
 
     @abc.abstractmethod
     def projection(
@@ -48,7 +48,7 @@ class SensorModel(abc.ABC):
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
         """Projects a 3D point into the image coordinates.
 
         Parameters
@@ -90,7 +90,7 @@ class SensorModel(abc.ABC):
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
         """Localize a point in the image at a certain altitude.
 
         Parameters
@@ -270,6 +270,8 @@ class SensorModel(abc.ABC):
         rows, cols = roi.to_bounding_points()
         alts = np.asarray([alt_min, alt_max, alt_max, alt_min])
         lons, lats, alts = self.localization(rows, cols, alts)
+        assert isinstance(lons, np.ndarray)
+        assert isinstance(lats, np.ndarray)
 
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
         return approx_geom
@@ -315,6 +317,8 @@ class SensorModel(abc.ABC):
         lons, lats, alts, masks = self.localize_without_alt(
             rows, cols, dem=dem, **kwargs
         )
+        assert isinstance(lons, np.ndarray)
+        assert isinstance(lats, np.ndarray)
 
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
@@ -369,6 +373,8 @@ class SensorModel(abc.ABC):
         lons_left, lats_left, alts, masks = self.localize_without_alt(
             _rows, col * np.ones_like(_rows), dem=dem, **kwargs
         )
+        assert isinstance(lons_left, np.ndarray)
+        assert isinstance(lats_left, np.ndarray)
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -379,6 +385,8 @@ class SensorModel(abc.ABC):
         lons_right, lats_right, alts, masks = self.localize_without_alt(
             _rows, (col + w - 1) * np.ones_like(_rows), dem=dem, **kwargs
         )
+        assert isinstance(lons_right, np.ndarray)
+        assert isinstance(lats_right, np.ndarray)
 
         if np.any(masks["invalid"]):
             logger.warning("get_buffered_geom: some points may be invalid.")
@@ -395,6 +403,8 @@ class SensorModel(abc.ABC):
             y_init=[lats_left[0], lats_right[0], lats_right[-1], lats_left[-1]],
             z_init=[min_alt, max_alt, max_alt, min_alt],
         )
+        assert isinstance(lons, np.ndarray)
+        assert isinstance(lats, np.ndarray)
 
         buffered_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 

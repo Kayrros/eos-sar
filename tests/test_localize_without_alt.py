@@ -114,6 +114,8 @@ def test_localize_without_alt(s3_client):
     projected = [
         bmod.projection(lon, lat, alt) for ((lon, lat), alt) in zip(approx_geom, alts)
     ]
+    assert isinstance(projected[0], np.ndarray)
+    assert isinstance(projected[1], np.ndarray)
 
     np.testing.assert_allclose(rows_roi, [p[0] for p in projected], atol=1e-2)
     np.testing.assert_allclose(cols_roi, [p[1] for p in projected], atol=1e-2)

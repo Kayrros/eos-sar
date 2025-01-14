@@ -16,7 +16,7 @@ from eos.sar import coordinates, model, range_doppler, roi, utils
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 
-Arrayf32 = NDArray[np.float32]
+Arrayf64 = NDArray[np.float64]
 
 
 def grd_model_from_meta(
@@ -182,7 +182,7 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
         alt = np.atleast_1d(alt)
@@ -253,7 +253,7 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)
         col = np.atleast_1d(col)
@@ -396,11 +396,11 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
         self.coordinate = coordinate
 
     @override
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.coordinate.to_azt_rng(row, col)
 
     @override
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.coordinate.to_row_col(azt, rng)
 
 
@@ -1076,11 +1076,11 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
         self.coordinate = coordinate
 
     @override
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.coordinate.to_azt_rng(row, col)
 
     @override
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.coordinate.to_row_col(azt, rng)
 
 

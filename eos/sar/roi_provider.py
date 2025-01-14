@@ -11,14 +11,14 @@ from eos.dem import DEM, DEMSource
 from eos.sar.model import SensorModel
 from eos.sar.roi import Roi
 
-Arrayf32 = NDArray[np.float32]
+Arrayf64 = NDArray[np.float64]
 
 
 class RoiProvider(abc.ABC):
     @abc.abstractmethod
     def get_roi(
         self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, Arrayf32, Arrayf32]: ...
+    ) -> tuple[Roi, Arrayf64, Arrayf64]: ...
 
 
 def _geometry_to_geocoords(geometry: shapely.Geometry) -> list[tuple[float, float]]:
@@ -36,11 +36,13 @@ def _geometry_to_roi(
     dem: DEM,
     min_width: int = 1024,
     min_height: int = 512,
-) -> tuple[Roi, Arrayf32, Arrayf32]:
+) -> tuple[Roi, Arrayf64, Arrayf64]:
     lons = [c[0] for c in geom_coords]
     lats = [c[1] for c in geom_coords]
     alts = np.nan_to_num(dem.elevation(lons, lats))
     rows, cols, _ = proj_model.projection(lons, lats, alts)
+    assert isinstance(rows, np.ndarray)
+    assert isinstance(cols, np.ndarray)
     roi = Roi.from_bounds_tuple(Roi.points_to_bbox(rows, cols))
     col, row, w, h = roi.to_roi()
     nh = max(h, min_height)
@@ -60,7 +62,7 @@ class GeometryRoiProvider(RoiProvider):
     @override
     def get_roi(
         self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, Arrayf32, Arrayf32]:
+    ) -> tuple[Roi, Arrayf64, Arrayf64]:
         dem_bounds = self.geometry.buffer(self.dem_fetch_buffer).bounds
         dem = dem_source.fetch_dem(dem_bounds)
 
@@ -88,7 +90,7 @@ class CentroidRoiProvider(RoiProvider):
     @override
     def get_roi(
         self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, Arrayf32, Arrayf32]:
+    ) -> tuple[Roi, Arrayf64, Arrayf64]:
         dem_bounds = (
             shapely.Point(*self.point).buffer(self.dem_fetch_buffer_round_point).bounds
         )
@@ -111,7 +113,7 @@ class PrescribedRoiProvider(RoiProvider):
     @override
     def get_roi(
         self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, Arrayf32, Arrayf32]:
+    ) -> tuple[Roi, Arrayf64, Arrayf64]:
         parent_shape = proj_model.h, proj_model.w
         if self.roi is None:
             roi = Roi(0, 0, parent_shape[1], parent_shape[0])

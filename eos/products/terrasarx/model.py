@@ -10,7 +10,7 @@ from typing_extensions import override
 
 from eos.products.terrasarx.metadata import TSXMetadata, parse_tsx_metadata
 from eos.sar import coordinates
-from eos.sar.model import Arrayf32, SensorModel
+from eos.sar.model import Arrayf64, SensorModel
 from eos.sar.model_helper import GenericSensorModelHelper
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector
@@ -61,11 +61,11 @@ class TSXModel(SensorModel):
         )
 
     @override
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.generic_model.to_azt_rng(row, col)
 
     @override
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.generic_model.to_row_col(azt, rng)
 
     @override
@@ -78,7 +78,7 @@ class TSXModel(SensorModel):
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
         return self.generic_model.projection(
             x, y, alt, crs, vert_crs, azt_init, as_azt_rng
         )
@@ -94,7 +94,7 @@ class TSXModel(SensorModel):
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> Union[tuple[Arrayf64, Arrayf64, Arrayf64], tuple[float, float, float]]:
         return self.generic_model.localization(
             row, col, alt, crs, vert_crs, x_init, y_init, z_init
         )
