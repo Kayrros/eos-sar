@@ -45,10 +45,11 @@ def grd_model_from_meta(
         range_pixel_spacing=meta.range_pixel_spacing,
         srgr=srgr,
     )
+    azt_init = coordinate.to_azt(meta.height / 2)
     # NOTE: using mean() won't respect the dateline
     approx_centroid_lon, approx_centroid_lat = np.mean(meta.approx_geom, axis=0)
     proj_model = Sentinel1GRDModel(
-        meta.image_start,
+        azt_init,
         meta.width,
         meta.height,
         meta.wave_length,
@@ -122,7 +123,7 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         Parameters
         ----------
         azt_init: float
-            Azimuth time of the first line in the image, used for initialization of the projection
+            Any azimuth time within the image, used for initialization of the projection
         width: int
             width of the image
         height: int
@@ -275,7 +276,7 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
             using the speed. The default is 0.001.
         ...
         """
-        azt_init = coordinate.first_row_time
+        azt_init = coordinate.to_azt(height / 2)
         super().__init__(
             azt_init,
             width,
@@ -394,9 +395,6 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
             tolerance,
         )
 
-        # reset the initial azimuth guess at the center of burst
-        self.azt_init = (burst_times[1] + burst_times[2]) / 2
-
 
 class Sentinel1SwathModel(Sentinel1SLCBaseModel):
     """Enables operations like projection and localization at a swath."""
@@ -497,9 +495,6 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         self.bursts_times = bursts_times
         self.bursts_rois = [roi.Roi.from_roi_tuple(_roi) for _roi in bursts_rois]
         self.bsids = bsids
-
-        # reset the initial azimuth guess at the center of swath
-        self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2]) / 2
 
     def burst_orig_in_swath(self, burst_id):
         """
@@ -934,7 +929,7 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
         Parameters
         ----------
         azt_init: float
-            Azimuth time of the first line in the image, used for initialization of the projection
+            Any azimuth time within the image, used for initialization of the projection
         width: int
             width of the image
         height: int
@@ -976,6 +971,7 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
             max_iterations,
             tolerance,
         )
+
         self.coordinate = coordinate
         self._generic_model = GenericSensorModelHelper(
             orbit=self.orbit,
