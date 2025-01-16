@@ -270,6 +270,11 @@ class DEM:
         assert profile["crs"] == "EPSG:4326"
         return DEM(array=array, transform=transform)
 
+    def get_extent(self):
+        return rasterio.transform.array_bounds(
+            self.array.shape[0], self.array.shape[1], self.transform
+        )
+
 
 class DEMSource(abc.ABC):
     """
@@ -397,3 +402,96 @@ def get_any_source() -> DEMSource:
     raise RuntimeError(
         "couldn't find a DEM source; please install multidem, srtm4 or dem-stitcher."
     )
+
+
+### Personal class for DEM stored locally
+### author: Arthur Hauck 22/01/2024
+class MyDEMSource(DEMSource):
+    def __init__(
+        self,
+        path_to_dem: str,
+        margin: Optional[float] = None,
+        set_nan: bool = True,
+        geoid_name: Optional[str] = None,
+    ):
+        """
+        Instantiate a MyDEMSource object.
+
+        Parameters
+        ----------
+        path_to_dem : str
+            Path to the DEM file.
+        margin : float, optional
+            If not None, Extent of the margins for the padding around the DEM.
+            The unit is the one of the horizontal axes of the DEM.
+        set_nan : bool
+            Set to True if you want to fill NoData Values of the DEM with np.nan.
+            The default is True.
+        geoid_name : str, optional
+            Name of the geoid relative to which the altitudes of the DEM are given.
+            The height of the geoid will be removed to get ellipsoidal heights (ie. relative to the WGS84 ellipsoid).
+            The default is None. Requires the dem-stitcher dependency.
+        """
+        # Store metadata
+        dem_reader = rasterio.open(path_to_dem)
+        transform = dem_reader.meta["transform"]
+        nodata = dem_reader.meta["nodata"]
+        if set_nan:
+            nodata = np.nan
+
+        # Get the DEM
+        if set_nan:
+            dem = dem_reader.read(1, masked=True).filled(np.nan)
+        else:
+            dem = dem_reader.read(1)
+
+        # Set to ellipsoidal height if the given DEM is referenced relative to a geoid
+        if geoid_name is not None:
+            assert has_demstitcher, "Should have dem_stitcher to convert altitudes from the geoid to the ellipsoid"
+            dem = dem_stitcher.geoid.remove_geoid(
+                dem_arr=dem,
+                dem_profile=dem_reader.profile,
+                geoid_name=geoid_name,
+                dem_area_or_point="Area",
+            )
+
+        if margin is not None:
+            # Pad the DEM (add NoData around)
+            h, w = dem.shape
+            lon_min = transform[2]
+            lon_max = transform[2] + (w - 1) * transform[0]
+            lat_max = transform[5]
+            lat_min = transform[5] + (h - 1) * transform[4]
+            j_padding, i_padding = ~transform * np.array(
+                [
+                    [lon_min - margin, lon_max + margin],
+                    [lat_min - margin, lat_max + margin],
+                ]
+            )
+            jmin, jmax = np.abs(np.round(j_padding).astype(int))
+            imax, imin = np.abs(np.round(i_padding).astype(int))
+            padded_dem = np.full(
+                (imax + imin + 1, jmax + jmin + 1), nodata, dtype=np.float32
+            )
+            padded_dem[imin : imin + h, jmin : jmin + w] = dem
+            dem = padded_dem
+
+            # Update the affine.Affine.transform
+            orig_lon, orig_lat = transform * (-jmin, -imin)
+            transform = affine.Affine(
+                transform[0],
+                transform[1],
+                float(orig_lon),
+                transform[3],
+                transform[4],
+                float(orig_lat),
+            )
+
+        # Keep the DEM as an attribute
+        self._dem = DEM(array=dem, transform=transform)
+
+    def fetch_dem(self, bounds: Bounds) -> DEM:
+        return self._dem.subset(bounds, copy=True)
+
+    def get_extent(self):
+        return self._dem.get_extent()
