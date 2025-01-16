@@ -133,8 +133,8 @@ class SensorModel(abc.ABC):
         col,
         max_iter=5,
         eps=1.0,
-        alt_min=-1000,
-        alt_max=9000,
+        alt_min=None,
+        alt_max=None,
         num_alt=100,
         verbosity=False,
         *,
@@ -155,9 +155,9 @@ class SensorModel(abc.ABC):
         eps : float, optional
             Precision on the height to stop the iterations. The default is 1.
         alt_min : float, optional
-            Minimum altitude in the search space. The default is -1000.
+            Minimum altitude in the search space. The default is None.
         alt_max : float, optional
-            Maximum altitude in the search space. The default is 9000.
+            Maximum altitude in the search space. The default is None.
         num_alt : int, optional
             Number of altitudes to test in each iteration. The default is 100.
         verbosity : bool, optional
@@ -184,6 +184,14 @@ class SensorModel(abc.ABC):
             eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
             querying for points at various altitudes along the line of sight.
         """
+        # get the bounds in altitude for the search space
+        # (these lines were added to avoid troubles with the OutOfBoundsException of
+        # the eos.dem.DEM._assert_in_raster method when the search space if too large)
+        if alt_min is None:
+            alt_min = np.nanmin(dem.array)
+        if alt_max is None:
+            alt_max = np.nanmax(dem.array)
+
         # recursively sample point on LOS curve and shrink the search space
         alt_min, alt_max, alt_diff1, alt_diff2, masks = recursive_shrink_interval(
             self,
