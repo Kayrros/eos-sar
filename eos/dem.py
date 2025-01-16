@@ -4,7 +4,7 @@ import abc
 import os
 import warnings
 from dataclasses import dataclass
-from typing import Any, Iterable, Union
+from typing import Any, Iterable, Optional, Union
 
 import affine
 import numpy as np
@@ -257,6 +257,11 @@ class DEM:
             array = array.copy()
         return DEM(array=array, transform=transform)
 
+    def fill_nan(self, value: float = 0.0):
+        new_array = self.array.copy()
+        new_array[np.isnan(new_array)] = value
+        return DEM(array=new_array, transform=self.transform, crs=self.crs)
+
     @staticmethod
     def from_rasterio_dataset(dataset: rasterio.DatasetReader):
         array = dataset.read(1)
@@ -290,13 +295,18 @@ class DEMSource(abc.ABC):
 
 @dataclass(frozen=True)
 class SRTM4Source(DEMSource):
+    nan_value: Optional[float] = None
+
     def fetch_dem(self, bounds: Bounds) -> DEM:
         array, transform, crs = srtm4.crop(bounds, datum="ellipsoidal")
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert transform is not None
         assert crs == "EPSG:4326"
-        return DEM(array=array, transform=transform)
+        dem = DEM(array=array, transform=transform)
+        if self.nan_value is not None:
+            dem = dem.fill_nan(value=self.nan_value)
+        return dem
 
     def elevation(self, lons, lats, interpolation="bilinear"):
         warnings.warn(
@@ -356,12 +366,18 @@ class MultidemSource(DEMSource):
 
 @dataclass(frozen=True)
 class DEMStitcherSource(DEMSource):
-    dem_name: str = "glo30"
+    dem_name: str = "glo_30"
+    fill_in_glo_30: bool = True
+    dst_resolution: Optional[Union[float, tuple[float]]] = None
     """ see https://github.com/ACCESS-Cloud-Based-InSAR/dem-stitcher#dems-supported """
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
         array, profile = dem_stitcher.stitch_dem(
-            list(bounds), "glo_30", merge_nodata_value=0
+            bounds=list(bounds),
+            dem_name=self.dem_name,
+            merge_nodata_value=0,
+            dst_resolution=self.dst_resolution,
+            fill_in_glo_30=self.fill_in_glo_30,
         )
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
