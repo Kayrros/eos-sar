@@ -2,7 +2,7 @@
 
 import abc
 import logging
-from typing import Optional, Union
+from typing import Optional, TypeVar, Union
 
 import numpy as np
 import pyproj
@@ -15,7 +15,9 @@ from eos.sar.roi import Roi as Roi
 
 logger = logging.getLogger(__name__)
 
-Arrayf32 = NDArray[np.float32]
+Arrayf64 = NDArray[np.float64]
+
+CoordArrayLike = TypeVar("CoordArrayLike", bound=ArrayLike)
 
 
 class SensorModel(abc.ABC):
@@ -31,24 +33,24 @@ class SensorModel(abc.ABC):
     @abc.abstractmethod
     def to_azt_rng(
         self, row: ArrayLike, col: ArrayLike
-    ) -> tuple[Arrayf32, Arrayf32]: ...
+    ) -> tuple[Arrayf64, Arrayf64]: ...
 
     @abc.abstractmethod
     def to_row_col(
         self, azt: ArrayLike, rng: ArrayLike
-    ) -> tuple[Arrayf32, Arrayf32]: ...
+    ) -> tuple[Arrayf64, Arrayf64]: ...
 
     @abc.abstractmethod
     def projection(
         self,
-        x: ArrayLike,
-        y: ArrayLike,
-        alt: ArrayLike,
+        x: CoordArrayLike,
+        y: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
         """Projects a 3D point into the image coordinates.
 
         Parameters
@@ -82,15 +84,15 @@ class SensorModel(abc.ABC):
     @abc.abstractmethod
     def localization(
         self,
-        row: ArrayLike,
-        col: ArrayLike,
-        alt: ArrayLike,
+        row: CoordArrayLike,
+        col: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
         """Localize a point in the image at a certain altitude.
 
         Parameters

@@ -2,13 +2,12 @@ import os
 
 import numpy as np
 import pyproj
-import pytest
+from numpy.typing import NDArray
 
 import eos.dem
 import eos.sar
 from eos.products import sentinel1
 from eos.products.sentinel1 import orbit_catalog
-from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.orbit_catalog import (
     BestEffort,
     Sentinel1OrbitCatalogQuery,
@@ -52,6 +51,9 @@ def test_projection():
 
     # localize the points
     lon, lat, alt = bmod.localization(rows, cols, alts)
+    assert isinstance(lon, np.ndarray)
+    assert isinstance(lat, np.ndarray)
+    assert isinstance(alt, np.ndarray)
 
     # check if localized points are at alt = 0
     np.testing.assert_allclose(alts, alt, atol=1e-5)
@@ -68,10 +70,18 @@ def test_projection():
     assert isinstance(
         ptlon, float
     ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptlat, float
+    ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptalt, float
+    ), "vectorized localization func failed on scalar input"
 
     # check ability to query one point
     ptrow, ptcol, pti = bmod.projection(lon[0], lat[0], alt[0])
     assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
+    assert isinstance(ptcol, float), "vectorized projection func failed on scalar input"
+    assert isinstance(pti, float), "vectorized projection func failed on scalar input"
 
     # check iterative_projection
     transform = pyproj.Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
@@ -80,6 +90,12 @@ def test_projection():
     assert isinstance(
         azt, np.ndarray
     ), "vectorized iterative projection func failed on array input"
+    assert isinstance(
+        rng, np.ndarray
+    ), "vectorized iterative projection func failed on array input"
+    assert isinstance(
+        i, np.ndarray
+    ), "vectorized iterative projection func failed on array input"
 
     gx, gy, gz = range_doppler.iterative_localization(
         bmod.orbit, azt, rng, np.zeros_like(alt), (gx + 10, gy + 2, gz + 3)
@@ -87,10 +103,22 @@ def test_projection():
     assert isinstance(
         gx, np.ndarray
     ), "vectorized iterative localization func failed on array input"
+    assert isinstance(
+        gy, np.ndarray
+    ), "vectorized iterative localization func failed on array input"
+    assert isinstance(
+        gz, np.ndarray
+    ), "vectorized iterative localization func failed on array input"
 
     azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
     assert isinstance(
         azt, float
+    ), "vectorized iterative projection func failed on scalar input"
+    assert isinstance(
+        rng, float
+    ), "vectorized iterative projection func failed on scalar input"
+    assert isinstance(
+        i, float
     ), "vectorized iterative projection func failed on scalar input"
 
     init_gxyz = (gx[0] + 10, gy[0] + 2, gz[0] + 3)
@@ -100,6 +128,12 @@ def test_projection():
     )
     assert isinstance(
         gx, float
+    ), "vectorized iterative localization func failed on scalar input"
+    assert isinstance(
+        gy, float
+    ), "vectorized iterative localization func failed on scalar input"
+    assert isinstance(
+        gz, float
     ), "vectorized iterative localization func failed on scalar input"
 
     # Test bias correction
@@ -168,10 +202,18 @@ def test_projection_grd():
     assert isinstance(
         ptlon, float
     ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptlat, float
+    ), "vectorized localization func failed on scalar input"
+    assert isinstance(
+        ptalt, float
+    ), "vectorized localization func failed on scalar input"
 
     # check ability to query one point
     ptrow, ptcol, pti = proj_model.projection(lon[0], lat[0], alt[0])
     assert isinstance(ptrow, float), "vectorized projection func failed on scalar input"
+    assert isinstance(ptcol, float), "vectorized projection func failed on scalar input"
+    assert isinstance(pti, float), "vectorized projection func failed on scalar input"
 
 
 def test_projection_corner_reflectors(phx_client):
@@ -185,7 +227,7 @@ def test_projection_corner_reflectors(phx_client):
     # just do plt.scatter(lons, lats)
     cr_ids = [0, 1, 2, 7, 8, 10, 11, 14, 15, 18, 19, 24, 29, 30, 31, 32]
     # coordinates of corner reflectors
-    coords = np.loadtxt(
+    coords: NDArray[np.float64] = np.loadtxt(
         "./tests/data/QLD_corner_reflector_positions_GDA2020.txt",
         skiprows=1,
         usecols=range(1, 7),
@@ -255,6 +297,8 @@ def test_projection_corner_reflectors(phx_client):
     azt_primary_flat, rng_primary_flat, _ = mosaic_model.projection(
         x, y, alt, crs=crs, as_azt_rng=True
     )
+    assert isinstance(azt_primary_flat, np.ndarray)
+    assert isinstance(rng_primary_flat, np.ndarray)
 
     pts_in_burst_mask = {}
     azt_primary = {}
@@ -396,30 +440,3 @@ def test_projection_corner_reflectors(phx_client):
     assert (
         rows_pred - rows_meas
     ).std() < 0.03, "Row standard deviation higher than expected"
-
-
-def test_deprecated_dict():
-    xml_path = "./tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
-    with open(xml_path) as f:
-        xml_content = f.read()
-    burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
-
-    ref = FullBistaticReference.from_burst_metadata(burst_meta)
-    ref_as_dict = ref.to_dict()
-
-    orbit = Orbit(burst_meta.state_vectors)
-    sentinel1.coordinate_correction.s1_corrections_from_meta(
-        burst_meta,
-        orbit=orbit,
-        doppler=sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit),
-        bistatic=True,
-        full_bistatic_reference=ref,
-    )
-    with pytest.warns(DeprecationWarning):
-        sentinel1.coordinate_correction.s1_corrections_from_meta(
-            burst_meta,
-            orbit=orbit,
-            doppler=sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit),
-            bistatic=True,
-            full_bistatic_reference=ref_as_dict,  # type: ignore
-        )

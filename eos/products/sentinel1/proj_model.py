@@ -12,11 +12,13 @@ from typing_extensions import override
 
 from eos.products import sentinel1
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata, Sentinel1GRDMetadata
-from eos.sar import coordinates, model, range_doppler, roi, utils
+from eos.sar import coordinates, model, roi
+from eos.sar.model import CoordArrayLike
+from eos.sar.model_helper import GenericSensorModelHelper
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 
-Arrayf32 = NDArray[np.float32]
+Arrayf64 = NDArray[np.float64]
 
 
 def grd_model_from_meta(
@@ -43,10 +45,11 @@ def grd_model_from_meta(
         range_pixel_spacing=meta.range_pixel_spacing,
         srgr=srgr,
     )
+    azt_init = coordinate.to_azt(meta.height / 2)
     # NOTE: using mean() won't respect the dateline
     approx_centroid_lon, approx_centroid_lat = np.mean(meta.approx_geom, axis=0)
     proj_model = Sentinel1GRDModel(
-        meta.image_start,
+        azt_init,
         meta.width,
         meta.height,
         meta.wave_length,
@@ -98,8 +101,8 @@ def burst_model_from_burst_meta(
 
 
 class Sentinel1BaseModel(model.SensorModel, abc.ABC):
-    """Enables operations like projection and localization.
-    Subclasses still have to implement to_azt_rng and to_row_col (required by SensorModel)."""
+    """Enables operations projection and localization, to_azt_rng and to_row_col.
+    Subclasses have to implement _get_generic_model."""
 
     def __init__(
         self,
@@ -120,7 +123,7 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         Parameters
         ----------
         azt_init: float
-            Azimuth time of the first line in the image, used for initialization of the projection
+            Any azimuth time within the image, used for initialization of the projection
         width: int
             width of the image
         height: int
@@ -172,151 +175,60 @@ class Sentinel1BaseModel(model.SensorModel, abc.ABC):
         self.azt_init = azt_init
         self.coord_corrector = coord_corrector
 
+    @abc.abstractmethod
+    def _get_generic_model(self) -> GenericSensorModelHelper: ...
+
+    @override
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
+        return self._get_generic_model().to_azt_rng(row, col)
+
+    @override
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
+        return self._get_generic_model().to_row_col(azt, rng)
+
     @override
     def projection(
         self,
-        x: ArrayLike,
-        y: ArrayLike,
-        alt: ArrayLike,
+        x: CoordArrayLike,
+        y: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
-        x = np.atleast_1d(x)
-        y = np.atleast_1d(y)
-        alt = np.atleast_1d(alt)
-
-        if vert_crs is None:
-            src_crs = crs
-        else:
-            src_crs = pyproj.crs.CompoundCRS(
-                name="ukn_reference", components=[crs, vert_crs]
-            )
-
-        transformer = pyproj.Transformer.from_crs(src_crs, "epsg:4978", always_xy=True)
-
-        # convert to geocentric cartesian
-        gx, gy, gz = transformer.transform(x, y, alt)
-
-        if azt_init is not None:
-            err_msg = "Init azimuth time should be scalar or have the\
-                 same length of the points"
-            azt_init = utils.check_input_len(azt_init, len(x), err_msg)
-        else:
-            azt_init = self.azt_init * np.ones_like(x)
-
-        azt, rng, i = range_doppler.iterative_projection(
-            self.orbit,
-            gx,
-            gy,
-            gz,
-            azt_init=azt_init,
-            max_iterations=self.max_iterations,
-            tol=self.projection_tolerance,
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
+        return self._get_generic_model().projection(
+            x,
+            y,
+            alt,
+            crs,
+            vert_crs,
+            azt_init,
+            as_azt_rng,
         )
-
-        if not self.coord_corrector.empty():
-            # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
-
-            # apply corrections
-            geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
-
-            azt, rng = geo_im_pt.get_azt_rng(squeeze=True)
-
-        if as_azt_rng:
-            return azt, rng, i
-
-        # convert to row and col
-        row, col = self.to_row_col(azt, rng)
-
-        return row, col, i
 
     @override
     def localization(
         self,
-        row: ArrayLike,
-        col: ArrayLike,
-        alt: ArrayLike,
+        row: CoordArrayLike,
+        col: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
-        # make sure we work with numpy arrays
-        row = np.atleast_1d(row)
-        col = np.atleast_1d(col)
-        alt = np.atleast_1d(alt)
-
-        # image coordinates to range and az time
-        azt, rng = self.to_azt_rng(row, col)
-
-        if vert_crs is None:
-            dst_crs = crs
-        else:
-            dst_crs = pyproj.crs.CompoundCRS(
-                name="ukn_reference", components=[crs, vert_crs]
-            )
-
-        if (x_init is not None) and (y_init is not None) and (z_init is not None):
-            to_gxyz = pyproj.Transformer.from_crs(dst_crs, "epsg:4978", always_xy=True)
-            out_len = len(alt)
-            err_msg = "{} length should be the same as row/col/alt len"
-            x_init = utils.check_input_len(x_init, out_len, err_msg.format("x_init"))
-            y_init = utils.check_input_len(y_init, out_len, err_msg.format("y_init"))
-            z_init = utils.check_input_len(z_init, out_len, err_msg.format("z_init"))
-        else:
-            # initial geocentric point xyz definition
-            # from lon, lat, alt to x, y, z
-            to_gxyz = pyproj.Transformer.from_crs(
-                "epsg:4326", "epsg:4978", always_xy=True
-            )
-
-            x_init = self.approx_centroid_lon * np.ones_like(alt)
-            y_init = self.approx_centroid_lat * np.ones_like(alt)
-            z_init = alt
-
-        gx_init, gy_init, gz_init = to_gxyz.transform(x_init, y_init, z_init)
-
-        # First localization, no correction is enabled
-        # localize each point
-        gx, gy, gz = range_doppler.iterative_localization(
-            self.orbit,
-            azt,
-            rng,
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
+        return self._get_generic_model().localization(
+            row,
+            col,
             alt,
-            (gx_init, gy_init, gz_init),
-            max_iterations=self.max_iterations,
-            tol=self.localization_tolerance,
+            crs,
+            vert_crs,
+            x_init,
+            y_init,
+            z_init,
         )
-
-        if not self.coord_corrector.empty():
-            # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
-
-            # apply corrections
-            geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)
-
-            azt, rng = geo_im_pt.get_azt_rng()
-
-            # Perform localization again with corrected coords
-            # Should converge quickly (probably one iteration)
-            gx, gy, gz = range_doppler.iterative_localization(
-                self.orbit,
-                azt,
-                rng,
-                alt,
-                (gx, gy, gz),
-                max_iterations=self.max_iterations,
-                tol=self.localization_tolerance,
-            )
-
-        todst = pyproj.Transformer.from_crs("epsg:4978", dst_crs, always_xy=True)
-        x, y, z = todst.transform(gx, gy, gz)
-
-        return x, y, z
 
 
 class Sentinel1SLCBaseModel(Sentinel1BaseModel):
@@ -364,7 +276,7 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
             using the speed. The default is 0.001.
         ...
         """
-        azt_init = coordinate.first_row_time
+        azt_init = coordinate.to_azt(height / 2)
         super().__init__(
             azt_init,
             width,
@@ -379,14 +291,21 @@ class Sentinel1SLCBaseModel(Sentinel1BaseModel):
         )
 
         self.coordinate = coordinate
+        self._generic_model = GenericSensorModelHelper(
+            orbit=self.orbit,
+            coordinate=self.coordinate,
+            azt_init=self.azt_init,
+            projection_tolerance=self.projection_tolerance,
+            localization_tolerance=self.localization_tolerance,
+            max_iterations=self.max_iterations,
+            coord_corrector=self.coord_corrector,
+            approx_centroid_lon=self.approx_centroid_lon,
+            approx_centroid_lat=self.approx_centroid_lat,
+        )
 
     @override
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
-        return self.coordinate.to_azt_rng(row, col)
-
-    @override
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
-        return self.coordinate.to_row_col(azt, rng)
+    def _get_generic_model(self) -> GenericSensorModelHelper:
+        return self._generic_model
 
 
 class Sentinel1BurstModel(Sentinel1SLCBaseModel):
@@ -475,9 +394,6 @@ class Sentinel1BurstModel(Sentinel1SLCBaseModel):
             max_iterations,
             tolerance,
         )
-
-        # reset the initial azimuth guess at the center of burst
-        self.azt_init = (burst_times[1] + burst_times[2]) / 2
 
 
 class Sentinel1SwathModel(Sentinel1SLCBaseModel):
@@ -579,9 +495,6 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         self.bursts_times = bursts_times
         self.bursts_rois = [roi.Roi.from_roi_tuple(_roi) for _roi in bursts_rois]
         self.bsids = bsids
-
-        # reset the initial azimuth guess at the center of swath
-        self.azt_init = (self.bursts_times[0][1] + self.bursts_times[-1][2]) / 2
 
     def burst_orig_in_swath(self, burst_id):
         """
@@ -1016,7 +929,7 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
         Parameters
         ----------
         azt_init: float
-            Azimuth time of the first line in the image, used for initialization of the projection
+            Any azimuth time within the image, used for initialization of the projection
         width: int
             width of the image
         height: int
@@ -1058,15 +971,23 @@ class Sentinel1GRDModel(Sentinel1BaseModel):
             max_iterations,
             tolerance,
         )
+
         self.coordinate = coordinate
+        self._generic_model = GenericSensorModelHelper(
+            orbit=self.orbit,
+            coordinate=self.coordinate,
+            azt_init=self.azt_init,
+            projection_tolerance=self.projection_tolerance,
+            localization_tolerance=self.localization_tolerance,
+            max_iterations=self.max_iterations,
+            coord_corrector=self.coord_corrector,
+            approx_centroid_lon=self.approx_centroid_lon,
+            approx_centroid_lat=self.approx_centroid_lat,
+        )
 
     @override
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
-        return self.coordinate.to_azt_rng(row, col)
-
-    @override
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
-        return self.coordinate.to_row_col(azt, rng)
+    def _get_generic_model(self) -> GenericSensorModelHelper:
+        return self._generic_model
 
 
 def secondary_project_and_correct(
@@ -1131,11 +1052,11 @@ def secondary_project_and_correct(
 
         # create geo_im_pt
         geo_im_pt = GeoImagePoints(
-            gx[burst_mask],
-            gy[burst_mask],
-            gz[burst_mask],
-            azt_no_correc[bsid],
-            rng_no_correc[bsid],
+            gx=gx[burst_mask],
+            gy=gy[burst_mask],
+            gz=gz[burst_mask],
+            azt=azt_no_correc[bsid],
+            rng=rng_no_correc[bsid],
         )
 
         # estimate and apply corrections

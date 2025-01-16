@@ -7,11 +7,12 @@ from numpy.typing import ArrayLike, NDArray
 
 from eos.sar import range_doppler, utils
 from eos.sar.coordinates import TwoDCoordinate
+from eos.sar.model import CoordArrayLike
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, GeoImagePoints
 from eos.sar.roi import Roi as Roi
 
-Arrayf32 = NDArray[np.float32]
+Arrayf64 = NDArray[np.float64]
 
 
 @final
@@ -68,22 +69,22 @@ class GenericSensorModelHelper:
     (only used as initialization for the localization function)
     """
 
-    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_azt_rng(self, row: ArrayLike, col: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.coordinate.to_azt_rng(row, col)
 
-    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf32, Arrayf32]:
+    def to_row_col(self, azt: ArrayLike, rng: ArrayLike) -> tuple[Arrayf64, Arrayf64]:
         return self.coordinate.to_row_col(azt, rng)
 
     def projection(
         self,
-        x: ArrayLike,
-        y: ArrayLike,
-        alt: ArrayLike,
+        x: CoordArrayLike,
+        y: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         azt_init: Optional[ArrayLike] = None,
         as_azt_rng: bool = False,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
         """See SensorModel.projection"""
         x = np.atleast_1d(x)
         y = np.atleast_1d(y)
@@ -120,12 +121,21 @@ class GenericSensorModelHelper:
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(
+                gx=np.atleast_1d(gx),
+                gy=np.atleast_1d(gy),
+                gz=np.atleast_1d(gz),
+                azt=np.atleast_1d(azt),
+                rng=np.atleast_1d(rng),
+            )
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt)
 
-            azt, rng = geo_im_pt.get_azt_rng(squeeze=True)
+            azt, rng = geo_im_pt.get_azt_rng()
+            if azt.size == 1:
+                azt = azt[0]
+                rng = rng[0]
 
         if as_azt_rng:
             return azt, rng, i
@@ -133,19 +143,23 @@ class GenericSensorModelHelper:
         # convert to row and col
         row, col = self.coordinate.to_row_col(azt, rng)
 
-        return row, col, i
+        return (
+            row,
+            col,
+            i,  # type: ignore
+        )
 
     def localization(
         self,
-        row: ArrayLike,
-        col: ArrayLike,
-        alt: ArrayLike,
+        row: CoordArrayLike,
+        col: CoordArrayLike,
+        alt: CoordArrayLike,
         crs: Union[str, pyproj.CRS] = "epsg:4326",
         vert_crs: Optional[Union[str, pyproj.CRS]] = None,
         x_init: Optional[ArrayLike] = None,
         y_init: Optional[ArrayLike] = None,
         z_init: Optional[ArrayLike] = None,
-    ) -> tuple[Arrayf32, Arrayf32, Arrayf32]:
+    ) -> tuple[CoordArrayLike, CoordArrayLike, CoordArrayLike]:
         """See SensorModel.localization"""
         # make sure we work with numpy arrays
         row = np.atleast_1d(row)
@@ -196,7 +210,13 @@ class GenericSensorModelHelper:
 
         if not self.coord_corrector.empty():
             # create a geo_im_pt
-            geo_im_pt = GeoImagePoints(gx, gy, gz, azt, rng)
+            geo_im_pt = GeoImagePoints(
+                gx=np.atleast_1d(gx),
+                gy=np.atleast_1d(gy),
+                gz=np.atleast_1d(gz),
+                azt=np.atleast_1d(azt),
+                rng=np.atleast_1d(rng),
+            )
 
             # apply corrections
             geo_im_pt = self.coord_corrector.estimate_and_apply(geo_im_pt, inverse=True)

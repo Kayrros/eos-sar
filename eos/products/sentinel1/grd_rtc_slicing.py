@@ -652,7 +652,7 @@ def calibrate(
     approx_lonlat = shapely.geometry.Point(
         proj_model.approx_centroid_lon, proj_model.approx_centroid_lat
     )
-    approx_alt = np.mean(meta.approx_altitude)
+    approx_alt = float(np.mean(meta.approx_altitude))
 
     # keep track of rows that were calibrated during the iterations
     touched_rows = np.zeros(roi.h, dtype=np.bool_)

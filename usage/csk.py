@@ -68,6 +68,7 @@ def process(
 
     dem = model.fetch_dem(dem_source)
     alt = dem.elevation(lon, lat)
+    assert isinstance(alt, float)
     y, x, _ = model.projection(lon, lat, alt)
 
     roi = Roi(int(x) - W, int(y) - H, W * 2, H * 2)

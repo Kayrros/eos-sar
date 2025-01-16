@@ -1,84 +1,52 @@
 import abc
-from typing import Sequence
+import dataclasses
+from dataclasses import dataclass
+from typing import Any, Optional, Sequence, TypeVar, Union
 
 import numpy as np
 import pyproj
+from numpy.typing import NDArray
+from typing_extensions import Self, override
 
 from eos.sar import const, geoconfig
 
 
-class Points:
-    """base class for a set of Points"""
-
-    singleton: bool
-
-    def _force_array(self, val):
-        """convert val to 1d array if not already the case."""
-        return np.atleast_1d(val)
-
-    def _all_len_eq(self, vals):
-        """Check that all arrays in vals have the same length  \
-            and if the lenght is one, keep that in mind."""
-        lengths = [len(val) for val in vals if val is not None]
-        if len(lengths) > 1:
-            assert all(len_curr == lengths[0] for len_curr in lengths[1:])
-        self.singleton = lengths[0] == 1
-
-    def _get_vals(self, vals, squeeze):
-        """Get the arrays in vals, optionnaly squeezing if singleton."""
-        if squeeze and self.singleton:
-            return [val[0] for val in vals]
-        else:
-            return vals
-
-    def _get_val(self, val, squeeze):
-        """Get val, optionnaly squeezing if singleton."""
-        return self._get_vals([val], squeeze)[0]
-
-    def _add_val(self, val, d_val):
-        if d_val is None:
-            return val
-        else:
-            assert len(val) == len(d_val), "vals and diff vals have different lengths"
-            return val + d_val
+def _all_len_eq(vals):
+    """Check that all arrays in vals have the same length  \
+        and if the length is one, keep that in mind."""
+    lengths = [len(val) for val in vals if val is not None]
+    if len(lengths) > 1:
+        assert all(len_curr == lengths[0] for len_curr in lengths[1:])
 
 
-class GeoPoints(Points):
+def _add_val(val, d_val):
+    if d_val is None:
+        return val
+    else:
+        assert len(val) == len(d_val), "vals and diff vals have different lengths"
+        return val + d_val
+
+
+@dataclass(frozen=True)
+class GeoPoints:
     """Geo Point for correction estimation"""
 
-    def __init__(self, gx, gy, gz):
-        """
-        Constructor.
+    gx: NDArray[np.float64]
+    """ X geocentric coord. """
+    gy: NDArray[np.float64]
+    """ Y geocentric coord. """
+    gz: NDArray[np.float64]
+    """ Z geocentric coord. """
 
-        Parameters
-        ----------
-        gx: float or 1darray
-            X geocentric coord.
-        gy : float or 1darray
-            Y geocentric coord.
-        gz : float or 1darray
-            Z geocentric coord.
+    def __post_init__(self):
+        _all_len_eq([self.gx, self.gy, self.gz])
 
-        Returns
-        -------
-        None.
-
-        """
-        self.gx = self._force_array(gx)
-        self.gy = self._force_array(gy)
-        self.gz = self._force_array(gz)
-        self._all_len_eq([self.gx, self.gy, self.gz])
-
-    def get_geo(self, squeeze=False):
+    def get_geo(
+        self,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """
         Get the geocentric coordinates.
 
-        Parameters
-        ----------
-        squeeze : Boolean, optional
-            If True, and if only one element in GeoPoints, return float instead of array.
-            The default is False.
-
         Returns
         -------
         gx: float or 1darray
@@ -89,26 +57,21 @@ class GeoPoints(Points):
             Z geocentric coord.
 
         """
-        gx, gy, gz = self._get_vals([self.gx, self.gy, self.gz], squeeze)
-        return gx, gy, gz
+        return self.gx, self.gy, self.gz
 
-    def get_lon_lat_alt(self, squeeze=False):
+    def get_lon_lat_alt(
+        self,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
         """
         Get the longitude, latitude and altitude.
 
-        Parameters
-        ----------
-        squeeze : Boolean, optional
-            If True, and if only one element in GeoPoints, return float instead of array.
-            The default is False.
-
         Returns
         -------
-        lon : float or 1darray, optional
+        lon : 1darray
             Longitude.
-        lat : float or 1darray, optional
+        lat : 1darray
             Latitude.
-        alt : float or 1darray, optional
+        alt : 1darray
             Ellipsoid altitude.
 
         """
@@ -117,19 +80,18 @@ class GeoPoints(Points):
         )
         lon, lat, alt = transformer.transform(self.gx, self.gy, self.gz)
 
-        lon, lat, alt = self._get_vals([lon, lat, alt], squeeze)
         return lon, lat, alt
 
     def _add_geo_as_tuple(self, dgx=None, dgy=None, dgz=None):
         """add geo and return it as tuple."""
 
-        new_gx = self._add_val(self.gx, dgx)
-        new_gy = self._add_val(self.gy, dgy)
-        new_gz = self._add_val(self.gz, dgz)
+        new_gx = _add_val(self.gx, dgx)
+        new_gy = _add_val(self.gy, dgy)
+        new_gz = _add_val(self.gz, dgz)
 
         return new_gx, new_gy, new_gz
 
-    def add_geo(self, dgx=None, dgy=None, dgz=None):
+    def add_geo(self, dgx=None, dgy=None, dgz=None) -> Self:
         """
         Add a shift to geocentric coordinates. If shift is kept as None, no shift
         is applied in the specified axis direction.
@@ -149,40 +111,23 @@ class GeoPoints(Points):
             New shifted GeoPoints.
 
         """
-        return GeoPoints(*self._add_geo_as_tuple(dgx, dgy, dgz))
+        gx, gy, gz = self._add_geo_as_tuple(dgx, dgy, dgz)
+        return dataclasses.replace(self, gx=gx, gy=gy, gz=gz)
 
 
-class ImagePoints(Points):
+@dataclass(frozen=True)
+class ImagePoints:
     """Image Points class"""
 
-    def __init__(self, azt, rng):
-        """
-        Constructor.
+    azt: NDArray[np.float64]
+    rng: NDArray[np.float64]
 
-        Parameters
-        ----------
-        azt : float or 1darray
-            Azimuth time.
-        rng : float or 1darray
+    def __post_init__(self):
+        _all_len_eq([self.azt, self.rng])
 
-        Returns
-        -------
-        None.
-
-        """
-        self.azt = self._force_array(azt)
-        self.rng = self._force_array(rng)
-        self._all_len_eq([self.azt, self.rng])
-
-    def get_azt_rng(self, squeeze=False):
+    def get_azt_rng(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Get the azimuth and the range.
-
-        Parameters
-        ----------
-        squeeze : Boolean, optional
-            If True, and if only one element in ImagePoints, return float instead of array.
-            The default is False.
 
         Returns
         -------
@@ -192,17 +137,16 @@ class ImagePoints(Points):
             Range distance (meters).
 
         """
-        azt, rng = self._get_vals([self.azt, self.rng], squeeze)
-        return azt, rng
+        return self.azt, self.rng
 
     def _add_azt_rng_as_tuple(self, dazt=None, drng=None):
         """add azt rng and return it as tuple."""
-        new_azt = self._add_val(self.azt, dazt)
-        new_rng = self._add_val(self.rng, drng)
+        new_azt = _add_val(self.azt, dazt)
+        new_rng = _add_val(self.rng, drng)
 
         return new_azt, new_rng
 
-    def add_azt_rng(self, dazt=None, drng=None):
+    def add_azt_rng(self, dazt=None, drng=None) -> Self:
         """
         Add the coordinate shifts. If shift is None, don't add anything in this
         dimension.
@@ -220,38 +164,18 @@ class ImagePoints(Points):
             New Shifted ImagePoints.
 
         """
-        return ImagePoints(*self._add_azt_rng_as_tuple(dazt, drng))
+        azt, rng = self._add_azt_rng_as_tuple(dazt, drng)
+        return dataclasses.replace(self, azt=azt, rng=rng)
 
 
-class GeoImagePoints(GeoPoints, ImagePoints):
-    def __init__(self, gx, gy, gz, azt, rng):
-        """
-        Constructor.
+@dataclass(frozen=True)
+class GeoImagePoints(
+    ImagePoints, GeoPoints
+):  # order kind of matter for the constructor
+    def __post_init__(self):
+        _all_len_eq([self.azt, self.rng, self.gx, self.gy, self.gz])
 
-        Parameters
-        ----------
-        gx: float or 1darray
-            X geocentric coord.
-        gy : float or 1darray
-            Y geocentric coord.
-        gz : float or 1darray
-            Z geocentric coord.
-        azt : float or 1darray
-            Azimuth time.
-        rng : float or 1darray
-            Range distance (meters).
-
-        Returns
-        -------
-        None.
-
-        """
-        GeoPoints.__init__(self, gx, gy, gz)
-        ImagePoints.__init__(self, azt, rng)
-        # other lengths checked in base classes
-        self._all_len_eq([self.gx, self.azt])
-
-    def get_cos_i(self, orbit, squeeze=False):
+    def get_cos_i(self, orbit) -> NDArray[np.float64]:
         """
         Compute the cosine incidence.
 
@@ -259,9 +183,6 @@ class GeoImagePoints(GeoPoints, ImagePoints):
         ----------
         orbit : eos.sar.orbit.Orbit
             Orbit instance.
-         squeeze : Boolean, optional
-             If True, and if only one element in the Geo Point, return float instead of array.
-             The default is False.
 
         Returns
         -------
@@ -274,52 +195,11 @@ class GeoImagePoints(GeoPoints, ImagePoints):
             np.column_stack([self.gx, self.gy, self.gz]), sat
         )
 
-        return self._get_val(cos_i, squeeze)
+        return cos_i
 
-    def add_geo(self, dgx=None, dgy=None, dgz=None):
-        """
-        Add a shift to geocentric coordinates. If shift is kept as None, no shift
-        is applied in the specified axis direction.
 
-        Parameters
-        ----------
-        dgx : float or 1d array, optional
-            Shift to add to X geocentric coord. The default is None.
-        dgy : float or 1d array, optional
-            Shift to add to Y geocentric coord. The default is None.
-        dgz : float or 1d array, optional
-            Shift to add to Z geocentric coord. The default is None.
-
-        Returns
-        -------
-        GeoImagePoints
-            New shifted GeoImagePoints.
-
-        """
-        gx, gy, gz = self._add_geo_as_tuple(dgx, dgy, dgz)
-        return GeoImagePoints(gx, gy, gz, self.azt, self.rng)
-
-    def add_azt_rng(self, dazt=None, drng=None):
-        """
-        Add the coordinate shifts. If shift is None, don't add anything in this
-        dimension.
-
-        Parameters
-        ----------
-        dazt : float or 1darray, optional
-            Shift on azimuth. The default is None.
-        drng : float or 1darray, optional
-            Shift on range. The default is None.
-
-        Returns
-        -------
-        GeoImagePoint
-            New Shifted GeoImagePoints.
-
-        """
-        return GeoImagePoints(
-            self.gx, self.gy, self.gz, *self._add_azt_rng_as_tuple(dazt, drng)
-        )
+_GeoP = TypeVar("_GeoP", bound=GeoPoints)
+_ImageP = TypeVar("_ImageP", bound=ImagePoints)
 
 
 def invert_or_None(shift=None):
@@ -330,21 +210,15 @@ def invert_or_None(shift=None):
         return -shift
 
 
-class GeoCorrection(abc.ABC):
+@dataclass(frozen=True)
+class GeoCorrection:
     """Correction on x, y, z geocentric coordinates"""
 
-    def __init__(self):
-        """Constructor, set shifts to None."""
-        self.dgx = None
-        self.dgy = None
-        self.dgz = None
+    dgx: Optional[Any]
+    dgy: Optional[Any]
+    dgz: Optional[Any]
 
-    @abc.abstractmethod
-    def estimate(self, pt: Points):
-        """Here self.dg[x, y, z] will be set to other than None."""
-        pass
-
-    def apply(self, geo_pt: GeoPoints, inverse=False):
+    def apply(self, geo_pt: _GeoP, inverse=False) -> _GeoP:
         """
         Apply GeoCorrection on a GeoPoint.
 
@@ -372,20 +246,14 @@ class GeoCorrection(abc.ABC):
         return geo_pt.add_geo(self.dgx, self.dgy, self.dgz)
 
 
-class ImageCorrection(abc.ABC):
+@dataclass(frozen=True)
+class ImageCorrection:
     """Correction on azt, rng image coordinates"""
 
-    def __init__(self):
-        """Constructor, set shifts to None."""
-        self.dazt = None
-        self.drng = None
+    dazt: Optional[Any]
+    drng: Optional[Any]
 
-    @abc.abstractmethod
-    def estimate(self, pt: GeoImagePoints):
-        """Here self.dazt, self.drng will be estimated."""
-        pass
-
-    def apply(self, im_pt: GeoImagePoints, inverse=False):
+    def apply(self, im_pt: _ImageP, inverse=False) -> _ImageP:
         """
         Apply the Coordinate Correction.
 
@@ -402,8 +270,6 @@ class ImageCorrection(abc.ABC):
             New shifted GeoImagePoints instance.
 
         """
-        # here Coord correction will be applied
-
         if inverse:
             return im_pt.add_azt_rng(
                 invert_or_None(self.dazt), invert_or_None(self.drng)
@@ -412,30 +278,45 @@ class ImageCorrection(abc.ABC):
         return im_pt.add_azt_rng(self.dazt, self.drng)
 
 
-class Corrector:
-    """Corrector class containing multiple corrections."""
+class GeoCorrectionEstimator(abc.ABC):
+    @abc.abstractmethod
+    def estimate(self, pt: GeoImagePoints) -> GeoCorrection: ...
 
-    def __init__(self, corrections: Sequence[ImageCorrection] = []):
+
+class ImageCorrectionEstimator(abc.ABC):
+    @abc.abstractmethod
+    def estimate(self, pt: GeoImagePoints) -> ImageCorrection:
         """
-        Constructor.
+        Estimate the corrections dazt, drng.
 
         Parameters
         ----------
-        corrections : list, optional
-            Each element is a correction. The default is [].
+        pt : GeoImagePoints
+            GeoImagePoints on which to compute the corrections.
 
         Returns
         -------
-        None.
-
+        ImageCorrection:
+            The estimated corrections to be applied on the points.
         """
-        self.corrections = corrections
+
+
+@dataclass(frozen=True)
+class Corrector:
+    """Corrector class containing multiple corrections."""
+
+    estimators: Sequence[Union[ImageCorrectionEstimator, GeoCorrectionEstimator]] = (
+        dataclasses.field(default_factory=list)
+    )
+    """ Each element is a correction. The default is []. """
 
     def empty(self):
         """Check if corrector has 0 corrections."""
-        return len(self.corrections) == 0
+        return len(self.estimators) == 0
 
-    def estimate(self, geo_im_pt: GeoImagePoints):
+    def estimate(
+        self, geo_im_pt: GeoImagePoints
+    ) -> list[Union[GeoCorrection, ImageCorrection]]:
         """
         All corrections are estimated on initial (uncorrected) Points.
 
@@ -446,19 +327,25 @@ class Corrector:
 
         Returns
         -------
-        None.
+        list of ImageCorrection | GeoCorrection
 
         """
-        for correc in self.corrections:
-            correc.estimate(geo_im_pt)
+        return [estimator.estimate(geo_im_pt) for estimator in self.estimators]
 
-    def apply(self, geo_im_pt: GeoImagePoints, inverse=False):
+    def apply(
+        self,
+        corrections: Sequence[Union[GeoCorrection, ImageCorrection]],
+        geo_im_pt: GeoImagePoints,
+        inverse=False,
+    ) -> GeoImagePoints:
         """
         All corrections previously estimated are applied sequentially according
         to their list order.
 
         Parameters
         ----------
+        corrections:
+            Sequence of estimated corrections to apply.
         geo_im_pt : GeoImagePoints
             Uncorrected GeoImagePoints.
         inverse : Boolean, optional
@@ -470,11 +357,13 @@ class Corrector:
             Corrected GeoImagePoints.
 
         """
-        for correc in self.corrections:
+        for correc in corrections:
             geo_im_pt = correc.apply(geo_im_pt, inverse)
         return geo_im_pt
 
-    def estimate_and_apply(self, geo_im_pt: GeoImagePoints, inverse=False):
+    def estimate_and_apply(
+        self, geo_im_pt: GeoImagePoints, inverse=False
+    ) -> GeoImagePoints:
         """
         Estimate and apply the corrections.
 
@@ -488,23 +377,24 @@ class Corrector:
         geo_im_pt : GeoImagePoints
             Corrected GeoImagePoints.
         """
-        self.estimate(geo_im_pt)
-        return self.apply(geo_im_pt, inverse)
+        corrections = self.estimate(geo_im_pt)
+        return self.apply(corrections, geo_im_pt, inverse)
 
 
-class RngAztShift(ImageCorrection):
+@dataclass(frozen=True)
+class RngAztShift(ImageCorrectionEstimator):
     """Applies the same shift on all points in image coordinates."""
 
-    def __init__(self, rng_shift: float, azt_shift: float):
-        super().__init__()
-        self.rng_shift = rng_shift
-        self.azt_shift = azt_shift
+    rng_shift: float
+    azt_shift: float
 
-    def estimate(self, pt: GeoImagePoints):
+    @override
+    def estimate(self, pt: GeoImagePoints) -> ImageCorrection:
         """Makes shift arrays with the same lenght as points"""
         num_points = len(pt.azt)
-        self.drng = np.full((num_points,), self.rng_shift, dtype=float)
-        self.dazt = np.full((num_points,), self.azt_shift, dtype=float)
+        drng = np.full((num_points,), self.rng_shift, dtype=float)
+        dazt = np.full((num_points,), self.azt_shift, dtype=float)
+        return ImageCorrection(drng=drng, dazt=dazt)
 
 
 class SLCPxShiftCorrection(RngAztShift):

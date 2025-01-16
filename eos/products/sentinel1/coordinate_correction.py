@@ -1,20 +1,26 @@
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import numpy as np
+from typing_extensions import override
 
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.sar import const
 from eos.sar.atmospheric_correction import ApdCorrection
 from eos.sar.orbit import Orbit
-from eos.sar.projection_correction import Corrector, GeoImagePoints, ImageCorrection
+from eos.sar.projection_correction import (
+    Corrector,
+    GeoImagePoints,
+    ImageCorrection,
+    ImageCorrectionEstimator,
+)
 
 
-class IntraPulse(ImageCorrection):
+@dataclass(frozen=True)
+class IntraPulse(ImageCorrectionEstimator):
     """Intra-Pulse motion range correction. azimuth dependent range shift\
     depending on the Doppler frequency under which the target has been observed.
 
@@ -26,52 +32,25 @@ class IntraPulse(ImageCorrection):
     Observations and Remote Sensing 8.4 (2015): 1709-1720.
     """
 
-    def __init__(self, doppler: Sentinel1Doppler, chirp_rate: float):
-        """
-        Constructor.
+    doppler: Sentinel1Doppler
+    """ Object used to compute the Doppler info within a burst. """
+    chirp_rate: float
+    """ The linear FM rate at which the frequency changes over the pulse duration [Hz/s]. """
 
-        Parameters
-        ----------
-        doppler : Sentinel1Doppler
-            Object used to compute the Doppler info within a burst.
-        chirp_rate : float
-            The linear FM rate at which the frequency changes over the pulse duration [Hz/s].
-            The default is None..
-
-        Returns
-        -------
-        None.
-
-        """
-        super().__init__()
-        self.chirp_rate = chirp_rate
-        self.doppler = doppler
-
-    def estimate(self, im_pt: GeoImagePoints):
-        """
-        Estimate the corrections dazt, drng. Here only drng will be set.
-
-        Parameters
-        ----------
-        im_pt : ImagePoints
-            ImagePoints on which to compute the corrections.
-
-        Returns
-        -------
-        None.
-
-        """
-        # here self.dazt, self.drng will be estimated
-        azt, rng = im_pt.get_azt_rng()
+    @override
+    def estimate(self, pt: GeoImagePoints) -> ImageCorrection:
+        azt, rng = pt.get_azt_rng()
 
         _, _, f_geom, f = self.doppler.get_doppler_quantities(
             azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC
         )
 
-        self.drng = -(f + f_geom) / self.chirp_rate * const.LIGHT_SPEED_M_PER_SEC / 2
+        drng = -(f + f_geom) / self.chirp_rate * const.LIGHT_SPEED_M_PER_SEC / 2
+        return ImageCorrection(drng=drng, dazt=None)
 
 
-class Bistatic(ImageCorrection):
+@dataclass(frozen=True)
+class Bistatic(ImageCorrectionEstimator):
     """
     bistatic residual error correction, as described by Schubert et al in
     Sentinel-1A Product Geolocation Accuracy: Commissioning Phase
@@ -79,51 +58,25 @@ class Bistatic(ImageCorrection):
     slant range (col coordinate)
     """
 
-    def __init__(self, slant_range_time, samples_per_burst, range_frequency):
-        """
-        Create Bistatic object.
+    slant_range_time: float
+    """ Two way time to the first column in the sentinel1 raster. """
+    samples_per_burst: int
+    """ Number of columns per burst in the sentinel1 raster. """
+    range_frequency: float
+    """ Two way range time sampling frequency . """
 
-        Parameters
-        ----------
-        slant_range_time : float
-            Two way time to the first column in the sentinel1 raster.
-        samples_per_burst : int
-            Number of columns per burst in the sentinel1 raster.
-        range_frequency : float
-            Two way range time sampling frequency .
-
-        Returns
-        -------
-        None.
-
-        """
-        super().__init__()
-        self.slant_range_time = slant_range_time
-        self.samples_per_burst = samples_per_burst
-        self.range_frequency = range_frequency
-
-    def estimate(self, im_pt: GeoImagePoints):
-        """
-        Estimate the corrections dazt, drng. Here only dazt will be set.
-
-        Parameters
-        ----------
-        im_pt : ImagePoints
-            ImagePoints on which to compute the corrections.
-
-        Returns
-        -------
-        None.
-
-        """
-        _, rng = im_pt.get_azt_rng()
+    @override
+    def estimate(self, pt: GeoImagePoints) -> ImageCorrection:
+        _, rng = pt.get_azt_rng()
 
         # Simple bistatic correction
-        self.dazt = -0.5 * (
+        dazt = -0.5 * (
             2 * rng / const.LIGHT_SPEED_M_PER_SEC
             - self.slant_range_time
             - 0.5 * self.samples_per_burst / self.range_frequency
         )
+
+        return ImageCorrection(drng=None, dazt=dazt)
 
 
 @dataclass(frozen=True)
@@ -134,15 +87,6 @@ class FullBistaticReference:
     """Number of columns per burst in the sentinel1 raster of IW2."""
     range_frequency: float
     """Two way range time sampling frequency of IW2."""
-
-    def __getitem__(self, name: str) -> Any:
-        import warnings
-
-        warnings.warn(
-            "Indexing a FullBistaticReference is deprecated (they no longer are dict).",
-            DeprecationWarning,
-        )
-        return self.__dict__[name]
 
     @staticmethod
     def from_burst_metadata(burst: Sentinel1BurstMetadata) -> FullBistaticReference:
@@ -162,7 +106,8 @@ class FullBistaticReference:
         return FullBistaticReference(**d)
 
 
-class FullBistatic(ImageCorrection):
+@dataclass(frozen=True)
+class FullBistatic(ImageCorrectionEstimator):
     """
     full bistatic error correction, as described by Gisinger et al., in
     "Recent Findings on the Sentinel-1 Geolocation Accuracy Using the
@@ -172,61 +117,31 @@ class FullBistatic(ImageCorrection):
     samples_per_burst and range_frequency from the ref metadata
     """
 
-    def __init__(
-        self, full_bistatic_reference: FullBistaticReference, pri: float, rank: float
-    ):
-        """
-        Create FullBistatic object.
+    full_bistatic_reference: FullBistaticReference
+    """ Metadata extracted from the IW2 raster. """
+    pri: float
+    """ Pulse Repetition Interval [s]. """
+    rank: float
+    """ The number of PRI between transmitted pulse and return echo. """
 
-        Parameters
-        ----------
-        full_bistatic_reference : FullBistaticReference
-            Metadata extracted from the IW2 raster
-        pri: float
-            Pulse Repetition Interval [s].
-        rank: float
-            The number of PRI between transmitted pulse and return echo.
-
-        Returns
-        -------
-        None.
-
-        """
-        super().__init__()
-        self.ref_slant_range_time = full_bistatic_reference.slant_range_time
-        self.ref_samples_per_burst = full_bistatic_reference.samples_per_burst
-        self.ref_range_frequency = full_bistatic_reference.range_frequency
-        self.pri = pri
-        self.rank = rank
-
-    def estimate(self, im_pt: GeoImagePoints):
-        """
-        Estimate the corrections dazt, drng. Here only dazt will be set.
-
-        Parameters
-        ----------
-        im_pt : ImagePoints
-            ImagePoints on which to compute the corrections.
-
-        Returns
-        -------
-        None.
-
-        """
-        _, rng = im_pt.get_azt_rng()
+    @override
+    def estimate(self, pt: GeoImagePoints) -> ImageCorrection:
+        _, rng = pt.get_azt_rng()
 
         # Full bistatic correction
         dazt = -(
             (
-                self.ref_slant_range_time
-                + 0.5 * self.ref_samples_per_burst / self.ref_range_frequency
+                self.full_bistatic_reference.slant_range_time
+                + 0.5
+                * self.full_bistatic_reference.samples_per_burst
+                / self.full_bistatic_reference.range_frequency
             )
             / 2
             - self.rank * self.pri
             + (2 * rng / const.LIGHT_SPEED_M_PER_SEC) / 2
         )
 
-        self.dazt = dazt
+        return ImageCorrection(dazt=dazt, drng=None)
 
 
 def get_k_geo(orbit: Orbit, azt, points, wavelength: float):
@@ -266,7 +181,8 @@ def get_k_geo(orbit: Orbit, azt, points, wavelength: float):
     return -2 * combined / (wavelength * np.linalg.norm(D, axis=1))
 
 
-class AltFmMismatch(ImageCorrection):
+@dataclass(frozen=True)
+class AltFmMismatch(ImageCorrectionEstimator):
     """
     This correction corresponds to an azimuth shift, approx. linear w.r.t.
     the az. position in the burst, and dependent on the topography error
@@ -279,44 +195,17 @@ class AltFmMismatch(ImageCorrection):
         https://doi.org/10.1109/tgrs.2019.2961248
     """
 
-    def __init__(self, doppler: Sentinel1Doppler, orbit: Orbit, wavelength: float):
-        """
-        Create an AltFmMismatch instance.
+    doppler: Sentinel1Doppler
+    """ Doppler object. """
+    orbit: Orbit
+    """ Orbit object. """
+    wavelength: float
+    """ Carrier wavelength. """
 
-        Parameters
-        ----------
-        doppler : Sentinel1Doppler
-            Doppler object.
-        orbit : Orbit
-            Orbit object.
-        wavelength : float
-            Carrier wavelength.
-
-        Returns
-        -------
-        None.
-        """
-        super().__init__()
-        self.doppler = doppler
-        self.orbit = orbit
-        self.wavelength = wavelength
-
-    def estimate(self, geo_im_pt: GeoImagePoints):
-        """
-        Estimate the corrections dazt, drng. Here only dazt will be set.
-
-        Parameters
-        ----------
-        geo_im_pt : GeoImagePoints
-            GeoImagePoints on which to compute the corrections.
-
-        Returns
-        -------
-        None.
-
-        """
-        azt, rng = geo_im_pt.get_azt_rng()
-        gx, gy, gz = geo_im_pt.get_geo()
+    @override
+    def estimate(self, pt: GeoImagePoints) -> ImageCorrection:
+        azt, rng = pt.get_azt_rng()
+        gx, gy, gz = pt.get_geo()
 
         k_geo = get_k_geo(
             self.orbit, azt, np.column_stack([gx, gy, gz]), self.wavelength
@@ -329,7 +218,8 @@ class AltFmMismatch(ImageCorrection):
         ) = self.doppler.get_doppler_quantities(
             azt, 2 * rng / const.LIGHT_SPEED_M_PER_SEC
         )
-        self.dazt = (f + f_geom) * (1 / k_geo - 1 / range_dependent_doppler_rate)
+        dazt = (f + f_geom) * (1 / k_geo - 1 / range_dependent_doppler_rate)
+        return ImageCorrection(dazt=dazt, drng=None)
 
 
 def s1_corrections_from_meta(
@@ -341,7 +231,7 @@ def s1_corrections_from_meta(
     full_bistatic_reference: Optional[FullBistaticReference] = None,
     intra_pulse: bool = False,
     alt_fm_mismatch: bool = False,
-) -> list[ImageCorrection]:
+) -> list[ImageCorrectionEstimator]:
     """
     S1 corrections from burst metadata.
 
@@ -372,22 +262,14 @@ def s1_corrections_from_meta(
         Each element is a ImageCorrection.
 
     """
-    coord_corrections: list[ImageCorrection] = []
+    coord_corrections: list[ImageCorrectionEstimator] = []
 
     if apd:
         coord_corrections.append(ApdCorrection(orbit))
 
     if bistatic:
-        bistatic_corr: ImageCorrection
+        bistatic_corr: ImageCorrectionEstimator
         if full_bistatic_reference is not None:
-            if isinstance(full_bistatic_reference, dict):
-                warnings.warn(
-                    "Using dict for `full_bistatic_reference` is deprecated. Use a full_bistatic_reference object.",
-                    DeprecationWarning,
-                )
-                full_bistatic_reference = FullBistaticReference.from_dict(
-                    full_bistatic_reference
-                )
             bistatic_corr = FullBistatic(
                 full_bistatic_reference, burst_meta.pri, burst_meta.rank
             )
@@ -436,4 +318,4 @@ def s1_corrector_from_meta(
 
     """
     coord_corrections = s1_corrections_from_meta(burst_meta, orbit, doppler, **kwargs)
-    return Corrector(coord_corrections)
+    return Corrector(estimators=coord_corrections)

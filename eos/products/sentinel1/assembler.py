@@ -30,7 +30,7 @@ from eos.products.sentinel1.proj_model import (
 )
 from eos.sar.io import ImageReader
 from eos.sar.orbit import Orbit, StateVector
-from eos.sar.projection_correction import Corrector, ImageCorrection
+from eos.sar.projection_correction import Corrector, ImageCorrectionEstimator
 from eos.sar.roi import Roi
 
 
@@ -244,7 +244,7 @@ class Sentinel1Assembler:
         full_bistatic: bool = False,
         intra_pulse: bool = False,
         alt_fm_mismatch: bool = False,
-    ) -> list[ImageCorrection]:
+    ) -> list[ImageCorrectionEstimator]:
         burst_meta = self.get_single_burst_meta(bsid)
         coord_corrections = sentinel1.coordinate_correction.s1_corrections_from_meta(
             burst_meta,

@@ -204,8 +204,8 @@ def _geom_to_roi(
 ) -> Roi:
     # here we need to assume that the dem is roughly corresponding to the desired geometry
     # and we compute the min/max alt, so that the projections correspond to "worst cases".
-    min_alt = np.nanmin(dem.array) - alt_margin
-    max_alt = np.nanmax(dem.array) + alt_margin
+    min_alt = float(np.nanmin(dem.array)) - alt_margin
+    max_alt = float(np.nanmax(dem.array)) + alt_margin
 
     geom_coords = geometry.exterior.coords[:]
     lons = [c[0] for c in geom_coords] * 2
