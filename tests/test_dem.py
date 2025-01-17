@@ -139,3 +139,18 @@ def test_dem_elevation_outofbounds():
         dem.elevation(lon, lat - 0.6)
     with pytest.raises(eos.dem.OutOfBoundsException):
         dem.elevation(lon, lat + 0.6)
+
+
+def test_mydemsource(tmp_path):
+    lon = 31.1
+    lat = 31.5
+    bounds = (lon - 0.5, int(lat - 0.5), lon + 0.5, lat + 0.5)
+    dem = eos.dem.SRTM4Source().fetch_dem(bounds)
+
+    path = tmp_path / "dem.tif"
+    eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, path)
+
+    source = eos.dem.MyDEMSource(path)
+    dem2 = source.fetch_dem(bounds)
+    assert dem.elevation(lon, lat) == dem2.elevation(lon, lat)
+    assert dem.get_extent() == dem2.get_extent()
