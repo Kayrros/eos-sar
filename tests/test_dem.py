@@ -154,3 +154,13 @@ def test_mydemsource(tmp_path):
     dem2 = source.fetch_dem(bounds)
     assert dem.elevation(lon, lat) == dem2.elevation(lon, lat)
     assert dem.get_extent() == dem2.get_extent()
+
+    # check the `margin` parameter
+    source = eos.dem.MyDEMSource(path, margin=0.1)
+    dem2 = source.fetch_dem(bounds)
+    assert dem.elevation(lon, lat) == dem2.elevation(lon, lat)
+    assert dem.get_extent() == dem2.get_extent()
+    assert source.get_extent()[0] < dem.get_extent()[0]
+    assert source.get_extent()[1] < dem.get_extent()[1]
+    assert source.get_extent()[2] > dem.get_extent()[2]
+    assert source.get_extent()[3] > dem.get_extent()[3]
