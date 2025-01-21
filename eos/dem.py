@@ -420,10 +420,10 @@ class MyDEMSource(DEMSource):
         Parameters
         ----------
         path_to_dem : str
-            Path to the DEM file.
+            Path to the DEM file. The DEM has to be projected on EPSG:4326.
         margin : float, optional
             If not None, Extent of the margins for the padding around the DEM.
-            The unit is the one of the horizontal axes of the DEM.
+            The unit is degree (from EPSG:4326).
         set_nan : bool
             Set to True if you want to fill NoData Values of the DEM with np.nan.
             The default is True.
@@ -438,6 +438,9 @@ class MyDEMSource(DEMSource):
         nodata = dem_reader.meta["nodata"]
         if set_nan:
             nodata = np.nan
+
+        if dem_reader.meta["crs"] != rasterio.CRS.from_epsg(4326):
+            raise ValueError(f"CRS of '{path_to_dem}'")
 
         # Get the DEM
         if set_nan:
