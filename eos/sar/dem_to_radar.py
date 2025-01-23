@@ -221,15 +221,16 @@ def dem_radarcoding(
     x = crop_roi.crop_array(x)
     y = crop_roi.crop_array(y)
     raster = crop_roi.crop_array(dem.array)
-
+    mask = ~np.isnan(raster)
+    assert np.any(mask), "The DEM exclusively contains NaNs in geometry"
     # get meshgrid on which to predict
     cols_grid, rows_grid = roi.get_meshgrid()
     # Call function to project (x, y, raster) points inside approx geom
     # build a height interpolator and predict it on rows and cols meshgrid
     radarcoded = get_radar_dem(
-        x.ravel(),
-        y.ravel(),
-        raster.ravel(),
+        x[mask],
+        y[mask],
+        raster[mask],
         model,
         rows_grid,
         cols_grid,
