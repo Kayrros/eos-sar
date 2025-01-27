@@ -43,6 +43,7 @@ class DirectoryBuilder:
         imgs_dir="imgs",
         flat_dir="flat",
         topo_dir="topo",
+        ortho_dir="orthorectifier",
         makedirs=True,
     ):
         self.dstdir = dstdir
@@ -52,6 +53,7 @@ class DirectoryBuilder:
         self.imgs_dir = os.path.join(self.dstdir, imgs_dir)
         self.flat_dir = os.path.join(self.dstdir, flat_dir)
         self.topo_dir = os.path.join(self.dstdir, topo_dir)
+        self.ortho_dir = os.path.join(self.dstdir, ortho_dir)
 
         if makedirs:
             out_dirs = [
@@ -60,6 +62,7 @@ class DirectoryBuilder:
                 self.imgs_dir,
                 self.flat_dir,
                 self.topo_dir,
+                self.ortho_dir,
             ]
 
             for out_dir in out_dirs:
@@ -88,6 +91,18 @@ class DirectoryBuilder:
 
     def get_svg_path(self):
         return os.path.join(self.dstdir, "loc.svg")
+
+    def get_pickle_path(self, date):
+        return formatter(self.meta_dir, date, ".pickle")
+
+    def get_lut_path(self):
+        return os.path.join(self.ortho_dir, "lut.tif")
+
+    def get_ortho_path(self):
+        return os.path.join(self.ortho_dir, "orthorectifier.json")
+
+    def get_proj_model_path(self):
+        return os.path.join(self.ortho_dir, "proj_model.json")
 
 
 class OvlDirectoryBuilder(DirectoryBuilder):
@@ -225,6 +240,15 @@ def imcoords_to_svg(im_coords, svg_path):
 def save_img(path, array):
     tifffile.imwrite(path, array)
 
+def read_img(path, roi=None):
+    reader = rasterio.open(path, "r")
+    if roi is None:
+        return reader.read().squeeze()
+    else:
+        if isinstance(roi, Roi):
+            return io.read_window(reader, roi, False)
+        elif isinstance(roi, list):
+            return io.read_windows(reader, roi, False)
 
 class DirectoryReader:
     def __init__(self, dir_builder):
@@ -265,6 +289,8 @@ class DirectoryReader:
     def read_topo_phase(self, dates, roi=None):
         return self._read_simulation(dates, self.dir_builder.get_topo_path, roi)
 
+    #def read_radar_dem(self, roi=None):
+    #    return self._read(self, self.dir_builder.get_radar_dem_path, False, roi):
 
 class OvlDirectoryReader(DirectoryReader):
     def read_imgs(self, osid, dates, roi=None, get_complex=True):  # type: ignore[override]

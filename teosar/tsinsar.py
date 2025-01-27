@@ -6,7 +6,7 @@ import os
 from functools import partial
 from typing import Callable, Iterator, Optional, Union
 
-import phoenix.catalog
+#import phoenix.catalog # commented by RG
 import shapely.wkt
 import tqdm
 
