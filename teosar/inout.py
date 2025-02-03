@@ -289,9 +289,6 @@ class DirectoryReader:
     def read_topo_phase(self, dates, roi=None):
         return self._read_simulation(dates, self.dir_builder.get_topo_path, roi)
 
-    #def read_radar_dem(self, roi=None):
-    #    return self._read(self, self.dir_builder.get_radar_dem_path, False, roi):
-
 class OvlDirectoryReader(DirectoryReader):
     def read_imgs(self, osid, dates, roi=None, get_complex=True):  # type: ignore[override]
         return [
