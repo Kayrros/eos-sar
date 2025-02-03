@@ -6,7 +6,6 @@ import os
 from functools import partial
 from typing import Callable, Iterator, Optional, Union
 
-#import phoenix.catalog # commented by RG
 import shapely.wkt
 import tqdm
 
@@ -231,7 +230,7 @@ def get_orbits(
         .get_collection("esa-sentinel-1-csar-aux")
         .at("aws:proxima:kayrros-prod-sentinel-aux")
     )
-
+    import phoenix.catalog
     assert orbit_type in (True, False, None, "orbpoe", "orbres")
     orbit_quality: list[orbit_catalog.OrbitFileType] = {  # type: ignore
         True: orbit_catalog.BestEffort,
