@@ -339,7 +339,7 @@ class SecondaryPipeline(Pipeline):
         self.registrator = None
         self.roi = None
         self.deburster = None
-        self.save_pipeline_to_pickle()
+        #self.save_pipeline_to_pickle() # uncomment if you need to save the pickle
 
         return True
 
