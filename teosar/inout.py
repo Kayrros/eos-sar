@@ -240,15 +240,15 @@ def imcoords_to_svg(im_coords, svg_path):
 def save_img(path, array):
     tifffile.imwrite(path, array)
 
-def read_img(path, roi=None):
-    reader = rasterio.open(path, "r")
-    if roi is None:
-        return reader.read().squeeze()
-    else:
-        if isinstance(roi, Roi):
-            return io.read_window(reader, roi, False)
-        elif isinstance(roi, list):
-            return io.read_windows(reader, roi, False)
+def read_img(path, roi=None, get_complex=False):
+    with rasterio.open(path, "r") as reader:
+        if roi is None:
+            return reader.read().squeeze()
+        else:
+            if isinstance(roi, Roi):
+                return io.read_window(reader, roi, get_complex)
+            elif isinstance(roi, list):
+                return io.read_windows(reader, roi, get_complex)
 
 class DirectoryReader:
     def __init__(self, dir_builder):
