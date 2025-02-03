@@ -333,7 +333,6 @@ class SecondaryPipeline(Pipeline):
             )
             return False
 
-        #self.simulate_phase(primary_proj_model, roi, heights)
         self.save_log()
 
         self.dem_source = None
