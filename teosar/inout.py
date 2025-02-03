@@ -243,12 +243,11 @@ def save_img(path, array):
 def read_img(path, roi=None, get_complex=False):
     with rasterio.open(path, "r") as reader:
         if roi is None:
-            return reader.read().squeeze()
-        else:
-            if isinstance(roi, Roi):
-                return io.read_window(reader, roi, get_complex)
-            elif isinstance(roi, list):
-                return io.read_windows(reader, roi, get_complex)
+            roi = Roi(0 ,0, reader.width, reader.height)
+        if isinstance(roi, Roi):
+            return io.read_window(reader, roi, get_complex)
+        elif isinstance(roi, list):
+            return io.read_windows(reader, roi, get_complex)
 
 class DirectoryReader:
     def __init__(self, dir_builder):
