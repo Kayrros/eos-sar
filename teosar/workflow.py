@@ -4,7 +4,6 @@ from typing import Optional
 import numpy as np
 import tifffile
 import pickle
-#from burster.goburster import BursterException # commented by RG
 
 import eos.dem
 import eos.products.sentinel1
@@ -328,7 +327,7 @@ class SecondaryPipeline(Pipeline):
         try:
             #self.deburst(deburster, polarization, calibrate, get_complex)
             self.deburst_simulate_phase(primary_proj_model, roi, heights, deburster, polarization, calibrate, get_complex)
-        except: #BursterException as e: # commented by RG
+        except Exception as e:
             logger.warning(
                 f"Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
             )
