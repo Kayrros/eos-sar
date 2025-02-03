@@ -1,9 +1,9 @@
 import logging
+import pickle
 from typing import Optional
 
 import numpy as np
 import tifffile
-import pickle
 
 import eos.dem
 import eos.products.sentinel1
@@ -40,30 +40,6 @@ class Pipeline:
 
     def save_log(self):
         inout.dict_to_json(self.log, self.dir_builder.get_meta_path(self.date))
-
-    # Save pipeline for later
-    @conditional_profiler(PROF)
-    def save_pipeline_to_pickle(self):
-
-        pickle_name = self.dir_builder.get_pickle_path(self.date)
-
-        # database
-        db = {}
-        db['product_ids'] = self.product_ids
-        db['dir_builder'] = self.dir_builder
-        db['log'] = self.log
-        db['proj_model'] = self.proj_model
-        db['deburster'] = self.deburster
-        db['registrator'] = self.registrator
-        db['dem_source'] = self.dem_source
-        db['roi'] = self.roi
-
-        # use binary mode
-        dbfile = open(pickle_name, 'wb')
-
-        # source, destination
-        pickle.dump(db, dbfile)
-        dbfile.close()
 
 
 class PrimaryPipeline(Pipeline):
@@ -153,27 +129,39 @@ class PrimaryPipeline(Pipeline):
         inout.save_img(self.dir_builder.get_img_path(self.date), debursted_crop)
 
     @conditional_profiler(PROF)
-    def build_orthorectifier(self, res = 20):
+    def build_orthorectifier(self, res=20):
         print("set orthorectifier")
         primary_model = self.proj_model
         roi_in_primary = self.roi
         dem = self.dem
 
-        cropped_proj = primary_model.to_cropped_mosaic(roi_in_primary) # geometrical model on your ROI
-        ortho_roi = eos.sar.roi.Roi(0, 0, roi_in_primary.w, roi_in_primary.h) # set origin of your ROI to 0
-        self.orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(cropped_proj, ortho_roi, res, crs=None, align=None, dem=dem) # orthorectifier
+        cropped_proj = primary_model.to_cropped_mosaic(
+            roi_in_primary
+        )  # geometrical model on your ROI
+        ortho_roi = eos.sar.roi.Roi(
+            0, 0, roi_in_primary.w, roi_in_primary.h
+        )  # set origin of your ROI to 0
+        self.orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(
+            cropped_proj, ortho_roi, res, crs=None, align=None, dem=dem
+        )  # orthorectifier
 
     @conditional_profiler(PROF)
     def save_orthorectifier(self):
-
         # Save basic info of orthorectifier
-        self.ortho_json= {'shape': self.orthorectifier.shape,
-            'crs': self.orthorectifier.crs,
-            'transform': self.orthorectifier.transform}
+        self.ortho_json = {
+            "shape": self.orthorectifier.shape,
+            "crs": self.orthorectifier.crs,
+            "transform": self.orthorectifier.transform,
+        }
         inout.dict_to_json(self.ortho_json, self.dir_builder.get_ortho_path())
 
         # Save lookup table
-        self.lut = np.vstack((np.expand_dims(self.orthorectifier.coordinate_map[0], axis=0), np.expand_dims(self.orthorectifier.coordinate_map[1], axis=0)))
+        self.lut = np.vstack(
+            (
+                np.expand_dims(self.orthorectifier.coordinate_map[0], axis=0),
+                np.expand_dims(self.orthorectifier.coordinate_map[1], axis=0),
+            )
+        )
         inout.save_img(self.dir_builder.get_lut_path(), self.lut)
 
     @conditional_profiler(PROF)
@@ -187,6 +175,29 @@ class PrimaryPipeline(Pipeline):
         self.radar_dem_path = self.dir_builder.get_radar_dem_path()
 
         tifffile.imsave(self.radar_dem_path, self.heights)
+
+    # Save pipeline for later
+    @conditional_profiler(PROF)
+    def save_pipeline_to_pickle(self):
+        pickle_name = self.dir_builder.get_pickle_path(self.date)
+
+        # database
+        db = {}
+        db["product_ids"] = self.product_ids
+        db["dir_builder"] = self.dir_builder
+        db["log"] = self.log
+        db["proj_model"] = self.proj_model
+        db["deburster"] = self.deburster
+        db["registrator"] = self.registrator
+        db["dem_source"] = self.dem_source
+        db["roi"] = self.roi
+
+        # use binary mode
+        dbfile = open(pickle_name, "wb")
+
+        # source, destination
+        pickle.dump(db, dbfile)
+        dbfile.close()
 
     def execute(
         self,
@@ -268,8 +279,19 @@ class SecondaryPipeline(Pipeline):
         inout.save_img(self.dir_builder.get_topo_path(self.date), topo_phase)
 
     @conditional_profiler(PROF)
-    def deburst_simulate_phase(self, primary_proj_model, roi, heights, deburster, polarization, calibrate, get_complex):
-        print(f"{self.date} debursting + applying flat and topographic phase corrections")
+    def deburst_simulate_phase(
+        self,
+        primary_proj_model,
+        roi,
+        heights,
+        deburster,
+        polarization,
+        calibrate,
+        get_complex,
+    ):
+        print(
+            f"{self.date} debursting + applying flat and topographic phase corrections"
+        )
 
         print(f" {self.date} debursting")
         readers = self.asm.get_image_readers(
@@ -299,7 +321,12 @@ class SecondaryPipeline(Pipeline):
         )
 
         # Write phase-corrected SLC, ready for interferogram calculation
-        inout.save_img(self.dir_builder.get_img_path(self.date), debursted_crop*np.exp(1j*flat_earth_phase, dtype=np.complex64)*np.exp(1j*topo_phase, dtype=np.complex64))
+        inout.save_img(
+            self.dir_builder.get_img_path(self.date),
+            debursted_crop
+            * np.exp(1j * flat_earth_phase, dtype=np.complex64)
+            * np.exp(1j * topo_phase, dtype=np.complex64),
+        )
 
     def execute(
         self,
@@ -325,8 +352,16 @@ class SecondaryPipeline(Pipeline):
             return False
 
         try:
-            #self.deburst(deburster, polarization, calibrate, get_complex)
-            self.deburst_simulate_phase(primary_proj_model, roi, heights, deburster, polarization, calibrate, get_complex)
+            # self.deburst(deburster, polarization, calibrate, get_complex)
+            self.deburst_simulate_phase(
+                primary_proj_model,
+                roi,
+                heights,
+                deburster,
+                polarization,
+                calibrate,
+                get_complex,
+            )
         except Exception as e:
             logger.warning(
                 f"Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
@@ -334,12 +369,6 @@ class SecondaryPipeline(Pipeline):
             return False
 
         self.save_log()
-
-        self.dem_source = None
-        self.registrator = None
-        self.roi = None
-        self.deburster = None
-        #self.save_pipeline_to_pickle() # uncomment if you need to save the pickle
 
         return True
 

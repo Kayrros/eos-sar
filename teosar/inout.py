@@ -240,14 +240,16 @@ def imcoords_to_svg(im_coords, svg_path):
 def save_img(path, array):
     tifffile.imwrite(path, array)
 
+
 def read_img(path, roi=None, get_complex=False):
     with rasterio.open(path, "r") as reader:
         if roi is None:
-            roi = Roi(0 ,0, reader.width, reader.height)
+            roi = Roi(0, 0, reader.width, reader.height)
         if isinstance(roi, Roi):
             return io.read_window(reader, roi, get_complex)
         elif isinstance(roi, list):
             return io.read_windows(reader, roi, get_complex)
+
 
 class DirectoryReader:
     def __init__(self, dir_builder):
@@ -287,6 +289,7 @@ class DirectoryReader:
 
     def read_topo_phase(self, dates, roi=None):
         return self._read_simulation(dates, self.dir_builder.get_topo_path, roi)
+
 
 class OvlDirectoryReader(DirectoryReader):
     def read_imgs(self, osid, dates, roi=None, get_complex=True):  # type: ignore[override]

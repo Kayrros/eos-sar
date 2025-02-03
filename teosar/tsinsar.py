@@ -226,6 +226,7 @@ def get_orbits(
     product_ids: list[list[str]], orbit_type, cache: Cache
 ) -> orbit_catalog.Sentinel1OrbitCatalogResult:
     import phoenix.catalog
+
     backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
         collection_source=phoenix.catalog.Client()
         .get_collection("esa-sentinel-1-csar-aux")
