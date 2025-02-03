@@ -6,7 +6,6 @@ import os
 from functools import partial
 from typing import Callable, Iterator, Optional, Union
 
-import phoenix.catalog
 import shapely.wkt
 import tqdm
 
@@ -226,12 +225,13 @@ def main(
 def get_orbits(
     product_ids: list[list[str]], orbit_type, cache: Cache
 ) -> orbit_catalog.Sentinel1OrbitCatalogResult:
+    import phoenix.catalog
+
     backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
         collection_source=phoenix.catalog.Client()
         .get_collection("esa-sentinel-1-csar-aux")
         .at("aws:proxima:kayrros-prod-sentinel-aux")
     )
-
     assert orbit_type in (True, False, None, "orbpoe", "orbres")
     orbit_quality: list[orbit_catalog.OrbitFileType] = {  # type: ignore
         True: orbit_catalog.BestEffort,

@@ -1,9 +1,9 @@
 import logging
+import pickle
 from typing import Optional
 
 import numpy as np
 import tifffile
-from burster.goburster import BursterException
 
 import eos.dem
 import eos.products.sentinel1
@@ -129,6 +129,42 @@ class PrimaryPipeline(Pipeline):
         inout.save_img(self.dir_builder.get_img_path(self.date), debursted_crop)
 
     @conditional_profiler(PROF)
+    def build_orthorectifier(self, res=20):
+        print("set orthorectifier")
+        primary_model = self.proj_model
+        roi_in_primary = self.roi
+        dem = self.dem
+
+        cropped_proj = primary_model.to_cropped_mosaic(
+            roi_in_primary
+        )  # geometrical model on your ROI
+        ortho_roi = eos.sar.roi.Roi(
+            0, 0, roi_in_primary.w, roi_in_primary.h
+        )  # set origin of your ROI to 0
+        self.orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(
+            cropped_proj, ortho_roi, res, crs=None, align=None, dem=dem
+        )  # orthorectifier
+
+    @conditional_profiler(PROF)
+    def save_orthorectifier(self):
+        # Save basic info of orthorectifier
+        self.ortho_json = {
+            "shape": self.orthorectifier.shape,
+            "crs": self.orthorectifier.crs,
+            "transform": self.orthorectifier.transform,
+        }
+        inout.dict_to_json(self.ortho_json, self.dir_builder.get_ortho_path())
+
+        # Save lookup table
+        self.lut = np.vstack(
+            (
+                np.expand_dims(self.orthorectifier.coordinate_map[0], axis=0),
+                np.expand_dims(self.orthorectifier.coordinate_map[1], axis=0),
+            )
+        )
+        inout.save_img(self.dir_builder.get_lut_path(), self.lut)
+
+    @conditional_profiler(PROF)
     def radarcode_dem(self):
         print("radarcoding dem")
 
@@ -139,6 +175,29 @@ class PrimaryPipeline(Pipeline):
         self.radar_dem_path = self.dir_builder.get_radar_dem_path()
 
         tifffile.imsave(self.radar_dem_path, self.heights)
+
+    # Save pipeline for later
+    @conditional_profiler(PROF)
+    def save_pipeline_to_pickle(self):
+        pickle_name = self.dir_builder.get_pickle_path(self.date)
+
+        # database
+        db = {}
+        db["product_ids"] = self.product_ids
+        db["dir_builder"] = self.dir_builder
+        db["log"] = self.log
+        db["proj_model"] = self.proj_model
+        db["deburster"] = self.deburster
+        db["registrator"] = self.registrator
+        db["dem_source"] = self.dem_source
+        db["roi"] = self.roi
+
+        # use binary mode
+        dbfile = open(pickle_name, "wb")
+
+        # source, destination
+        pickle.dump(db, dbfile)
+        dbfile.close()
 
     def execute(
         self,
@@ -157,10 +216,13 @@ class PrimaryPipeline(Pipeline):
         self.get_inputs(product_provider, statevectors, polarization)
         self.roi_info(roi_provider)
         self.download_dem()
+        self.build_orthorectifier()
+        self.save_orthorectifier()
         self.register(dem_sampling_ratio, bistatic, apd, intra_pulse, alt_fm_mismatch)
         self.deburst(polarization, calibrate, get_complex)
         self.radarcode_dem()
         self.save_log()
+        self.save_pipeline_to_pickle()
         return True
 
 
@@ -216,6 +278,56 @@ class SecondaryPipeline(Pipeline):
         inout.save_img(self.dir_builder.get_flat_path(self.date), flat_earth_phase)
         inout.save_img(self.dir_builder.get_topo_path(self.date), topo_phase)
 
+    @conditional_profiler(PROF)
+    def deburst_simulate_phase(
+        self,
+        primary_proj_model,
+        roi,
+        heights,
+        deburster,
+        polarization,
+        calibrate,
+        get_complex,
+    ):
+        print(
+            f"{self.date} debursting + applying flat and topographic phase corrections"
+        )
+
+        print(f" {self.date} debursting")
+        readers = self.asm.get_image_readers(
+            self.products,
+            self.burst_resampling_matrices.keys(),
+            polarization,
+            calibrate,
+        )
+
+        debursted_crop, read_rois_src, resamplers_on_roi = deburster.deburst(
+            self.cutter,
+            self.asm.get_burst_resampler,
+            self.burst_resampling_matrices,
+            readers,
+            get_complex,
+            reramp=True,
+        )
+
+        self.log["debursting"] = {
+            "read_rois_src": utils.roidict_to_tupledict(read_rois_src),
+            "resamplers_on_roi": {k: r.to_dict() for k, r in resamplers_on_roi.items()},
+        }
+
+        print(f" {self.date} Flat and topographic phase corrections")
+        flat_earth_phase, topo_phase = utils.estimate_corrections(
+            primary_proj_model, roi, self.proj_model, heights
+        )
+
+        # Write phase-corrected SLC, ready for interferogram calculation
+        inout.save_img(
+            self.dir_builder.get_img_path(self.date),
+            debursted_crop
+            * np.exp(1j * flat_earth_phase, dtype=np.complex64)
+            * np.exp(1j * topo_phase, dtype=np.complex64),
+        )
+
     def execute(
         self,
         product_provider,
@@ -240,15 +352,24 @@ class SecondaryPipeline(Pipeline):
             return False
 
         try:
-            self.deburst(deburster, polarization, calibrate, get_complex)
-        except BursterException as e:
+            # self.deburst(deburster, polarization, calibrate, get_complex)
+            self.deburst_simulate_phase(
+                primary_proj_model,
+                roi,
+                heights,
+                deburster,
+                polarization,
+                calibrate,
+                get_complex,
+            )
+        except Exception as e:
             logger.warning(
                 f"Exception {repr(e)} occured for secondary pipeline {self.product_ids}"
             )
             return False
 
-        self.simulate_phase(primary_proj_model, roi, heights)
         self.save_log()
+
         return True
 
 
