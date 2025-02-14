@@ -457,7 +457,9 @@ class MyDEMSource(DEMSource):
 
         # Set to ellipsoidal height if the given DEM is referenced relative to a geoid
         if geoid_name is not None:
-            assert has_demstitcher, "Should have dem_stitcher to convert altitudes from the geoid to the ellipsoid"
+            assert has_demstitcher, (
+                "Should have dem_stitcher to convert altitudes from the geoid to the ellipsoid"
+            )
             dem = dem_stitcher.geoid.remove_geoid(
                 dem_arr=dem,
                 dem_profile=dem_reader.profile,

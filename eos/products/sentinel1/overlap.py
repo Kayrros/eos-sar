@@ -110,9 +110,9 @@ class Osid:
         """
         self.bsint = bsint
         self.curr_bsid = curr_bsid
-        assert (
-            self.curr_bsid in self.bsint.bsids()
-        ), "Current burst should be among all overlapping bursts"
+        assert self.curr_bsid in self.bsint.bsids(), (
+            "Current burst should be among all overlapping bursts"
+        )
 
     def __str__(self):
         repr_str = f"{self.curr_bsid}__{str(self.bsint)}"

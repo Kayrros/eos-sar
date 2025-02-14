@@ -99,9 +99,9 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
     [1] R. M. Goldstein and C. L. Werner, “Radar interferogram filtering for geophysical applications,” 1998.
 
     """
-    assert (
-        patch_roi.get_shape() == filt_triangle.shape
-    ), "Patches and triangular filter must have the same shape"
+    assert patch_roi.get_shape() == filt_triangle.shape, (
+        "Patches and triangular filter must have the same shape"
+    )
 
     fft_win = patch_roi.crop_array(full_ifg)
     nan_mask = np.isnan(fft_win)
@@ -126,8 +126,10 @@ def transform_one_window(patch_roi, full_ifg, alpha, window_size, filt_triangle)
 
     # there is a risk to raise this error if the patch is fully 0
     # In practice, we should not have 0 data in the interferogram
-    assert filtered[0, 0], "Something is wrong, the filter is supposed to be\
+    assert filtered[0, 0], (
+        "Something is wrong, the filter is supposed to be\
     low-pass, the 0 frequency should not be suppressed"
+    )
     # normalize the filter so that its coefficients spatially sum up to 1
     filtered /= filtered[0, 0]
 
@@ -238,9 +240,9 @@ def apply(
     """
     assert img.dtype in (np.csingle, np.cdouble)
     assert alpha >= 0 and alpha <= 1, "alpha out of bounds"
-    assert (
-        window_size < 4 * step
-    ), "smoothing window size should be less than patch size"
+    assert window_size < 4 * step, (
+        "smoothing window size should be less than patch size"
+    )
 
     filt_triangle = triangular_filter(step)
 

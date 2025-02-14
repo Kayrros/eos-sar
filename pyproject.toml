@@ -54,7 +54,7 @@ include-package-data = false
 [dependency-groups]
 dev = [
     # linting
-    "ruff==0.8.5",
+    "ruff>=0.8.5",
     # mypy
     "mypy>=1.14.1",
     "types-python-dateutil>=2.9.0",

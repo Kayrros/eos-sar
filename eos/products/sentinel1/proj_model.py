@@ -618,9 +618,9 @@ class Sentinel1SwathModel(Sentinel1SLCBaseModel):
         if not hasattr(self, "overlaps"):
             self.compute_overlaps()
 
-        assert burst_id >= 0 and burst_id < len(
-            self.bursts_rois
-        ), "burst id out of bound"
+        assert burst_id >= 0 and burst_id < len(self.bursts_rois), (
+            "burst id out of bound"
+        )
         h, w = self.bursts_rois[burst_id].get_shape()
         ovl_prev = self.overlaps[burst_id - 1] if burst_id else 0
         ovl_next = self.overlaps[burst_id] if burst_id < len(self.overlaps) else 0

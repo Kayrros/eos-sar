@@ -501,9 +501,9 @@ def extract_bursts_metadata(
     dictbursts = i["swathTiming"]["burstList"]["burst"]
 
     if burst_ids:
-        assert min(burst_ids) >= 0 and max(burst_ids) < len(
-            dictbursts
-        ), "burst ids out of range"
+        assert min(burst_ids) >= 0 and max(burst_ids) < len(dictbursts), (
+            "burst ids out of range"
+        )
     else:
         burst_ids = range(len(dictbursts))
 
