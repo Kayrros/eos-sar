@@ -5,7 +5,12 @@ This package provides access to some generic SAR (Synthetic Aperture Radar) proc
 Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been implemented.
 
 ### Requirements & Installation
+
 To install the package in editable mode, you can run:
+
+	uv sync
+
+or
 
 	pip install -e .
 
@@ -51,8 +56,11 @@ The features shown in the tutorial are listed below:
 
 Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests.  Currently, only local tests will run and others will fail if you don't have these credentials. To run the tests locally, we use `pytest`:
 
-	pip install -r requirements-dev.txt
-	pytest .
+	uv run pytest .
+
+For Kayrros users:
+
+	uv run --all-extras pytest .
 
 For the future, all tests should be able to run locally, but test data should be downloaded beforehand. We plan to use data from ASF, similarly to the tutorial data, that can be downloaded by running in a shell:
 
@@ -69,8 +77,8 @@ The CI validates the code against pep8 rules and formatting, as configured in `p
 
 You can check your code locally before commiting using pre-commit or using:
 ```bash
-pip install $(grep ruff requirements-dev.txt)
-ruff check . --fix; ruff format .
+uv run ruff check . --fix
+uv run ruff format .
 ```
 
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.

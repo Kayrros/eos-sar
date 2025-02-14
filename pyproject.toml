@@ -1,6 +1,91 @@
+[project]
+name = "kayrros-eos-sar"
+authors = [
+    { name = "Kayrros"},
+    { name = "external collaborators" },
+]
+version = "0.37.0"
+requires-python = ">=3.9,<3.13"  # ortools not yet available in python 3.13
+dependencies = [
+    "numpy>=2.0.1",
+    "python-dateutil>=2.9.0",
+    "xmltodict>=0.14.0",
+    "lxml>=5.3.1",
+    "pyproj>=3.5.0",
+    "opencv-python-headless>=4.11.0",
+    "shapely>=2.0.4",
+    "scipy>=1.13.0",
+    "rasterio>=1.4.0",
+    "ortools>=9.12.0",
+    "requests>=2.32.3",
+    "typing-extensions>=4.12.0",
+]
+
+[project.optional-dependencies]
+teosar = [
+    "tqdm>=4.67.0",
+    "tifffile>=2024.1.0",
+    "tensorflow-probability[tf]>=0.24.0",  # see https://github.com/tensorflow/probability/releases/tag/v0.24.0
+    "siphash24>=1.0",  # pytools is required by pyopencl, and gives a warning: RecommendedHashNotFoundWarning: Unable to import recommended hash 'siphash24.siphash13',
+    "pyopencl>=2025.1",
+]
+teosar-light = [
+    "tqdm>=4.67.0",
+    "tifffile>=2024.1.0",
+]
+kayrros = [
+    "s1m>=1.3.4",
+    "multidem>=0.7.1",
+    "kayrros-phoenix[source-s3,plugin-burster]>=1.14.1",
+    "kayrros-osio>=0.3.0",
+    "kayrros-burster>=1.0.0",
+    "kayrros-bursterio>=0.2.0",
+]
+
 [build-system]
 requires = ["setuptools", "cython", "numpy"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["eos", "teosar"]
+# package data is specified in MANIFEST.in
+include-package-data = false
+
+[dependency-groups]
+dev = [
+    # linting
+    "ruff==0.8.5",
+    # mypy
+    "mypy>=1.14.1",
+    "types-python-dateutil>=2.9.0",
+    "types-requests>=2.30.0",
+    "types-setuptools>=69.2.0.20240317",
+    # testing
+    "pytest>=8.2.2",
+    "pytest-xdist>=3.6.1",
+    # dem sources
+    "srtm4[crop]>=1.2.4",
+    "dem-stitcher>=2.5.12",
+    # network access
+    "boto3>=1.34.133",
+    # usage/
+    "fire>=0.6.0",
+]
+
+[tool.uv.sources]
+s1m = { index = "kayrros" }
+multidem = { index = "kayrros" }
+kayrros-osio = { index = "kayrros" }
+kayrros-phoenix = { index = "kayrros" }
+kayrros-burster = { index = "kayrros" }
+kayrros-bursterio = { index = "kayrros" }
+
+[[tool.uv.index]]
+name = "kayrros"
+url = "https://pypi.dev-kayrros.ovh/"
+# Explicit means that the official PyPI will be used by default, except
+# when 'kayrros' is specified in tool.uv.sources.
+explicit = true
 
 [tool.ruff]
 line-length = 88

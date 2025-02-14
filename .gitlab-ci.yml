@@ -16,38 +16,21 @@ variables:
 
 test:
   stage: test
-  variables:
-    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  cache:
-    paths:
-    - .cache/pip
   tags:
     - high
-  before_script:
-    - pip install -r requirements.txt -r requirements-dev.txt
-    - pip install -e .
   script:
-    - pytest . -n auto -v
+    - uv run --all-extras pytest . -n auto -v
 
 checkstyle:
   stage: test
-  before_script:
-    - pip install $(grep ruff requirements-dev.txt)
   script:
-    - ruff check .
-    - ruff format --check .
+    - uv run ruff --no-dev --with ruff check .
+    - uv run ruff --no-dev --with ruff format --check .
 
 mypy:
   stage: test
-  variables:
-    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  cache:
-    paths:
-    - .cache/pip
-  before_script:
-    - pip install -r requirements.txt -r requirements-dev.txt
   script:
-    - mypy --non-interactive eos/ teosar/ tests/ usage/
+    - uv run --all-extras mypy --non-interactive eos/ teosar/ tests/ usage/
 
 fakedeploy:
   stage: test
