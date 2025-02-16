@@ -1,11 +1,5 @@
 default:
-  # boto3 requires urllib3<2 for python 3.9
-  #   https://github.com/boto/botocore/issues/3138
-  # but types-requests requests >=2
-  #   https://github.com/python/typeshed/blob/main/stubs/requests/METADATA.toml#L4
-  # so for the CI we use 3.10
-  # but eos-sar should stay compatible with 3.9 for a while
-  image: python:3.10
+  image: ghcr.io/astral-sh/uv:0.7-bookworm
 
 stages:
   - test
@@ -21,103 +15,34 @@ test:
   script:
     - uv run --all-extras pytest . -n auto -v
 
-checkstyle:
-  stage: test
-  script:
-    - uv run ruff --no-dev --with ruff check .
-    - uv run ruff --no-dev --with ruff format --check .
-
-mypy:
+lint:
   stage: test
   script:
     - uv run --all-extras mypy --non-interactive eos/ teosar/ tests/ usage/
+    - uv run ruff check .
+    - uv run ruff format --check .
 
 fakedeploy:
   stage: test
-  before_script:
-    - pip install twine
-    - pip install cython numpy
   script:
-    - python setup.py sdist
-    - python setup.py bdist_wheel
+    - uv build
+    - uv venv --seed
+    - source .venv/bin/activate
     - pip install dist/*.tar.gz
     - pip install dist/*.whl
 
-deploy-sdist:
+deploy:
   stage: deploy
-  before_script:
-    - pip install twine
-    - pip install cython numpy
+  variables:
+    UV_PUBLISH_USERNAME: "${PYPI_USERNAME}"
+    UV_PUBLISH_PASSWORD: "${PYPI_PASSWORD}"
+    UV_PUBLISH_URL: "https://pypi.dev-kayrros.ovh/"
   script:
-    - python setup.py sdist
-    - twine upload
-      --repository-url ${PIP_INDEX_URL}
-      -u ${PYPI_USERNAME}
-      -p ${PYPI_PASSWORD}
-      dist/*
-  only:
-    - tags
-
-deploy-wheel39:
-  stage: deploy
-  image: python:3.9
-  before_script:
-    - pip install twine
-    - pip install cython numpy
-  script:
-    - python setup.py bdist_wheel
-    - twine upload
-      --repository-url ${PIP_INDEX_URL}
-      -u ${PYPI_USERNAME}
-      -p ${PYPI_PASSWORD}
-      dist/*
-  only:
-    - tags
-
-deploy-wheel310:
-  stage: deploy
-  image: python:3.10
-  before_script:
-    - pip install twine
-    - pip install cython numpy
-  script:
-    - python setup.py bdist_wheel
-    - twine upload
-      --repository-url ${PIP_INDEX_URL}
-      -u ${PYPI_USERNAME}
-      -p ${PYPI_PASSWORD}
-      dist/*
-  only:
-    - tags
-
-deploy-wheel311:
-  stage: deploy
-  image: python:3.11
-  before_script:
-    - pip install twine
-    - pip install cython numpy
-  script:
-    - python setup.py bdist_wheel
-    - twine upload
-      --repository-url ${PIP_INDEX_URL}
-      -u ${PYPI_USERNAME}
-      -p ${PYPI_PASSWORD}
-      dist/*
-  only:
-    - tags
-
-deploy-wheel312:
-  stage: deploy
-  image: python:3.12
-  before_script:
-    - pip install twine setuptools
-    - pip install cython numpy
-  script:
-    - python setup.py bdist_wheel
-    - twine upload
-      --repository-url ${PIP_INDEX_URL}
-      -u ${PYPI_USERNAME}
-      -p ${PYPI_PASSWORD}
-      dist/*
+    - uv build --python 3.9
+    - uv build --python 3.10
+    - uv build --python 3.11
+    - uv build --python 3.12
+    - uv build --python 3.13
+    - uv publish dist/*
   only:
     - tags
