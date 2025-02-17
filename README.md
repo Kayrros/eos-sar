@@ -8,11 +8,11 @@ Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been im
 
 To install the package in editable mode, you can run:
 
-	uv sync
+	uv sync --locked
 
 or
 
-	pip install -e .
+	pip install -e . --group dev
 
 Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. The recommended source is `eos.dem.DEMStitcherSource` (with `pip install dem-stitcher`) that uses GLO30 and GLO90. You can also install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4) as SRTM sources.
 
