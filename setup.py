@@ -39,6 +39,11 @@ setuptools.setup(
             "siphash24",  # pytools is required by pyopencl, and gives a warning: RecommendedHashNotFoundWarning: Unable to import recommended hash 'siphash24.siphash13',
             "pyopencl",
         ],
+        # same but without tensorflow and pyopencl
+        "teosar-light": [
+            "tqdm",
+            "tifffile",
+        ],
         # dependencies for usage at Kayrros
         "kayrros": ["kayrros-phoenix[source-s3,plugin-burster]", "kayrros-bursterio"],
     },
