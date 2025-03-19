@@ -4,6 +4,7 @@ import abc
 import os
 import warnings
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable, Optional, Union
 
 import affine
@@ -375,15 +376,21 @@ class DEMStitcherSource(DEMSource):
     fill_in_glo_30: bool = True
     dst_resolution: Optional[Union[float, tuple[float]]] = None
     """ see https://github.com/ACCESS-Cloud-Based-InSAR/dem-stitcher#dems-supported """
+    tiles_cache_dir: Optional[Path] = None
+    """ Directory to where dem-stitch will cache the DEM tiles.
+    If the directory does not exist, dem_stitcher will create it.
+    """
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
-        array, profile = dem_stitcher.stitch_dem(
-            bounds=list(bounds),
-            dem_name=self.dem_name,
-            merge_nodata_value=0,
-            dst_resolution=self.dst_resolution,
-            fill_in_glo_30=self.fill_in_glo_30,
-        )
+        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
+            array, profile = dem_stitcher.stitch_dem(
+                bounds=list(bounds),
+                dem_name=self.dem_name,
+                merge_nodata_value=0,
+                dst_resolution=self.dst_resolution,
+                fill_in_glo_30=self.fill_in_glo_30,
+                dst_tile_dir=self.tiles_cache_dir,
+            )
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
