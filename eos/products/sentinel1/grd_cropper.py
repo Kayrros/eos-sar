@@ -371,6 +371,48 @@ def process(input: CropperInput) -> None:
             crs=crs,
         )
 
+    profile: dict[str, Any] = dict(
+        driver="GTiff",
+        width=orthorectifier.shape[1],
+        height=orthorectifier.shape[0],
+        count=1,
+        dtype=np.float32,
+        nodata=np.nan,
+        crs=orthorectifier.crs,
+        transform=orthorectifier.transform,
+    )
+
+    def write_output(raster: np.ndarray, pol: Polarization) -> None:
+        assert len(raster.shape) == 2
+        assert raster.shape[0] == profile["height"]
+        assert raster.shape[1] == profile["width"]
+        assert raster.dtype == profile["dtype"]
+
+        storage = input.result_destination
+        if isinstance(storage, FilesystemResultDestination):
+            output = storage.paths[pol]
+            with rasterio.open(output, "w+", **profile) as dst:
+                dst.write(raster, 1)
+        elif isinstance(storage, MemoryResultDestination):
+            storage.arrays[pol] = raster
+            storage._profile = profile
+        else:
+            assert_never(storage)
+
+    # if the roi does not intersect with the product,
+    # raise a warning and return empty arrays
+    product_roi = Roi(col=0, row=0, w=proj_model.w, h=proj_model.h)
+    if not roi.intersects_roi(product_roi):
+        for pol in input.params.polarizations:
+            array = np.full(orthorectifier.shape, fill_value=np.nan, dtype=np.float32)
+            write_output(array, pol)
+        logger.warning(
+            "Roi (%s) is out of the image domain (%s), result is full of nans.",
+            roi,
+            product_roi,
+        )
+        return
+
     for pol in input.params.polarizations:
         readers = {
             p.product_id: _prepare_reader(p, pol, input.params.calibration)
@@ -383,26 +425,4 @@ def process(input: CropperInput) -> None:
 
         raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
 
-        assert len(raster.shape) == 2
-        assert raster.dtype == np.float32
-        profile = dict(
-            driver="GTiff",
-            width=raster.shape[1],
-            height=raster.shape[0],
-            count=1,
-            dtype=raster.dtype,
-            nodata=np.nan,
-            crs=orthorectifier.crs,
-            transform=orthorectifier.transform,
-        )
-
-        storage = input.result_destination
-        if isinstance(storage, FilesystemResultDestination):
-            output = storage.paths[pol]
-            with rasterio.open(output, "w+", **profile) as dst:
-                dst.write(raster, 1)
-        elif isinstance(storage, MemoryResultDestination):
-            storage.arrays[pol] = raster
-            storage._profile = profile
-        else:
-            assert_never(storage)
+        write_output(raster, pol)
