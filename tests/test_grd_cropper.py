@@ -107,6 +107,48 @@ def test_grd_cropper_2(phx_client, tmp_path):
     assert np.isnan(r).sum() == 0
 
 
+def test_grd_cropper_completely_outside(phx_client, tmp_path):
+    pid = "S1A_IW_GRDH_1SDV_20221205T015438_20221205T015503_046190_0587C2_F48B"
+
+    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
+        "aws:proxima:sentinel-s1-l1c"
+    )
+    item = collection.get_item(pid)
+
+    params = Params(
+        polarizations=["VV", "VH"],
+        calibration="gamma",
+        orthorectify=True,
+        rtc=None,
+        filtering=None,
+    )
+    input = CropperInput(
+        products=[PhoenixInputProduct(item)],
+        params=params,
+        destination_geometry=BboxDestinationGeometry(
+            bbox=(53.73, 50.96, 53.92, 51.02),
+            resolution=10,
+            align=None,
+            crs=None,
+        ),
+        result_destination=FilesystemResultDestination(
+            {
+                "VV": Path(f"{tmp_path}/vv.tif"),
+                "VH": Path(f"{tmp_path}/vh.tif"),
+            }
+        ),
+        dem_source=eos.dem.DEMStitcherSource(),
+        orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
+    )
+
+    process(input)
+    assert os.path.exists(f"{tmp_path}/vv.tif")
+    assert os.path.exists(f"{tmp_path}/vh.tif")
+
+    r = rasterio.open(f"{tmp_path}/vv.tif").read(1)
+    assert np.isnan(r).sum() == r.size
+
+
 # this is also a test for the _COG GRD products on CDSE
 def test_grd_cropper_assembly(tmp_path, cdse_auth, cdse_s3_session):
     pid1 = "S1A_IW_GRDH_1SDV_20241201T132452_20241201T132517_056799_06F90F_0273_COG"
