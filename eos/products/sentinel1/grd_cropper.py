@@ -391,7 +391,15 @@ def process(input: CropperInput) -> None:
         storage = input.result_destination
         if isinstance(storage, FilesystemResultDestination):
             output = storage.paths[pol]
-            with rasterio.open(output, "w+", **profile) as dst:
+            gtiff_params = {
+                "tiled": True,
+                "blockxsize": 256,
+                "blockysize": 256,
+                "compress": "deflate",
+                "predictor": 2,
+                "zlevel": 2,
+            }
+            with rasterio.open(output, "w+", **profile, **gtiff_params) as dst:
                 dst.write(raster, 1)
         elif isinstance(storage, MemoryResultDestination):
             storage.arrays[pol] = raster
