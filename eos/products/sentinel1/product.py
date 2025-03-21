@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import abc
 import dataclasses
+import datetime
 import io
 import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import rasterio
 import rasterio.session
@@ -97,6 +98,86 @@ def extract_ipf(manifest: str) -> str:
     return version[0]
 
 
+@dataclass(frozen=True)
+class ProductProperties:
+    platform: Literal["S1A", "S1B", "S1C", "S1D"]
+    footprint: list[tuple[float, float]]
+    """ list of (lat, lon) """
+    ipf_version: str
+    cycle_number: int
+    relative_orbit_number: int
+    absolute_orbit_number: int
+    orbit_direction: Literal["asc", "desc"]
+    anx_time: datetime.datetime
+    """ utc time """
+    crossing_anx: bool
+    """ if the product is crossing the equator at the time of acquisition in an ascending orbit,
+    then relative_orbit_number and absolute_orbit_number are the number at the start of the acquisition """
+
+    @staticmethod
+    def from_manifest(manifest: str) -> ProductProperties:
+        namespaces = {
+            "xfdu": "urn:ccsds:schema:xfdu:1",
+            "safe": "http://www.esa.int/safe/sentinel-1.0",
+            "gml": "http://www.opengis.net/gml",
+            "s1": "http://www.esa.int/safe/sentinel-1.0/sentinel-1",
+        }
+
+        buf = io.BytesIO(manifest.encode("utf-8"))
+        parsed_buf = etree.parse(buf)
+
+        def find(xpath: str) -> str:
+            return parsed_buf.find(xpath, namespaces=namespaces).text
+
+        footprint_str = find(".//gml:coordinates")
+        footprint: list[tuple[float, float]] = [
+            tuple(map(float, coord.split(",")))  # type: ignore
+            for coord in footprint_str.split(" ")
+        ]
+
+        platform = "S1" + find(".//safe:platform/safe:number")
+        if platform not in ("S1A", "S1B", "S1C", "S1D"):
+            raise ValueError(f"Invalid platform ({platform})")
+        platform: Literal["S1A", "S1B", "S1C", "S1D"]
+
+        ipf_version = parsed_buf.xpath(
+            './/safe:software[@name="Sentinel-1 IPF"]/@version', namespaces=namespaces
+        )[-1]
+        absolute_orbit_number = int(find('.//safe:orbitNumber[@type="start"]'))
+        relative_orbit_number = int(find('.//safe:relativeOrbitNumber[@type="start"]'))
+        relative_orbit_number_stop = int(
+            find('.//safe:relativeOrbitNumber[@type="stop"]')
+        )
+        crossing_anx = relative_orbit_number_stop != relative_orbit_number
+        cycle_number = int(find(".//safe:cycleNumber"))
+
+        pass_str = str(find(".//safe:extension//s1:pass"))
+        orbit_direction: Literal["asc", "desc"]
+        if pass_str == "ASCENDING":
+            orbit_direction = "asc"
+        elif pass_str == "DESCENDING":
+            orbit_direction = "desc"
+        else:
+            raise ValueError(f"Invalid orbit direction ({pass_str})")
+
+        anx_time_utc = str(find(".//safe:extension//s1:ascendingNodeTime"))
+        anx_time_utc = datetime.datetime.strptime(
+            anx_time_utc + "Z", "%Y-%m-%dT%H:%M:%S.%fZ"
+        )
+
+        return ProductProperties(
+            platform=platform,
+            footprint=footprint,
+            orbit_direction=orbit_direction,
+            cycle_number=cycle_number,
+            ipf_version=ipf_version,
+            relative_orbit_number=relative_orbit_number,
+            absolute_orbit_number=absolute_orbit_number,
+            anx_time=anx_time_utc,
+            crossing_anx=crossing_anx,
+        )
+
+
 @dataclass
 class Sentinel1SLCProductInfo(abc.ABC):
     product_id: str
@@ -118,7 +199,18 @@ class Sentinel1SLCProductInfo(abc.ABC):
 
     @property
     def ipf(self) -> str:
+        """
+        Warning: this property fetches the manifest and parses it.
+            Avoid calling this function multiple times if possible.
+        """
         return extract_ipf(self.get_manifest())
+
+    def get_properties(self) -> ProductProperties:
+        """
+        Warning: this function fetches the manifest and parses it.
+            Avoid calling this function multiple times if possible.
+        """
+        return ProductProperties.from_manifest(self.get_manifest())
 
 
 @dataclass
@@ -143,6 +235,9 @@ class Sentinel1GRDProductInfo(abc.ABC):
     @property
     def ipf(self) -> str:
         return extract_ipf(self.get_manifest())
+
+    def get_properties(self) -> ProductProperties:
+        return ProductProperties.from_manifest(self.get_manifest())
 
 
 class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
