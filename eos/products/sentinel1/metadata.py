@@ -168,6 +168,8 @@ def relative_orbit_number_from_absolute(
         return (absolute_orbit_number - 73) % 175 + 1
     elif mission_id == "S1B":
         return (absolute_orbit_number - 27) % 175 + 1
+    elif mission_id == "S1C":
+        return (absolute_orbit_number + 3) % 175 + 1
     raise ValueError(f"Invalid mission_id {mission_id}")
 
 
