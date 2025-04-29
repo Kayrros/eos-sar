@@ -35,7 +35,7 @@ setuptools.setup(
         "teosar": [
             "tqdm",
             "tifffile",
-            "tensorflow-probability[tf]",  # see https://github.com/tensorflow/probability/releases/tag/v0.24.0
+            "tensorflow-probability[tf]>=0.24.0",  # see https://github.com/tensorflow/probability/releases/tag/v0.24.0
             "siphash24",  # pytools is required by pyopencl, and gives a warning: RecommendedHashNotFoundWarning: Unable to import recommended hash 'siphash24.siphash13',
             "pyopencl",
         ],
