@@ -4,13 +4,15 @@ import logging
 import multiprocessing
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Iterator, Optional, Union
+from typing import Iterator, Optional, Union
 
 import boto3
 import shapely.wkt
 import tqdm
+from typing_extensions import override
 
 import eos.cache
 import eos.dem
@@ -38,6 +40,49 @@ from teosar.workflow import (
 logger = logging.getLogger(__name__)
 
 ProductProvider = Callable[[str], Sentinel1SLCProductInfo]
+
+
+class ProductProviderBase(ABC):
+    @abstractmethod
+    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
+        """
+        Preserve previous behavior of Callable[[str], Sentinel1SLCProductInfo]
+        """
+        ...
+
+
+class PhoenixProductProvider(ProductProviderBase):
+    @override
+    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
+        """
+        Preserve previous behavior of Callable
+        """
+        return (
+            eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id(
+                product_id
+            )
+        )
+
+
+@dataclass(frozen=True)
+class CDSEProductProvider(ProductProviderBase):
+    cdse_access_key_id: str
+    cdse_secret_access_key: str
+
+    @override
+    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
+        """
+        Preserve previous behavior of Callable
+        """
+        session = boto3.Session(
+            aws_access_key_id=self.cdse_access_key_id,
+            aws_secret_access_key=self.cdse_secret_access_key,
+        )
+
+        cdse_backend = s1_catalog.CDSESentinel1SLCCatalogBackend()
+        return CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            cdse_backend, session, product_id
+        )
 
 
 def get_bsids_for_product(
@@ -176,13 +221,7 @@ class PhoenixBackendFactory(BackendFactory):
         """
         Helper function to get a slc product info provider using phoenix with ASF source + burster.
         """
-
-        def get_product(product_id: str) -> Sentinel1SLCProductInfo:
-            return eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id(
-                product_id
-            )
-
-        return get_product
+        return PhoenixProductProvider()
 
 
 @dataclass(frozen=True)
@@ -205,18 +244,7 @@ class CDSEBackendFactory(BackendFactory):
         return backend
 
     def create_product_provider(self) -> ProductProvider:
-        def get_product(product_id: str) -> Sentinel1SLCProductInfo:
-            session = boto3.Session(
-                aws_access_key_id=self.cdse_access_key_id,
-                aws_secret_access_key=self.cdse_secret_access_key,
-            )
-
-            cdse_backend = s1_catalog.CDSESentinel1SLCCatalogBackend()
-            return CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
-                cdse_backend, session, product_id
-            )
-
-        return get_product
+        return CDSEProductProvider(self.cdse_access_key_id, self.cdse_secret_access_key)
 
 
 def main(
