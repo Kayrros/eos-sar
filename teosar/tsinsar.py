@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
-from typing import Iterator, Optional, Union
+from typing import Iterator, Literal, Optional, Union
 
 import boto3
 import shapely.wkt
@@ -18,7 +18,6 @@ import eos.cache
 import eos.dem
 import eos.products.sentinel1
 import eos.products.sentinel1.catalog as s1_catalog
-import eos.sar
 from eos.cache import Cache
 from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
@@ -39,6 +38,8 @@ from teosar.workflow import (
 
 logger = logging.getLogger(__name__)
 
+OrbitPrecision = Union[bool, Literal["orbpoe", "orbres", None]]
+""" `True` means 'best effort' (orbpoe with fallback to orbres). """
 ProductProvider = Callable[[str], Sentinel1SLCProductInfo]
 
 
@@ -253,7 +254,7 @@ def main(
     orbit: int,
     startdate: datetime.datetime,
     enddate: datetime.datetime,
-    orbit_type: str = "orbpoe",
+    orbit_type: OrbitPrecision = "orbpoe",
     polarization: str = "vv",
     calibrate: str = "sigma",
     get_complex: bool = True,
@@ -344,7 +345,7 @@ def main(
 def get_orbits(
     backend: orbit_catalog.Sentinel1OrbitCatalogBackend,
     product_ids: list[list[str]],
-    orbit_type,
+    orbit_type: OrbitPrecision,
     cache: Cache,
 ) -> orbit_catalog.Sentinel1OrbitCatalogResult:
     assert orbit_type in (True, False, None, "orbpoe", "orbres")
@@ -367,7 +368,7 @@ def run_ts_on_prods(
     roi_provider: RoiProvider,
     product_ids: list[list[str]],
     primary_id: int = 0,
-    orbit_type: str = "orbpoe",
+    orbit_type: OrbitPrecision = "orbpoe",
     polarization: str = "vv",
     calibrate: str = "sigma",
     get_complex: bool = True,
