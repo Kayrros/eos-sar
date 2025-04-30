@@ -12,7 +12,7 @@ from eos.products.sentinel1.catalog import (
     search_slc,
 )
 
-query = Sentinel1CatalogQuery(
+QUERY = Sentinel1CatalogQuery(
     geometry=shapely.geometry.Point(-68.374028, -23.563574),
     relative_orbit_number=149,
     start_date=datetime.datetime(2019, 1, 1),
@@ -20,7 +20,7 @@ query = Sentinel1CatalogQuery(
     polarization=["SV", "DV"],
 )
 
-expected_slc = [
+EXPECTED_SLC = [
     "S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885",
     "S1A_IW_SLC__1SDV_20190110T230559_20190110T230627_025421_02D0E7_5EFE",
     "S1A_IW_SLC__1SDV_20190122T230559_20190122T230627_025596_02D74D_0EBA",
@@ -38,7 +38,7 @@ expected_slc = [
 ]
 
 
-expected_grd = [
+EXPECTED_GRD = [
     "S1B_IW_GRDH_1SDV_20190104T230514_20190104T230539_014350_01AB40_31F1",
     "S1A_IW_GRDH_1SDV_20190110T230600_20190110T230625_025421_02D0E7_7B47",
     "S1A_IW_GRDH_1SDV_20190122T230600_20190122T230625_025596_02D74D_9AC6",
@@ -55,8 +55,41 @@ expected_grd = [
     "S1B_IW_GRDH_1SDV_20190329T230513_20190329T230538_015575_01D324_E3AB",
 ]
 
+QUERY_NEW = Sentinel1CatalogQuery(
+    geometry=shapely.geometry.Point(150.666, -26.842),
+    relative_orbit_number=111,
+    start_date=datetime.datetime(2025, 3, 1),
+    end_date=datetime.datetime(2025, 4, 29),
+    polarization=["SV", "DV", "DH", "SH"],
+)
+
+EXPECTED_SLC_NEW = [
+    "S1A_IW_SLC__1SSV_20250301T083323_20250301T083350_058108_072D23_874B",
+    "S1A_IW_SLC__1SSH_20250313T083326_20250313T083353_058283_07343E_B0A2",
+    "S1A_IW_SLC__1SSV_20250325T083306_20250325T083334_058458_073B1E_CBB3",
+    "S1C_IW_SLC__1SDV_20250331T083159_20250331T083230_001682_002CE8_D50A",
+    "S1A_IW_SLC__1SSH_20250406T083307_20250406T083335_058633_074243_0532",
+    "S1C_IW_SLC__1SDV_20250412T083159_20250412T083230_001857_00381E_A63D",
+    "S1A_IW_SLC__1SSV_20250418T083307_20250418T083335_058808_074969_CCA4",
+    "S1C_IW_SLC__1SDH_20250424T083200_20250424T083231_002032_004292_AC89",
+]
+
+
+EXPECTED_GRD_NEW = [
+    "S1A_IW_GRDH_1SSV_20250301T083324_20250301T083349_058108_072D23_3637",
+    "S1A_IW_GRDH_1SSH_20250313T083327_20250313T083352_058283_07343E_D336",
+    "S1A_IW_GRDH_1SSV_20250325T083307_20250325T083332_058458_073B1E_5E50",
+    "S1C_IW_GRDH_1SDV_20250331T083159_20250331T083229_001682_002CE8_60DB",
+    "S1A_IW_GRDH_1SSH_20250406T083308_20250406T083333_058633_074243_084E",
+    "S1C_IW_GRDH_1SDV_20250412T083159_20250412T083229_001857_00381E_2D13",
+    "S1A_IW_GRDH_1SSV_20250418T083308_20250418T083333_058808_074969_9FA7",
+    "S1C_IW_GRDH_1SDH_20250424T083200_20250424T083229_002032_004292_E22D",
+]
+
 
 def test_phx_catalog_slc(phx_client):
+    query = QUERY
+    expected_slc = EXPECTED_SLC
     from eos.products.sentinel1.catalog import PhoenixSentinel1SLCCatalogBackend
 
     collection = phx_client.get_collection("esa-sentinel-1-csar-l1-slc").at(
@@ -68,6 +101,8 @@ def test_phx_catalog_slc(phx_client):
 
 
 def test_phx_catalog_grd(phx_client):
+    query = QUERY
+    expected_grd = EXPECTED_GRD
     from eos.products.sentinel1.catalog import PhoenixSentinel1GRDCatalogBackend
 
     collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
@@ -80,15 +115,21 @@ def test_phx_catalog_grd(phx_client):
     assert result.product_ids == expected_grd
 
 
+@pytest.mark.parametrize(
+    "query,expected_slc", [(QUERY, EXPECTED_SLC), (QUERY_NEW, EXPECTED_SLC_NEW)]
+)
 @pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
-def test_cdse_catalog_slc():
+def test_cdse_catalog_slc(query, expected_slc):
     backend = CDSESentinel1SLCCatalogBackend()
     result = search_slc(backend, query)
     assert result.product_ids == expected_slc
 
 
+@pytest.mark.parametrize(
+    "query,expected_grd", [(QUERY, EXPECTED_GRD), (QUERY_NEW, EXPECTED_GRD_NEW)]
+)
 @pytest.mark.xfail(raises=requests.exceptions.RequestException, strict=False)
-def test_cdse_catalog_grd():
+def test_cdse_catalog_grd(query, expected_grd):
     backend = CDSESentinel1GRDCatalogBackend()
     result = search_grd(backend, query)
     assert result.product_ids == expected_grd
