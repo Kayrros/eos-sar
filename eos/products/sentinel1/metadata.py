@@ -430,9 +430,11 @@ def extract_common_metadata(xml):
     o["state_vectors_origin"] = "orbpre"
 
     # deramping parameters
-    o["steering_rate"] = float(np.radians(
-        float(i["generalAnnotation"]["productInformation"]["azimuthSteeringRate"])
-    ))
+    o["steering_rate"] = float(
+        np.radians(
+            float(i["generalAnnotation"]["productInformation"]["azimuthSteeringRate"])
+        )
+    )
     o["wave_length"] = const.LIGHT_SPEED_M_PER_SEC / float(
         i["generalAnnotation"]["productInformation"]["radarFrequency"]
     )
