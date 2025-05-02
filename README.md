@@ -8,7 +8,7 @@ Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been im
 
 To install the package in editable mode, you can run:
 
-	uv sync --locked
+	uv sync --frozen
 
 or
 
@@ -21,10 +21,6 @@ If you wish to install srtm4, make sure to install with the "crop" extra depende
 	pip install srtm4["crop"]
 
 If you wish to use another DEM source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a DEM.
-
-Automatic download of Sentinel-1 SLC data is not provided in this package yet. You can use [ASF](https://search.asf.alaska.edu/#/) to find and download the data.
-
-As for the precise or restituted orbit files, automatic querying and download for a product is not provided in this package yet.
 
 ### Usage
 
@@ -54,22 +50,14 @@ The features shown in the tutorial are listed below:
 
 ### Tests
 
-Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests.  Currently, only local tests will run and others will fail if you don't have these credentials. To run the tests locally, we use `pytest`:
+To run the tests, we use `pytest`:
 
-	uv run pytest .
+	uv run --frozen pytest .
 
+Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests. Currently, only local tests will run and others will be skipped if you don't have these credentials.
 For Kayrros users:
 
 	uv run --all-extras pytest .
-
-For the future, all tests should be able to run locally, but test data should be downloaded beforehand. We plan to use data from ASF, similarly to the tutorial data, that can be downloaded by running in a shell:
-
-	cd eos-sar
-	python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_poeorb/S1B_OPER_AUX_POEORB_OPOD_20210330T214422_V20190701T225942_20190703T005942.EOF tests/data/pair/orb
-	python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_poeorb/S1A_OPER_AUX_POEORB_OPOD_20210330T235242_V20190707T225942_20190709T005942.EOF tests/data/pair/orb
-	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SB/S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5.zip tests/data/pair/safes --unzip
-	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20190708T032532_20190708T032559_028020_032A14_33CA.zip tests/data/pair/safes --unzip
-
 
 ### Code formatting
 
