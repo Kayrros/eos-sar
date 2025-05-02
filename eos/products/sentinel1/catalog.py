@@ -192,16 +192,14 @@ def _pol_query_str(polarizations: list[ProductPolarization]) -> str:
     def pol_to_str(pol: str) -> str:
         return f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'polarisationChannels' and att/OData.CSC.StringAttribute/Value eq '{pol_dict[pol]}')"
 
-    if len(polarizations) == 1:
-        return pol_to_str(polarizations[0])
-    else:
-        # we need to do a nested or statement
-        full_str = " or ".join([pol_to_str(pol) for pol in polarizations])
-        return f"({full_str})"
+    # we need to do a nested or statement
+    full_str = " or ".join([pol_to_str(pol) for pol in polarizations])
+    return f"({full_str})"
 
 
 def query_to_request_str(
-    query: Sentinel1CatalogQuery, product_type: Literal["IW_SLC__1S", "IW_GRDH_1S"]
+    query: Sentinel1CatalogQuery,
+    product_type: Literal["IW_SLC__1S", "IW_GRDH_1S", "IW_GRDH_1S-COG"],
 ) -> str:
     # TODO: we might want to look at neighbouring orbits
     # because of its loose definition around the equator
@@ -240,6 +238,14 @@ class CDSESentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
 
 @dataclass(frozen=True)
 class CDSESentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
+    use_cog_products: bool = False
+    """
+    This parameter defines the behavior of the `search` method and switches 
+    between the 'IW_GRDH_1S' and the 'IW_GRDH_1S-COG' collection. 
+    The `get_cdse_item` method would still work for a non COG product ID 
+    and vice-versa regardless of the value of this flag. 
+    """
+
     def get_cdse_item(self, product_id: str) -> dict[str, Any]:
         response = requests.get(
             f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name%20eq%20%27{product_id}.SAFE%27&$expand=Attributes"
@@ -251,5 +257,9 @@ class CDSESentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
 
     @override
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
-        request = query_to_request_str(query, "IW_GRDH_1S")
+        request = (
+            query_to_request_str(query, "IW_GRDH_1S-COG")
+            if self.use_cog_products
+            else query_to_request_str(query, "IW_GRDH_1S")
+        )
         return _cdse_list_items(request)
