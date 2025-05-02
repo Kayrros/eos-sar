@@ -1,0 +1,76 @@
+# To generate the changelog:
+#   uv run --no-project --with git-cliff git cliff --unreleased
+
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# template for the changelog header
+header = ""
+# template for the changelog body
+# https://keats.github.io/tera/docs/#introduction
+body = """
+{% if version -%}
+    # {{ version | trim_start_matches(pat="v") }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+    # [Unreleased]
+{% endif -%}
+
+{% for group, commits in commits | filter(attribute="merge_commit", value=false) | group_by(attribute="group") %}
+## {{ group | upper_first }}
+{%- for commit in commits %}
+{% if commit.message | trim != "" %}\
+- {{ commit.message | split(pat="\n") | first | trim }}\
+{% if commit.message | split(pat="\n") | length != 1 %}:\
+{{ commit.message | trim | split(pat="\n") | slice(start=1) | join(sep="\n* ") | indent }}\
+{%- endif -%}
+{%- endif -%}
+{% endfor %}
+{% endfor %}
+
+
+"""
+footer = ""
+# remove the leading and trailing whitespace from the templates
+trim = true
+
+[git]
+# parse the commits based on https://www.conventionalcommits.org
+conventional_commits = false
+# filter out the commits that are not conventional
+filter_unconventional = false
+# regex for preprocessing the commit messages
+commit_preprocessors = [
+    # remove issue numbers from commits
+    #{ pattern = '\((\w+\s)?#([0-9]+)\)', replace = "" },
+    # remove some commits
+    { pattern = '^(fix )?typing$', replace = "" },
+    { pattern = '^(fix )?style$', replace = "" },
+    { pattern = '^(fix )?lint$', replace = "" },
+    { pattern = '^(fix )?ruff$', replace = "" },
+    { pattern = '^(fix )?mypy$', replace = "" },
+    { pattern = '^(fix )?ci$', replace = "" },
+    { pattern = '^(fix )?tests$', replace = "" },
+    { pattern = '^increment version$', replace = "" },
+    { pattern = '^[0-9]*\.[0-9]*\.[0-9]*$', replace = "" },
+]
+# regex for parsing and grouping commits
+commit_parsers = [
+    { message = "^[a|A]dd", group = "Added" },
+    { message = "^[s|S]upport", group = "Added" },
+    { message = "^[r|R]emove", group = "Removed" },
+    { message = "^.*: [a|A]dd", group = "Added" },
+    { message = "^.*: [s|S]upport", group = "Added" },
+    { message = "^.*: [r|R]emove", group = "Removed" },
+    { message = "^.*: [d|D]elete", group = "Removed" },
+    { message = "^test", group = "Fixed" },
+    { message = "^fix", group = "Fixed" },
+    { message = "^.*: [f|F]ix", group = "Fixed" },
+    { message = "fixes", group = "Fixed" },
+    { message = "^.*", group = "Changed" },
+]
+# filter out the commits that are not matched by commit parsers
+filter_commits = false
+# sort the tags topologically
+topo_order = false
+# sort the commits inside sections by oldest/newest order
+sort_commits = "newest"
