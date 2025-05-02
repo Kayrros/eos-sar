@@ -4,7 +4,7 @@ This package provides access to some generic SAR (Synthetic Aperture Radar) proc
 
 Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been implemented.
 
-### Requirements & Installation
+## Requirements & Installation
 
 To install the package in editable mode, you can run:
 
@@ -22,7 +22,7 @@ If you wish to install srtm4, make sure to install with the "crop" extra depende
 
 If you wish to use another DEM source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a DEM.
 
-### Usage
+## Usage
 
 Check the usage folder for a tutorial. The tutorial corresponds to performing an interferogram (among other things) on data spanning an earthquake taking place at [January 7 2022: M 6.6 - 113 km SW of Jinchang, China](https://sarviews-hazards.alaska.edu/Event/e2dfcb22-e1a4-43d8-a17e-c6b175849463).
 
@@ -48,14 +48,16 @@ The features shown in the tutorial are listed below:
 - Registration/ resampling/ debursting of a secondary image onto a primary image. The processing can be restricted to a region of interest.
 - Interferogram formation, orbital and topographic phase estimation and removal, coherence estimation.
 
+## Contributing
+
 ### Tests
 
 To run the tests, we use `pytest`:
 
 	uv run --frozen pytest .
 
-Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests. Currently, only local tests will run and others will be skipped if you don't have these credentials.
-For Kayrros users:
+Some tests currently use Kayrros cloud storage and internal services (behind VPN), which means that certain credentials must be set up for these tests. Currently, only local tests will run and others will be skipped if you don't have these credentials.
+For Kayrros users (with VPN and credentials):
 
 	uv run --all-extras pytest .
 
@@ -70,3 +72,10 @@ uv run ruff format .
 ```
 
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.
+
+
+### Tips for external contributors
+
+Adding a package: `uv add --frozen <package>`.
+
+Make sure to have pyproj data: `pyproj sync -v --file us_nga_egm96_15`
