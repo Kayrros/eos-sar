@@ -159,13 +159,6 @@ else:
             return _phx_search(self.collection_source, query)
 
 
-# Notes about CDSE:
-# - our code is using 'origin' for SLC and 'authority' for GRD, it seems to differentiate the two
-#   this is very ugly but CDSE's database seems "poorly designed" too
-# - GRD _COG products don't have 'authority', but 'origin' set to CLOUDFERRO
-#   so we don't consider them (by choice, because most other provider don't have them)
-
-
 def _cdse_list_items(request: str) -> list[str]:
     limit = 1000
     request = f"{request}&$top={limit}"
@@ -192,6 +185,40 @@ def _cdse_list_items(request: str) -> list[str]:
     return pids
 
 
+def _pol_query_str(polarizations: list[ProductPolarization]) -> str:
+    # %26 is the url encoding of &
+    pol_dict = {"SV": "VV", "DV": "VV%26VH", "SH": "HH", "DH": "HH%26HV"}
+
+    def pol_to_str(pol: str) -> str:
+        return f"Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'polarisationChannels' and att/OData.CSC.StringAttribute/Value eq '{pol_dict[pol]}')"
+
+    # we need to do a nested or statement
+    full_str = " or ".join([pol_to_str(pol) for pol in polarizations])
+    return f"({full_str})"
+
+
+def query_to_request_str(
+    query: Sentinel1CatalogQuery,
+    product_type: Literal["IW_SLC__1S", "IW_GRDH_1S", "IW_GRDH_1S-COG"],
+) -> str:
+    # TODO: we might want to look at neighbouring orbits
+    # because of its loose definition around the equator
+    # It can be achieved with an or statement similarly to polarizations
+    request = (
+        f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
+        f"Collection/Name eq 'SENTINEL-1' "
+        f"and ContentDate/Start gt {query.start_date.isoformat()} "
+        f"and ContentDate/Start lt {query.end_date.isoformat()} "
+        f"and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') "
+        f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'processingLevel' and att/OData.CSC.StringAttribute/Value eq 'LEVEL1') "
+        f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{product_type}') "
+        f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number}) "
+        f"and {_pol_query_str(query.polarization)}"
+        "&$expand=Attributes&$orderby=ContentDate/Start asc"
+    )
+    return request
+
+
 @dataclass(frozen=True)
 class CDSESentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
     def get_cdse_item(self, product_id: str) -> dict[str, Any]:
@@ -205,31 +232,20 @@ class CDSESentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
 
     @override
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
-        # TODO: we might want to look at neighbouring orbits
-        # because of its loose definition around the equator
-        request = (
-            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
-            f"Collection/Name eq 'SENTINEL-1' "
-            f"and ContentDate/Start gt {query.start_date.isoformat()} "
-            f"and ContentDate/Start lt {query.end_date.isoformat()} "
-            f"and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') "
-            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'operationalMode' and att/OData.CSC.StringAttribute/Value eq 'IW') "
-            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'processingLevel' and att/OData.CSC.StringAttribute/Value eq 'LEVEL1') "
-            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'origin' and att/OData.CSC.StringAttribute/Value eq 'ESA') "
-            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number})"
-            f"&$expand=Attributes&$orderby=ContentDate/Start asc"
-        )
-        pids = _cdse_list_items(request)
-        pids = [
-            pid
-            for pid in pids
-            if any(f"_1S{pol}_" in pid for pol in query.polarization)
-        ]
-        return pids
+        request = query_to_request_str(query, "IW_SLC__1S")
+        return _cdse_list_items(request)
 
 
 @dataclass(frozen=True)
 class CDSESentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
+    use_cog_products: bool = False
+    """
+    This parameter defines the behavior of the `search` method and switches 
+    between the 'IW_GRDH_1S' and the 'IW_GRDH_1S-COG' collection. 
+    The `get_cdse_item` method would still work for a non COG product ID 
+    and vice-versa regardless of the value of this flag. 
+    """
+
     def get_cdse_item(self, product_id: str) -> dict[str, Any]:
         response = requests.get(
             f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Name%20eq%20%27{product_id}.SAFE%27&$expand=Attributes"
@@ -241,22 +257,9 @@ class CDSESentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
 
     @override
     def search(self, query: Sentinel1CatalogQuery) -> list[str]:
-        # TODO: we might want to look at neighbouring orbits
-        # because of its loose definition around the equator
         request = (
-            f"https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter="
-            f"Collection/Name eq 'SENTINEL-1' "
-            f"and ContentDate/Start gt {query.start_date.isoformat()} "
-            f"and ContentDate/Start lt {query.end_date.isoformat()} "
-            f"and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') "
-            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'authority' and att/OData.CSC.StringAttribute/Value eq 'ESA') "
-            f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number})"
-            f"&$expand=Attributes&$orderby=ContentDate/Start asc"
+            query_to_request_str(query, "IW_GRDH_1S-COG")
+            if self.use_cog_products
+            else query_to_request_str(query, "IW_GRDH_1S")
         )
-        pids = _cdse_list_items(request)
-        pids = [
-            pid
-            for pid in pids
-            if any(f"_1S{pol}_" in pid for pol in query.polarization)
-        ]
-        return pids
+        return _cdse_list_items(request)

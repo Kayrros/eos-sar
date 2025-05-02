@@ -3,7 +3,6 @@ import pickle
 from typing import Optional
 
 import numpy as np
-import tifffile
 
 import eos.dem
 import eos.products.sentinel1
@@ -174,7 +173,7 @@ class PrimaryPipeline(Pipeline):
 
         self.radar_dem_path = self.dir_builder.get_radar_dem_path()
 
-        tifffile.imsave(self.radar_dem_path, self.heights)
+        inout.save_img(self.radar_dem_path, self.heights)
 
     # Save pipeline for later
     @conditional_profiler(PROF)

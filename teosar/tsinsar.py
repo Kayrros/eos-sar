@@ -3,22 +3,29 @@ import datetime
 import logging
 import multiprocessing
 import os
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
-from typing import Callable, Iterator, Optional, Union
+from typing import Iterator, Literal, Optional, Union
 
+import boto3
 import shapely.wkt
 import tqdm
+from typing_extensions import override
 
 import eos.cache
 import eos.dem
 import eos.products.sentinel1
 import eos.products.sentinel1.catalog as s1_catalog
-import eos.sar
 from eos.cache import Cache
 from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
 from eos.products.sentinel1.overlap import Bsint, Osid
-from eos.products.sentinel1.product import Sentinel1SLCProductInfo
+from eos.products.sentinel1.product import (
+    CDSEUnzippedSafeSentinel1SLCProductInfo,
+    Sentinel1SLCProductInfo,
+)
 from eos.sar.roi_provider import GeometryRoiProvider, RoiProvider
 from teosar import inout
 from teosar.workflow import (
@@ -31,7 +38,52 @@ from teosar.workflow import (
 
 logger = logging.getLogger(__name__)
 
+OrbitPrecision = Union[bool, Literal["orbpoe", "orbres", None]]
+""" `True` means 'best effort' (orbpoe with fallback to orbres). """
 ProductProvider = Callable[[str], Sentinel1SLCProductInfo]
+
+
+class ProductProviderBase(ABC):
+    @abstractmethod
+    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
+        """
+        Preserve previous behavior of Callable[[str], Sentinel1SLCProductInfo]
+        """
+        ...
+
+
+class PhoenixProductProvider(ProductProviderBase):
+    @override
+    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
+        """
+        Preserve previous behavior of Callable
+        """
+        return (
+            eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id(
+                product_id
+            )
+        )
+
+
+@dataclass(frozen=True)
+class CDSEProductProvider(ProductProviderBase):
+    cdse_access_key_id: str
+    cdse_secret_access_key: str
+
+    @override
+    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
+        """
+        Preserve previous behavior of Callable
+        """
+        session = boto3.Session(
+            aws_access_key_id=self.cdse_access_key_id,
+            aws_secret_access_key=self.cdse_secret_access_key,
+        )
+
+        cdse_backend = s1_catalog.CDSESentinel1SLCCatalogBackend()
+        return CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            cdse_backend, session, product_id
+        )
 
 
 def get_bsids_for_product(
@@ -119,15 +171,81 @@ def remove_weird_products(
     return good_product_ids
 
 
-def get_catalog_backend() -> s1_catalog.Sentinel1SLCCatalogBackend:
-    import phoenix.catalog
+class BackendFactory(ABC):
+    # Note: We could break this into three different factories if needed
 
-    client = phoenix.catalog.Client()
-    collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
-        "asf:daac:sentinel-1"
-    )
-    backend = s1_catalog.PhoenixSentinel1SLCCatalogBackend(collection_source=collection)
-    return backend
+    @abstractmethod
+    def create_slc_catalog_backend(self) -> s1_catalog.Sentinel1SLCCatalogBackend: ...
+
+    @abstractmethod
+    def create_orbit_catalog_backend(
+        self,
+    ) -> orbit_catalog.Sentinel1OrbitCatalogBackend: ...
+
+    @abstractmethod
+    def create_product_provider(self) -> ProductProvider: ...
+
+
+class PhoenixBackendFactory(BackendFactory):
+    def create_slc_catalog_backend(self) -> s1_catalog.Sentinel1SLCCatalogBackend:
+        """
+        Helper function to get slc backend using phoenix default client for SLC collection at ASF source.
+        """
+        import phoenix.catalog
+
+        client = phoenix.catalog.Client()
+        collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
+            "asf:daac:sentinel-1"
+        )
+        backend = s1_catalog.PhoenixSentinel1SLCCatalogBackend(
+            collection_source=collection
+        )
+
+        return backend
+
+    def create_orbit_catalog_backend(
+        self,
+    ) -> orbit_catalog.Sentinel1OrbitCatalogBackend:
+        """
+        Helper function to get orbit aux backend using phoenix with proxima source.
+        """
+        import phoenix.catalog
+
+        backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
+            collection_source=phoenix.catalog.Client()
+            .get_collection("esa-sentinel-1-csar-aux")
+            .at("aws:proxima:kayrros-prod-sentinel-aux")
+        )
+        return backend
+
+    def create_product_provider(self) -> ProductProvider:
+        """
+        Helper function to get a slc product info provider using phoenix with ASF source + burster.
+        """
+        return PhoenixProductProvider()
+
+
+@dataclass(frozen=True)
+class CDSEBackendFactory(BackendFactory):
+    cdse_access_key_id: str
+    cdse_secret_access_key: str
+    cdse_username: str
+    cdse_password: str
+
+    def create_slc_catalog_backend(self) -> s1_catalog.Sentinel1SLCCatalogBackend:
+        backend = s1_catalog.CDSESentinel1SLCCatalogBackend()
+        return backend
+
+    def create_orbit_catalog_backend(
+        self,
+    ) -> orbit_catalog.Sentinel1OrbitCatalogBackend:
+        backend = orbit_catalog.CDSESentinel1OrbitCatalogBackend(
+            self.cdse_username, self.cdse_password
+        )
+        return backend
+
+    def create_product_provider(self) -> ProductProvider:
+        return CDSEProductProvider(self.cdse_access_key_id, self.cdse_secret_access_key)
 
 
 def main(
@@ -136,7 +254,7 @@ def main(
     orbit: int,
     startdate: datetime.datetime,
     enddate: datetime.datetime,
-    orbit_type: str = "orbpoe",
+    orbit_type: OrbitPrecision = "orbpoe",
     polarization: str = "vv",
     calibrate: str = "sigma",
     get_complex: bool = True,
@@ -150,11 +268,16 @@ def main(
     last_n_prods: Optional[int] = None,
     roi_provider: Optional[RoiProvider] = None,
     dem_source: Optional[eos.dem.DEMSource] = None,
-    product_provider: Optional[ProductProvider] = None,
+    backend_factory: Optional[BackendFactory] = None,
     cache: Cache = eos.cache.no_cache(),
 ):
     if isinstance(geometry, str):
         geometry = shapely.wkt.loads(geometry)
+
+    # prepare backend factory
+    if backend_factory is None:
+        # This works for Kayrros users who have configured Phoenix access
+        backend_factory = PhoenixBackendFactory()
 
     # query phoenix
     prod_pol = {"vv": ["SV", "DV"], "vh": ["DV"], "hh": ["SH", "DH"], "hv": ["DH"]}[
@@ -168,9 +291,9 @@ def main(
         polarization=prod_pol,  # type: ignore
     )
     logger.info("querying the catalog")
-    catalog_backend = get_catalog_backend()
+    slc_catalog_backend = backend_factory.create_slc_catalog_backend()
     pids_by_date = s1_catalog.search_slc(
-        catalog_backend, query, cache
+        slc_catalog_backend, query, cache
     ).product_ids_per_date
     logger.info("catalog query done")
 
@@ -178,11 +301,7 @@ def main(
         sorted(pids_by_date[date]) for date in sorted(pids_by_date.keys())
     ]
 
-    if product_provider is None:
-        product_provider = (
-            eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id
-        )
-
+    product_provider = backend_factory.create_product_provider()
     logger.info("remove weird products...")
     key = (all_product_ids, polarization)
     product_ids = cache.get_or_put(
@@ -219,19 +338,16 @@ def main(
         dem_source,
         product_provider=product_provider,
         cache=cache,
+        orbit_backend=backend_factory.create_orbit_catalog_backend(),
     )
 
 
 def get_orbits(
-    product_ids: list[list[str]], orbit_type, cache: Cache
+    backend: orbit_catalog.Sentinel1OrbitCatalogBackend,
+    product_ids: list[list[str]],
+    orbit_type: OrbitPrecision,
+    cache: Cache,
 ) -> orbit_catalog.Sentinel1OrbitCatalogResult:
-    import phoenix.catalog
-
-    backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-        collection_source=phoenix.catalog.Client()
-        .get_collection("esa-sentinel-1-csar-aux")
-        .at("aws:proxima:kayrros-prod-sentinel-aux")
-    )
     assert orbit_type in (True, False, None, "orbpoe", "orbres")
     orbit_quality: list[orbit_catalog.OrbitFileType] = {  # type: ignore
         True: orbit_catalog.BestEffort,
@@ -252,7 +368,7 @@ def run_ts_on_prods(
     roi_provider: RoiProvider,
     product_ids: list[list[str]],
     primary_id: int = 0,
-    orbit_type: str = "orbpoe",
+    orbit_type: OrbitPrecision = "orbpoe",
     polarization: str = "vv",
     calibrate: str = "sigma",
     get_complex: bool = True,
@@ -266,13 +382,14 @@ def run_ts_on_prods(
     *,
     product_provider: ProductProvider,
     cache: Cache,
+    orbit_backend: orbit_catalog.Sentinel1OrbitCatalogBackend,
 ) -> list[Pipeline]:
     os.makedirs(dstdir, exist_ok=True)
     directory_builder = inout.DirectoryBuilder(dstdir)
 
     # get the ephemerides (orbits)
     logger.info(f"getting orbit data (type={orbit_type})")
-    orbits = get_orbits(product_ids, orbit_type, cache)
+    orbits = get_orbits(orbit_backend, product_ids, orbit_type, cache)
     logger.info("getting orbit data DONE")
 
     if dem_source is None:
@@ -360,6 +477,7 @@ def main_ovl(
     dem_source: Optional[eos.dem.DEMSource] = None,
     product_provider: Optional[ProductProvider] = None,
     cache: Cache = eos.cache.no_cache(),
+    orbit_backend: Optional[orbit_catalog.Sentinel1OrbitCatalogBackend] = None,
 ) -> list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]]:
     # destination path
     os.makedirs(dstdir, exist_ok=True)
@@ -371,13 +489,16 @@ def main_ovl(
         product_ids_per_date[primary_id], directory_builder, dem_source
     )
 
-    # Necessary to get eos produt info objects
-    if product_provider is None:
-        product_provider = (
-            eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id
-        )
+    # Necessary to get eos product info objects
+    if product_provider is None or orbit_backend is None:
+        backend_factory = PhoenixBackendFactory()
+        if product_provider is None:
+            product_provider = backend_factory.create_product_provider()
+        if orbit_backend is None:
+            orbit_backend = backend_factory.create_orbit_catalog_backend()
+
     # Necessary to get the ephemerides (orbits)
-    orbits = get_orbits(product_ids_per_date, orbit_type, cache=cache)
+    orbits = get_orbits(orbit_backend, product_ids_per_date, orbit_type, cache=cache)
 
     primary_pipeline.execute(
         product_provider,
