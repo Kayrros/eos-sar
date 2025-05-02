@@ -74,6 +74,13 @@ uv run ruff format .
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.
 
 
+### Making a release
+
+- update the changelog: `uv run --no-project --with git-cliff git cliff --unreleased` and update `CHANGELOG.md`
+- update the version in `pyproject.toml` (try to respect semantic versioning)
+- commit (message="x.y.z") and tag the commit (tag="x.y.z")
+- push with the tag (`git push --tags`)
+
 ### Tips for external contributors
 
 Adding a package: `uv add --frozen <package>`.
