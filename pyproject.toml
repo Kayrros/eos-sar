@@ -5,7 +5,7 @@ authors = [
     { name = "external collaborators" },
 ]
 version = "0.37.0"
-requires-python = ">=3.9,<3.13"  # ortools not yet available in python 3.13
+requires-python = ">=3.9,<3.14"
 dependencies = [
     "numpy>=2.0.1",
     "python-dateutil>=2.9.0",
