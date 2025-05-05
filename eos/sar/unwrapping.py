@@ -397,12 +397,12 @@ def ambiguity_from_flows(flows: NDArray[np.int64], N: int, M: int):
     """
 
     # assert at least one is 0
-    assert np.all(
-        np.logical_or(x1_plus == 0, x1_minus == 0)
-    ), "horizontal flow error: at leat one flow from + and - should be zero"
-    assert np.all(
-        np.logical_or(x2_plus == 0, x2_minus == 0)
-    ), "vertical flow error: at leat one flow from + and - should be zero"
+    assert np.all(np.logical_or(x1_plus == 0, x1_minus == 0)), (
+        "horizontal flow error: at leat one flow from + and - should be zero"
+    )
+    assert np.all(np.logical_or(x2_plus == 0, x2_minus == 0)), (
+        "vertical flow error: at leat one flow from + and - should be zero"
+    )
 
     K1 = x1_plus - x1_minus
     K2 = x2_plus - x2_minus
@@ -495,7 +495,9 @@ def mcf_estim_unwrapped_gradients(wrapped_phase: RealArray, mcf_solver: MCFSolve
         compute_residue(grad1_unwrapped_phase, grad2_unwrapped_phase) == 0
     )
 
-    assert true_grad, "non zero residue detected: the gradient estimated by MCF is not a true gradient field"
+    assert true_grad, (
+        "non zero residue detected: the gradient estimated by MCF is not a true gradient field"
+    )
     logging.info("The gradient estimated by MCF is a true gradient field")
 
     return grad1_unwrapped_phase, grad2_unwrapped_phase

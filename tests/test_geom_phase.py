@@ -69,9 +69,9 @@ def test_geom_phase_prediction(s3_client):
     )
     # predict flat earth
     flat_earth = topo.flat_earth_image(primary_swath_roi, wrapped=True)
-    assert (
-        flat_earth.shape == (1,) + primary_swath_roi.get_shape()
-    ), "flat earth shape mismatch"
+    assert flat_earth.shape == (1,) + primary_swath_roi.get_shape(), (
+        "flat earth shape mismatch"
+    )
 
     margin = 10
     approx_geom, alts, mask = primary_swath_model.get_approx_geom(
@@ -90,9 +90,9 @@ def test_geom_phase_prediction(s3_client):
     topo_phase = topo.topo_phase_image(
         heights, primary_roi=primary_swath_roi, wrapped=False
     )
-    assert (
-        topo_phase.shape == (1,) + primary_swath_roi.get_shape()
-    ), "topo phase shape mismatch"
+    assert topo_phase.shape == (1,) + primary_swath_roi.get_shape(), (
+        "topo phase shape mismatch"
+    )
 
     # test sparse prediction
 

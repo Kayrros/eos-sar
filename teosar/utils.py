@@ -400,9 +400,9 @@ def multilook(
     mlooked[nanmask] = 0
     mlooked = uniform_spatial_filter(mlooked, filter_size)
     if compute_coherence:
-        assert (primary_amp is not None) and (
-            secondary_amp is not None
-        ), "amplitudes should be provided for coherence computation"
+        assert (primary_amp is not None) and (secondary_amp is not None), (
+            "amplitudes should be provided for coherence computation"
+        )
         primary_amp[nanmask] = 0
         secondary_amp[nanmask] = 0
         coherence = np.abs(mlooked) / (

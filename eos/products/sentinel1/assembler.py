@@ -214,9 +214,9 @@ class Sentinel1Assembler:
         )
 
     def _set_full_bistatic_reference(self) -> None:
-        assert (
-            "iw2" in self.meta_per_bsid_per_swath
-        ), "No IW2 metadata, full bistatic can't be applied"
+        assert "iw2" in self.meta_per_bsid_per_swath, (
+            "No IW2 metadata, full bistatic can't be applied"
+        )
 
         self._ref_per_product_id = {}
 

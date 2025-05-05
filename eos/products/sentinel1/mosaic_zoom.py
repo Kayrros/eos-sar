@@ -134,9 +134,9 @@ class MosaicZoomer(regist.SarResample):
             deramped array.
 
         """
-        assert (
-            src_array.shape == self.crop_roi.get_shape()
-        ), "Input array has incompatible shape with pre-set crop_roi."
+        assert src_array.shape == self.crop_roi.get_shape(), (
+            "Input array has incompatible shape with pre-set crop_roi."
+        )
 
         deramped = np.full(self.crop_roi.get_shape(), np.nan, dtype=np.csingle)
 
@@ -187,9 +187,9 @@ class MosaicZoomer(regist.SarResample):
             Zoomed array.
 
         """
-        assert (
-            deramped.shape == self.crop_roi.get_shape()
-        ), f"Input array of shape {deramped.shape} has incompatible shape with pre-set crop_roi of shape {self.crop_roi.get_shape()}"
+        assert deramped.shape == self.crop_roi.get_shape(), (
+            f"Input array of shape {deramped.shape} has incompatible shape with pre-set crop_roi of shape {self.crop_roi.get_shape()}"
+        )
 
         resampled = np.full(self.dst_shape, np.nan, dtype=np.csingle)
 
@@ -221,18 +221,18 @@ class MosaicZoomer(regist.SarResample):
             Reramped result.
 
         """
-        assert (
-            dst_array.shape == self.dst_shape
-        ), "Input array has incompatible shape with expected dst shape."
+        assert dst_array.shape == self.dst_shape, (
+            "Input array has incompatible shape with expected dst shape."
+        )
 
         reramped = np.full(self.dst_shape, np.nan, dtype=np.csingle)
         # loop on the write rois to reramp
         for bsid in self.bsids:
             col_min, row_min, col_max, row_max = self.write_rois[bsid].to_bounds()
             reramped[row_min : row_max + 1, col_min : col_max + 1] = (
-                self.resampled_resamplers[
-                    bsid
-                ].reramp(dst_array[row_min : row_max + 1, col_min : col_max + 1])
+                self.resampled_resamplers[bsid].reramp(
+                    dst_array[row_min : row_max + 1, col_min : col_max + 1]
+                )
             )
         return reramped
 
@@ -258,9 +258,9 @@ class MosaicZoomer(regist.SarResample):
             Zoomed array.
 
         """
-        assert (
-            src_array.shape == self.crop_roi.get_shape()
-        ), "Input array has incompatible shape with pre-set crop_roi."
+        assert src_array.shape == self.crop_roi.get_shape(), (
+            "Input array has incompatible shape with pre-set crop_roi."
+        )
 
         # deramp
         deramped = self.deramp(src_array)

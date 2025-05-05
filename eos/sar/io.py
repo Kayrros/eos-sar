@@ -246,9 +246,9 @@ def glob_single_file(pattern: str) -> str:
     AssertionError: If the number of files found is not one.
     """
     list_results = glob.glob(pattern)
-    assert (
-        len(list_results) == 1
-    ), f"Expected to find one file, instead found {len(list_results)}"
+    assert len(list_results) == 1, (
+        f"Expected to find one file, instead found {len(list_results)}"
+    )
     return list_results[0]
 
 

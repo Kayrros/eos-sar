@@ -67,15 +67,15 @@ def test_projection():
 
     # check ability to query one point
     ptlon, ptlat, ptalt = bmod.localization(rows[0], cols[0], alts[0])
-    assert isinstance(
-        ptlon, float
-    ), "vectorized localization func failed on scalar input"
-    assert isinstance(
-        ptlat, float
-    ), "vectorized localization func failed on scalar input"
-    assert isinstance(
-        ptalt, float
-    ), "vectorized localization func failed on scalar input"
+    assert isinstance(ptlon, float), (
+        "vectorized localization func failed on scalar input"
+    )
+    assert isinstance(ptlat, float), (
+        "vectorized localization func failed on scalar input"
+    )
+    assert isinstance(ptalt, float), (
+        "vectorized localization func failed on scalar input"
+    )
 
     # check ability to query one point
     ptrow, ptcol, pti = bmod.projection(lon[0], lat[0], alt[0])
@@ -87,54 +87,54 @@ def test_projection():
     transform = pyproj.Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
     gx, gy, gz = transform.transform(lon, lat, alt)
     azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx, gy, gz)
-    assert isinstance(
-        azt, np.ndarray
-    ), "vectorized iterative projection func failed on array input"
-    assert isinstance(
-        rng, np.ndarray
-    ), "vectorized iterative projection func failed on array input"
-    assert isinstance(
-        i, np.ndarray
-    ), "vectorized iterative projection func failed on array input"
+    assert isinstance(azt, np.ndarray), (
+        "vectorized iterative projection func failed on array input"
+    )
+    assert isinstance(rng, np.ndarray), (
+        "vectorized iterative projection func failed on array input"
+    )
+    assert isinstance(i, np.ndarray), (
+        "vectorized iterative projection func failed on array input"
+    )
 
     gx, gy, gz = range_doppler.iterative_localization(
         bmod.orbit, azt, rng, np.zeros_like(alt), (gx + 10, gy + 2, gz + 3)
     )
-    assert isinstance(
-        gx, np.ndarray
-    ), "vectorized iterative localization func failed on array input"
-    assert isinstance(
-        gy, np.ndarray
-    ), "vectorized iterative localization func failed on array input"
-    assert isinstance(
-        gz, np.ndarray
-    ), "vectorized iterative localization func failed on array input"
+    assert isinstance(gx, np.ndarray), (
+        "vectorized iterative localization func failed on array input"
+    )
+    assert isinstance(gy, np.ndarray), (
+        "vectorized iterative localization func failed on array input"
+    )
+    assert isinstance(gz, np.ndarray), (
+        "vectorized iterative localization func failed on array input"
+    )
 
     azt, rng, i = range_doppler.iterative_projection(bmod.orbit, gx[0], gy[0], gz[0])
-    assert isinstance(
-        azt, float
-    ), "vectorized iterative projection func failed on scalar input"
-    assert isinstance(
-        rng, float
-    ), "vectorized iterative projection func failed on scalar input"
-    assert isinstance(
-        i, float
-    ), "vectorized iterative projection func failed on scalar input"
+    assert isinstance(azt, float), (
+        "vectorized iterative projection func failed on scalar input"
+    )
+    assert isinstance(rng, float), (
+        "vectorized iterative projection func failed on scalar input"
+    )
+    assert isinstance(i, float), (
+        "vectorized iterative projection func failed on scalar input"
+    )
 
     init_gxyz = (gx[0] + 10, gy[0] + 2, gz[0] + 3)
 
     gx, gy, gz = range_doppler.iterative_localization(
         bmod.orbit, azt, rng, 0, init_gxyz
     )
-    assert isinstance(
-        gx, float
-    ), "vectorized iterative localization func failed on scalar input"
-    assert isinstance(
-        gy, float
-    ), "vectorized iterative localization func failed on scalar input"
-    assert isinstance(
-        gz, float
-    ), "vectorized iterative localization func failed on scalar input"
+    assert isinstance(gx, float), (
+        "vectorized iterative localization func failed on scalar input"
+    )
+    assert isinstance(gy, float), (
+        "vectorized iterative localization func failed on scalar input"
+    )
+    assert isinstance(gz, float), (
+        "vectorized iterative localization func failed on scalar input"
+    )
 
     # Test bias correction
     # create an unbiased Sentinel1BurstModel
@@ -199,15 +199,15 @@ def test_projection_grd():
 
     # check ability to query one point
     ptlon, ptlat, ptalt = proj_model.localization(rows[0], cols[0], alts[0])
-    assert isinstance(
-        ptlon, float
-    ), "vectorized localization func failed on scalar input"
-    assert isinstance(
-        ptlat, float
-    ), "vectorized localization func failed on scalar input"
-    assert isinstance(
-        ptalt, float
-    ), "vectorized localization func failed on scalar input"
+    assert isinstance(ptlon, float), (
+        "vectorized localization func failed on scalar input"
+    )
+    assert isinstance(ptlat, float), (
+        "vectorized localization func failed on scalar input"
+    )
+    assert isinstance(ptalt, float), (
+        "vectorized localization func failed on scalar input"
+    )
 
     # check ability to query one point
     ptrow, ptcol, pti = proj_model.projection(lon[0], lat[0], alt[0])
@@ -416,9 +416,9 @@ def test_projection_corner_reflectors(phx_client):
         # then just take the most significant maximum
         (row_measured, col_measured), _ = subpix_max_measured[0]
 
-        assert (
-            row_measured is not None
-        ), "Quadratic polynomial fitting failed around prediction"
+        assert row_measured is not None, (
+            "Quadratic polynomial fitting failed around prediction"
+        )
 
         rows_meas[idx] = row_measured
         cols_meas[idx] = col_measured
@@ -434,9 +434,9 @@ def test_projection_corner_reflectors(phx_client):
     # note: the bias is actually not as high as the tol that was set
 
     # however, the standard deviation of the error is low
-    assert (
-        cols_pred - cols_meas
-    ).std() < 0.03, "Col standard deviation higher than expected"
-    assert (
-        rows_pred - rows_meas
-    ).std() < 0.03, "Row standard deviation higher than expected"
+    assert (cols_pred - cols_meas).std() < 0.03, (
+        "Col standard deviation higher than expected"
+    )
+    assert (rows_pred - rows_meas).std() < 0.03, (
+        "Row standard deviation higher than expected"
+    )

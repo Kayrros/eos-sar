@@ -675,9 +675,9 @@ class OvlSecondaryPipeline(Pipeline):
 
         self.resampler_per_osid.update(all_resamplers_sec)
 
-        assert set(all_resampled_ovls_sec.keys()) == set(
-            osids_of_interest
-        ), "osids should not change after resampling"
+        assert set(all_resampled_ovls_sec.keys()) == set(osids_of_interest), (
+            "osids should not change after resampling"
+        )
 
         # save all_resampled_ovls_sec
         for osid, resamp_ovl in all_resampled_ovls_sec.items():

@@ -135,6 +135,6 @@ def test_localize_without_alt(s3_client):
         margin=10, alt_min=-1000.0, alt_max=9000.0
     )
     coarse_approx_geom_shp = shapely.geometry.Polygon(coarse_approx_geom)
-    assert coarse_approx_geom_shp.contains(
-        approx_geom_shp
-    ), "coarse_approx_geom does not contain the approx_geom"
+    assert coarse_approx_geom_shp.contains(approx_geom_shp), (
+        "coarse_approx_geom does not contain the approx_geom"
+    )

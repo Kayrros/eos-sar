@@ -33,9 +33,9 @@ class BaseModel(ABC):
     def get_theta_list(self) -> list[NDArray]: ...
 
     def get_theta_from_indices(self, indices: list[int]):
-        assert (
-            len(indices) == self.get_dimension()
-        ), "Should provide one index per element in theta_list"
+        assert len(indices) == self.get_dimension(), (
+            "Should provide one index per element in theta_list"
+        )
         return [theta[idx] for idx, theta in zip(indices, self.get_theta_list())]
 
     @abstractmethod
@@ -176,9 +176,9 @@ class CompoundModel(BaseModel):
 
     @override
     def predict_single(self, theta_single: list[float]):
-        assert (
-            len(theta_single) == self.d
-        ), f"Expected {self.d} elements in theta_single"
+        assert len(theta_single) == self.d, (
+            f"Expected {self.d} elements in theta_single"
+        )
         pred = 0
         for mod, pos, d in zip(self.models, self.begin_positions, self.dims):
             pred = pred + mod.predict_single(theta_single[pos : pos + d])
@@ -209,9 +209,9 @@ class ExhaustiveGamma:
     ) -> list[tuple[Optional[float], Optional[float]]]:
         # bounds
         bounds: list[tuple[Optional[float], Optional[float]]] = []
-        assert len(self.max_indices) == len(
-            theta_list
-        ), "theta_list must have same size as max_indices"
+        assert len(self.max_indices) == len(theta_list), (
+            "theta_list must have same size as max_indices"
+        )
         for m, theta in zip(self.max_indices, theta_list):
             if m > 0:
                 l = theta[m - 1]
@@ -255,9 +255,9 @@ class Periodogram:
         self.weights = weights
 
     def exhaustive_gamma(self, grid: Grid) -> ExhaustiveGamma:
-        assert grid.get_last_dim_size() == len(
-            self.phi_wrapped
-        ), "Grid last dimension size should match phase array size"
+        assert grid.get_last_dim_size() == len(self.phi_wrapped), (
+            "Grid last dimension size should match phase array size"
+        )
 
         tmp = np.exp(1j * (-grid.get_values() + self.phi_wrapped))
         cmpx_gamma = np.sum(tmp * self.weights, axis=-1)
@@ -360,9 +360,9 @@ def planar_periodogram(
         bias = np.angle(cmpx_gamma_opt)
         diff = abs(gamma_opt - np.abs(cmpx_gamma_opt))
         threshold = 0.01
-        assert (
-            diff < threshold
-        ), f"something wrong with gamma opt, {diff} greater than {threshold} "
+        assert diff < threshold, (
+            f"something wrong with gamma opt, {diff} greater than {threshold} "
+        )
         results.append(
             PlanarPeriodogramResult(exhaustive_gamma, slopes, bias, gamma_opt)
         )

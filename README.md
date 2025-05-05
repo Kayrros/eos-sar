@@ -4,10 +4,15 @@ This package provides access to some generic SAR (Synthetic Aperture Radar) proc
 
 Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been implemented.
 
-### Requirements & Installation
+## Requirements & Installation
+
 To install the package in editable mode, you can run:
 
-	pip install -e .
+	uv sync --frozen
+
+or
+
+	pip install -e . --group dev
 
 Some processing pipelines assume that a library providing acess to a DEM (Digital Elevation Model) source is provided. The recommended source is `eos.dem.DEMStitcherSource` (with `pip install dem-stitcher`) that uses GLO30 and GLO90. You can also install `multidem` (Kayrros package) or [srtm4](https://github.com/centreborelli/srtm4) as SRTM sources.
 
@@ -17,11 +22,7 @@ If you wish to install srtm4, make sure to install with the "crop" extra depende
 
 If you wish to use another DEM source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a DEM.
 
-Automatic download of Sentinel-1 SLC data is not provided in this package yet. You can use [ASF](https://search.asf.alaska.edu/#/) to find and download the data.
-
-As for the precise or restituted orbit files, automatic querying and download for a product is not provided in this package yet.
-
-### Usage
+## Usage
 
 Check the usage folder for a tutorial. The tutorial corresponds to performing an interferogram (among other things) on data spanning an earthquake taking place at [January 7 2022: M 6.6 - 113 km SW of Jinchang, China](https://sarviews-hazards.alaska.edu/Event/e2dfcb22-e1a4-43d8-a17e-c6b175849463).
 
@@ -47,21 +48,18 @@ The features shown in the tutorial are listed below:
 - Registration/ resampling/ debursting of a secondary image onto a primary image. The processing can be restricted to a region of interest.
 - Interferogram formation, orbital and topographic phase estimation and removal, coherence estimation.
 
+## Contributing
+
 ### Tests
 
-Some tests currently use Kayrros cloud storage, which means that certain credentials must be set up for these tests.  Currently, only local tests will run and others will fail if you don't have these credentials. To run the tests locally, we use `pytest`:
+To run the tests, we use `pytest`:
 
-	pip install -r requirements-dev.txt
-	pytest .
+	uv run --frozen pytest .
 
-For the future, all tests should be able to run locally, but test data should be downloaded beforehand. We plan to use data from ASF, similarly to the tutorial data, that can be downloaded by running in a shell:
+Some tests currently use Kayrros cloud storage and internal services (behind VPN), which means that certain credentials must be set up for these tests. Currently, only local tests will run and others will be skipped if you don't have these credentials.
+For Kayrros users (with VPN and credentials):
 
-	cd eos-sar
-	python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_poeorb/S1B_OPER_AUX_POEORB_OPOD_20210330T214422_V20190701T225942_20190703T005942.EOF tests/data/pair/orb
-	python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_poeorb/S1A_OPER_AUX_POEORB_OPOD_20210330T235242_V20190707T225942_20190709T005942.EOF tests/data/pair/orb
-	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SB/S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5.zip tests/data/pair/safes --unzip
-	python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20190708T032532_20190708T032559_028020_032A14_33CA.zip tests/data/pair/safes --unzip
-
+	uv run --all-extras pytest .
 
 ### Code formatting
 
@@ -69,8 +67,22 @@ The CI validates the code against pep8 rules and formatting, as configured in `p
 
 You can check your code locally before commiting using pre-commit or using:
 ```bash
-pip install $(grep ruff requirements-dev.txt)
-ruff check . --fix; ruff format .
+uv run ruff check . --fix
+uv run ruff format .
 ```
 
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.
+
+
+### Making a release
+
+- update the changelog: `uv run --no-project --with git-cliff git cliff --unreleased` and update `CHANGELOG.md`
+- update the version in `pyproject.toml` (try to respect semantic versioning)
+- commit (message="x.y.z") and tag the commit (tag="x.y.z")
+- push with the tag (`git push --tags`)
+
+### Tips for external contributors
+
+Adding a package: `uv add --frozen <package>`.
+
+Make sure to have pyproj data: `pyproj sync -v --file us_nga_egm96_15`

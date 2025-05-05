@@ -324,9 +324,9 @@ class Sentinel1BurstResample(regist.SarResample):
 
         if matrix_to_doppler_frame_roi is not None:
             # in this case, ensure that given arrays are of the same length (points)
-            assert len(rows_roi) == len(
-                cols_roi
-            ), "Cols and Rows arrays must be of same length."
+            assert len(rows_roi) == len(cols_roi), (
+                "Cols and Rows arrays must be of same length."
+            )
             # homogeneous coordinates
             dst_points = np.vstack(
                 [
@@ -445,9 +445,9 @@ class Sentinel1BurstResample(regist.SarResample):
         phi : np.ndarray, (npts, ).
             Phase ramp, i.e. the parabola present in the data because of the TOPSAR mode.
         """
-        assert len(rows_roi) == len(
-            cols_roi
-        ), "Cols and Rows arrays must be of same length."
+        assert len(rows_roi) == len(cols_roi), (
+            "Cols and Rows arrays must be of same length."
+        )
         eta, ref_time, dop_centroid, dop_rate = self.get_doppler_params(
             rows_roi, cols_roi, roi_origin_in_doppler_frame, matrix_to_doppler_frame_roi
         )
@@ -527,9 +527,9 @@ class Sentinel1BurstResample(regist.SarResample):
             done after this step.
 
         """
-        assert (
-            src_array.shape == self.src_roi_in_burst.get_shape()
-        ), "src array is not of the expected shape"
+        assert src_array.shape == self.src_roi_in_burst.get_shape(), (
+            "src array is not of the expected shape"
+        )
 
         col0, row0, w, h = self.src_roi_in_burst.to_roi()
 
@@ -556,9 +556,9 @@ class Sentinel1BurstResample(regist.SarResample):
             Reramped burst.
 
         """
-        assert (
-            dst_array.shape == self.dst_shape
-        ), "destination array is not of the expected shape"
+        assert dst_array.shape == self.dst_shape, (
+            "destination array is not of the expected shape"
+        )
 
         phi = self.get_phi_ramp_gridded(
             np.arange(self.dst_shape[0]),
@@ -653,9 +653,9 @@ class ResampledBurstResampler(regist.SarResample):
             Reramped array.
 
         """
-        assert (
-            dst_array.shape == self.dst_shape
-        ), "destination array is not of the expected shape"
+        assert dst_array.shape == self.dst_shape, (
+            "destination array is not of the expected shape"
+        )
 
         # All of the work is in the matrix to doppler params
         # self.matrix takes from dst to src

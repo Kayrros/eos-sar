@@ -267,7 +267,8 @@ class Roi:
         assert row_child_min >= 0, msg
 
     def make_valid(self, parent_shape: tuple[int, int], inplace: bool = False) -> Roi:
-        """
+        (
+            """
         If the child roi is not within the boundaries of the parent image dimension,
         modify it to satisfy the condition.
 
@@ -281,7 +282,9 @@ class Roi:
         adapted_roi : Roi
             region of interest that lies within the parent shape.
 
-        """ ""
+        """
+            ""
+        )
         h, w = parent_shape
         parent_roi = Roi(0, 0, w, h)
         return self.clip(parent_roi, inplace=inplace)
@@ -300,7 +303,7 @@ class Roi:
         adapted_roi : Roi
             region of interest that lies within the parent shape.
 
-        """ ""
+        """
         (
             col_parent_min,
             row_parent_min,

@@ -171,9 +171,9 @@ def _cdse_list_items(request: str) -> list[str]:
     except KeyError as e:
         raise Exception(f"OData parsing error? : {items}") from e
 
-    assert (
-        len(items) < limit
-    ), "maximum odata 'number of results' reached, please ask for the implementation of pagination"
+    assert len(items) < limit, (
+        "maximum odata 'number of results' reached, please ask for the implementation of pagination"
+    )
 
     pids = [
         item["Name"].replace(".SAFE", "")
