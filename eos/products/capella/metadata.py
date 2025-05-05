@@ -9,39 +9,20 @@ Define own class to read Capella SAR images' metadata.
 Modified from eos.products.sentinel1.product.
 """
 
-import os
+import datetime as datetime
 import json
-import glob
+import sys
 
 import numpy as np
-import affine
 import pandas as pd
-import datetime as datetime
-from osgeo import gdal
-import pyproj
 
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import cartopy.crs as crs
-import cartopy.feature as cfeature
-from cartopy.io import srtm
-
-import eos.sar
-from eos.sar import io
 from eos.sar import const
-from eos.sar import regist
-from eos.sar.atmospheric_correction import ApdCorrection
-from eos.sar.coordinates import SLCCoordinate
-from capella.proj_model import MyCapellaSLCModel
-
-import sys
 
 split_path = sys.path[0].split("/")[:-2]
 path = ""
 for folder in split_path:
     path += folder + "/"
 sys.path.append(path[:-1])
-from useful_functions import get_elevations_from_dem, remove_nan_rows_and_cols
 
 C = float(const.LIGHT_SPEED_M_PER_SEC)  # speed of light
 
