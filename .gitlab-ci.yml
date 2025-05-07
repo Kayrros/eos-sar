@@ -7,6 +7,8 @@ stages:
 
 variables:
   PIP_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
+  # never use the python from the system, as it might lack development headers
+  UV_MANAGED_PYTHON: "1"  
 
 test:
   stage: test
@@ -43,6 +45,12 @@ fakedeploy:
     - source .venv/bin/activate
     - pip install dist/*.tar.gz
     - pip install dist/*.whl
+    # also be exhaustive:
+    - uv build --python 3.9
+    - uv build --python 3.10
+    - uv build --python 3.11
+    - uv build --python 3.12
+    - uv build --python 3.13
 
 deploy:
   stage: deploy
