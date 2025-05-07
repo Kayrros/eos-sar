@@ -1,4 +1,11 @@
 
+# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.38.0..HEAD)
+
+## Changed
+- readme: update release instructions
+- changelog: link diffs
+
+
 # [0.38.0](https://github.com/Kayrros/eos-sar/compare/0.37.0..0.38.0) -- 2025-05-07
 
 ## Added

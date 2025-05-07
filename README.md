@@ -76,10 +76,11 @@ Avoid making commits that only format the code; instead, amend commits or rebase
 
 ### Making a release
 
-- update the changelog: `uv run --no-project --with git-cliff git cliff --unreleased` and update `CHANGELOG.md`
-- update the version in `pyproject.toml` (try to respect semantic versioning)
-- commit (message="x.y.z") and tag the commit (tag="x.y.z")
-- push with the tag (`git push --tags`)
+1. generate the changelog: `uv run --no-project --with git-cliff git cliff --unreleased` and update `CHANGELOG.md` manually
+2. update the version in `pyproject.toml` (try to respect semantic versioning)
+3. run `uv lock` to update uv.lock
+4. commit (message="x.y.z") and tag the commit (tag="x.y.z")
+5. push with the tag (`git push --tags`)
 
 ### Tips for external contributors
 
