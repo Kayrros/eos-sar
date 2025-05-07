@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from typing import Literal, Union
 
-import pandas as pd
+import numpy as np
 from typing_extensions import assert_never
 
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC as C
@@ -18,24 +18,31 @@ This can be worse for Spotlight (ultra) products.
 """
 
 
-def time_since_ref(mydate: pd.Timestamp, ref: pd.Timestamp) -> float:
+def time_since_ref(mydate: np.datetime64, ref: np.datetime64) -> float:
     """
-    Get time since ref in seconds
+    Get time since ref in seconds.
     """
 
     time_delta = mydate - ref
 
-    # call .value, which gives the delta in nanoseconds
+    diff_in_seconds = time_delta / np.timedelta64(1, "s")  # This is np.float64
 
-    return time_delta.value * 1e-9
+    # convert to float
+    return float(diff_in_seconds)
 
 
-def parse_date_as_pandas_timestamp(date_str: str) -> pd.Timestamp:
+def parse_date_as_numpy_datetime64(date_str: str) -> np.datetime64:
     """
-    Parse date string with nanosecond precision into pandas timestamp:
+    Parse date string with nanosecond precision into numpy datetime64:
         ex date_str: '2021-02-04T15:30:42.421646560Z'
+        As per the documentation https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units
+        the datetime is represented internally as an int64 w.r.t. to 1970-01-01T00:00.
+        For ns precision, the time delta representable on a signed int64 is the interval [-2**63 + 1, 2**63]
+        so converting the largest value to years: 2**63 * 1e-9 /3600/24/365.25 = 292.27 years
+        This is in accordance with numpy doc. For a datetime64 with ns precision, we can represent dates in the interval [ 1678 AD, 2262 AD].
+        So using ns precision shouldn't be an issue until 2262 ;).
     """
-    return pd.to_datetime(date_str, format="%Y-%m-%dT%H:%M:%S.%fZ", utc=True)
+    return np.datetime64(date_str.removesuffix("Z"), "ns")
 
 
 def _get_3D_tuple(vec_3D: list[float]) -> tuple[float, float, float]:
@@ -50,17 +57,17 @@ class CapellaMetadata:
     In the documentation below, items represented as *item* refer to the name in the Capella metdata.
     """
 
-    start_timestamp: pd.Timestamp
+    start_timestamp: np.datetime64
     """
-    *start_timestamp*: Timestamp for the start of the collection. ex. "2021-02-04T15:30:42.421646560Z"
+    *start_timestamp*: Timestamp for the start of the collection. ex. "2021-02-04T15:30:42.421646560Z", converted to np.datetime64.
     """
-    stop_timestamp: pd.Timestamp
+    stop_timestamp: np.datetime64
     """
-    *stop_timestamp*: Timestamp for the end of the collection. ex. "2021-02-04T15:30:58.029504459Z"
+    *stop_timestamp*: Timestamp for the end of the collection. ex. "2021-02-04T15:30:58.029504459Z", converted to np.datetime64.
     """
-    ref_timestamp: pd.Timestamp
+    ref_timestamp: np.datetime64
     """
-    reference timestamp against which floating time deltas will be computed
+    reference timestamp against which floating time deltas will be computed ex. "2021-02-04T00:00:00.000000000", converted to np.datetime64.
     """
     height: int
     """
@@ -166,9 +173,9 @@ meters
     *collect/image/image_geometry/delta_line_time*: The time difference between successive lines in seconds
     """
 
-    first_line_time: pd.Timestamp
+    first_line_time: np.datetime64
     """
-    *collect/image/image_geometry/first_line_time*: The timestamp of the first line
+    *collect/image/image_geometry/first_line_time*: The timestamp of the first line, converted to np.datetime64.
     """
 
     @property
@@ -206,13 +213,13 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     collect = data["collect"]
     del data
 
-    start_timestamp = parse_date_as_pandas_timestamp(collect["start_timestamp"])
+    start_timestamp = parse_date_as_numpy_datetime64(collect["start_timestamp"])
 
     # midnight of start_timestamp
-    # floor on day frequency
-    ref_timestamp = start_timestamp.floor("d")
+    # floor on day frequency then convert back to ns precision
+    ref_timestamp = start_timestamp.astype("datetime64[D]").astype("datetime64[ns]")
 
-    stop_timestamp = parse_date_as_pandas_timestamp(collect["stop_timestamp"])
+    stop_timestamp = parse_date_as_numpy_datetime64(collect["stop_timestamp"])
 
     image = collect["image"]
     radar = collect["radar"]
@@ -256,7 +263,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     # State vectors
     state_vectors = []
     for p in state["state_vectors"]:
-        sv_time = parse_date_as_pandas_timestamp(p["time"])
+        sv_time = parse_date_as_numpy_datetime64(p["time"])
         sv_time_since_ref = time_since_ref(sv_time, ref_timestamp)
         sv_pos = _get_3D_tuple(p["position"])
         sv_velocity = _get_3D_tuple(p["velocity"])
@@ -277,7 +284,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
 
         delta_line_time = image_geometry["delta_line_time"]
 
-        first_line_time = parse_date_as_pandas_timestamp(
+        first_line_time = parse_date_as_numpy_datetime64(
             image_geometry["first_line_time"]
         )
         return CapellaSLCMetadata(
