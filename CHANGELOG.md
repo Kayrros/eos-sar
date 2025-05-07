@@ -1,4 +1,4 @@
-# [Unreleased]
+# 0.38.0 - 2025-05-07
 
 ## Added
 - readme: add info about releasing a new version
