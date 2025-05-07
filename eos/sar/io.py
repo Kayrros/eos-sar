@@ -30,7 +30,11 @@ class ImageOpener(Protocol):
     def __call__(self, path: str) -> ImageReader: ...
 
 
-def open_image(path: str, requester_pays: bool = False) -> ImageReader:
+def open_image(
+    path: str,
+    requester_pays: bool = False,
+    rasterio_session_kwargs: dict[str, Any] = dict(),
+) -> ImageReader:
     """
     Open a remote or local image.
 
@@ -42,6 +46,11 @@ def open_image(path: str, requester_pays: bool = False) -> ImageReader:
         Set this to True for AWS requester-pays buckets.
         The requester will be charged by AWS for the request.
         The default is False.
+        Only used in case the path starts with s3://, ignored otherwise.
+        This parameter is kept for backward compatibility, please consider using `rasterio_session_kwargs` instead.
+    rasterio_session_kwargs: dict[str, Any]
+        Dictionnary for keyword arguments passed to rasterio.session.AWSSession constructor.
+        Only used in case the path starts with s3://, ignored otherwise.
 
     Returns
     -------
@@ -50,7 +59,14 @@ def open_image(path: str, requester_pays: bool = False) -> ImageReader:
 
     """
     if path.startswith("s3://"):
-        session = rasterio.session.AWSSession(requester_pays=requester_pays)
+        session_dict = rasterio_session_kwargs.copy()
+        if requester_pays:
+            if "requester_pays" in rasterio_session_kwargs:
+                raise Exception(
+                    "`requester_pays` should not be passed twice to `open_image`."
+                )
+            session_dict["requester_pays"] = requester_pays
+        session = rasterio.session.AWSSession(**session_dict)
         env = rasterio.Env(session=session)
     else:
         env = rasterio.Env()
