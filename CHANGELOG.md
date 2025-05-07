@@ -1,4 +1,5 @@
-# 0.38.0 - 2025-05-07
+
+# [0.38.0](https://github.com/Kayrros/eos-sar/compare/0.37.0..0.38.0) -- 2025-05-07
 
 ## Added
 - readme: add info about releasing a new version
@@ -11,6 +12,7 @@
 - setup.py: Add lower bound on tfp so that extra makes sense
 
 ## Changed
+
 - pyproject: enable python 3.13
 - readme: tweaks for uv
 - ci: use uv
@@ -27,7 +29,7 @@
 - workflow: Remove usage of deprecated tifffile.imsave
 
 
-# 0.37.0 - 2025-04-25
+# [0.37.0](https://github.com/Kayrros/eos-sar/compare/0.35.0..0.37.0) -- 2025-04-25
 
 ## Added
 - metadata: Add relative orbit number formula for S1C
@@ -38,7 +40,7 @@
 
 
 
-# 0.35.0 - 2025-03-19
+# [0.35.0](https://github.com/Kayrros/eos-sar/compare/0.34.0..0.35.0) -- 2025-03-19
 
 ## Added
 - dem-stitcher: add parameter `tiles_cache_dir` and set gdal EMPTY_DIR:
@@ -54,6 +56,7 @@
 
 - teosar: don't require tensorflow and pyopencl (-light variant)
 - Modify the workflow: disconnect secondary pipelines from primary (#157):
+    * Co-authored-by: Roland Akiki <r.akiki@kayrros.com>
 - dem_to_radar: Mask out nan values in radarcoding
 - dem: check that MyDEMSource crs is 4326
 - model/localize_without_alt: compute alt_min/alt_max from dem when none
@@ -62,7 +65,7 @@
 - s1/grd-cropper: fix out-of-product cropping
 
 
-# 0.34.0 - 2025-01-16
+# [0.34.0](https://github.com/Kayrros/eos-sar/compare/0.33.0..0.34.0) -- 2025-01-16
 
 ## Changed
 
@@ -79,7 +82,7 @@
 - s1 coord correction: remove __dict__ interface
 
 
-# 0.33.0 - 2025-01-02
+# [0.33.0](https://github.com/Kayrros/eos-sar/compare/0.32.0..0.33.0) -- 2025-01-02
 
 ## Changed
 
@@ -91,7 +94,7 @@
 - ortho: remove Orthorectifier.apply_stack
 
 
-# 0.32.0 - 2024-12-19
+# [0.32.0](https://github.com/Kayrros/eos-sar/compare/0.31.0..0.32.0) -- 2024-12-19
 
 ## Added
 - ortho: add explanations and typing
@@ -117,7 +120,7 @@
 - grd_cropper: remove unused return value
 
 
-# 0.31.0 - 2024-12-04
+# [0.31.0](https://github.com/Kayrros/eos-sar/compare/0.30.1..0.31.0) -- 2024-12-04
 
 ## Added
 - grd_cropper: support product assembly and CDSE products
@@ -176,7 +179,7 @@
 - usage:periodo_ex: Remove code cell
 
 
-# 0.30.1 - 2024-09-24
+# [0.30.1](https://github.com/Kayrros/eos-sar/compare/0.30.0..0.30.1) -- 2024-09-24
 
 ## Changed
 
@@ -192,7 +195,7 @@
     * see https://documentation.dataspace.copernicus.eu/APIs/Others/ReleaseNotes.html#odata-catalogue-api-evictiondate-attribute-update-for-null-values-2024-07-31
 
 
-# 0.30.0 - 2024-06-26
+# [0.30.0](https://github.com/Kayrros/eos-sar/compare/0.29.0..0.30.0) -- 2024-06-26
 
 ## Added
 - tsx: Add first working tsx usage
@@ -210,7 +213,7 @@
 - deps: fix compatibility with numpy 2
 
 
-# 0.29.0 - 2024-04-23
+# [0.29.0](https://github.com/Kayrros/eos-sar/compare/0.28.0..0.29.0) -- 2024-04-23
 
 ## Added
 - projection_correction: Add bias correction
@@ -223,7 +226,7 @@
 - tsx: merge range_frequency and range_sampling_rate
 
 
-# 0.28.0 - 2024-04-18
+# [0.28.0](https://github.com/Kayrros/eos-sar/compare/0.27.0..0.28.0) -- 2024-04-18
 
 ## Added
 - io: add read_file_as_str and exists
@@ -253,7 +256,7 @@
 - ci: fix install requirements.txt
 
 
-# 0.27.0 - 2024-04-03
+# [0.27.0](https://github.com/Kayrros/eos-sar/compare/0.26.1..0.27.0) -- 2024-04-03
 
 ## Added
 - calibration: add as_amplitude parameter to the reader
@@ -275,7 +278,7 @@
 - ferreti_2001: Remove unecessary comments
 
 
-# 0.26.1 - 2024-03-12
+# [0.26.1](https://github.com/Kayrros/eos-sar/compare/0.26.0..0.26.1) -- 2024-03-12
 
 ## Changed
 - 0.26.1:
@@ -287,7 +290,7 @@
 - dist: fix missing py.typed
 
 
-# 0.26.0 - 2024-03-12
+# [0.26.0](https://github.com/Kayrros/eos-sar/compare/0.25.0..0.26.0) -- 2024-03-12
 
 ## Added
 - repo: add .pre-commit-config.yaml
@@ -315,7 +318,7 @@
     * it was used to configure flake8, which we no longer use
 
 
-# 0.25.0 - 2024-02-13
+# [0.25.0](https://github.com/Kayrros/eos-sar/compare/0.24.0..0.25.0) -- 2024-02-13
 
 ## Added
 - s1 product: support get_manifest for phoenix product
@@ -329,7 +332,7 @@
 - cosmo: implement meta.deramping_phases(roi)
 
 
-# 0.24.0 - 2024-01-09
+# [0.24.0](https://github.com/Kayrros/eos-sar/compare/0.23.0..0.24.0) -- 2024-01-09
 
 ## Added
 - ortho: add apply_stack and improve typing
@@ -357,7 +360,7 @@
 - readme: fix a couple typos
 
 
-# 0.23.0 - 2023-11-20
+# [0.23.0](https://github.com/Kayrros/eos-sar/compare/0.22.0..0.23.0) -- 2023-11-20
 
 ## Added
 - s1 product: add extract_ipf and Sentinel1*ProductInfo.ipf
@@ -391,7 +394,7 @@
 - tsinsar: remove missing products in remove_weird_products
 
 
-# 0.22.0 - 2023-11-13
+# [0.22.0](https://github.com/Kayrros/eos-sar/compare/0.21.0..0.22.0) -- 2023-11-13
 
 ## Added
 - teosar/ferreti: add a constant term per pixel
@@ -420,14 +423,14 @@
 - ci: replace pytest-parallel with pytest-xdist
 
 
-# 0.21.0 - 2023-10-30
+# [0.21.0](https://github.com/Kayrros/eos-sar/compare/0.20.0..0.21.0) -- 2023-10-30
 
 ## Changed
 
 - code: import the teosar package
 
 
-# 0.20.0 - 2023-10-23
+# [0.20.0](https://github.com/Kayrros/eos-sar/compare/0.19.0..0.20.0) -- 2023-10-23
 
 ## Changed
 
@@ -435,7 +438,7 @@
 - s1 product: introduce catalog abstraction
 
 
-# 0.19.0 - 2023-10-23
+# [0.19.0](https://github.com/Kayrros/eos-sar/compare/0.18.0..0.19.0) -- 2023-10-23
 
 ## Added
 - dem: add tests for OutOfBoundsException
@@ -507,7 +510,7 @@
 - proj_model: remove redundant attributes from the Sentinel1SLCBaseModel
 
 
-# 0.18.0 - 2023-07-28
+# [0.18.0](https://github.com/Kayrros/eos-sar/compare/0.17.0..0.18.0) -- 2023-07-28
 
 ## Added
 - test: Add mcf unwrapping tests
@@ -517,7 +520,7 @@
 
 
 
-# 0.17.0 - 2023-06-29
+# [0.17.0](https://github.com/Kayrros/eos-sar/compare/0.16.1..0.17.0) -- 2023-06-29
 
 ## Added
 - model: Add new geometry approximation function
@@ -534,7 +537,7 @@
 - s1 product/cdse: fix endpoint and requester_pays
 
 
-# 0.16.1 - 2023-05-17
+# [0.16.1](https://github.com/Kayrros/eos-sar/compare/0.16.0..0.16.1) -- 2023-05-17
 
 ## Changed
 
@@ -549,7 +552,7 @@
 - requirements: remove `datetime`
 
 
-# 0.16.0 - 2023-05-02
+# [0.16.0](https://github.com/Kayrros/eos-sar/compare/0.15.0..0.16.0) -- 2023-05-02
 
 ## Added
 - assembler: Add swath model creation
@@ -564,7 +567,7 @@
 - utils: Fix writing single array in a parent array
 
 
-# 0.15.0 - 2023-03-22
+# [0.15.0](https://github.com/Kayrros/eos-sar/compare/0.14.1..0.15.0) -- 2023-03-22
 
 ## Added
 - goldstein: Add NaN support
@@ -594,7 +597,7 @@
 - readme: remove manual install of numpy and cython
 
 
-# 0.14.1 - 2023-01-30
+# [0.14.1](https://github.com/Kayrros/eos-sar/compare/0.14.0..0.14.1) -- 2023-01-30
 
 ## Added
 - dem: add env var EOS_SAR_MULTIDEM_SOURCE for get_any_source
@@ -603,7 +606,7 @@
 
 
 
-# 0.14.0 - 2023-01-25
+# [0.14.0](https://github.com/Kayrros/eos-sar/compare/0.13.1..0.14.0) -- 2023-01-25
 
 ## Added
 - goldstein: Add tests
@@ -619,7 +622,7 @@
     * (intensity gradient), which cannot be fixed by border noise removal
 
 
-# 0.13.1 - 2023-01-10
+# [0.13.1](https://github.com/Kayrros/eos-sar/compare/0.13.0..0.13.1) -- 2023-01-10
 
 ## Changed
 
@@ -633,7 +636,7 @@
     * the bucket will be removed soon
 
 
-# 0.13.0 - 2022-12-16
+# [0.13.0](https://github.com/Kayrros/eos-sar/compare/0.12.2..0.13.0) -- 2022-12-16
 
 ## Added
 - s1 orbits: add lru_cache on phoenix queries
@@ -668,7 +671,7 @@
 - ci: Fix pytest-parallel temporarily with py dependency
 
 
-# 0.12.2 - 2022-10-20
+# [0.12.2](https://github.com/Kayrros/eos-sar/compare/0.12.1..0.12.2) -- 2022-10-20
 
 ## Added
 - rtc: add shadow parameters to `normalize`
@@ -678,7 +681,7 @@
 
 
 
-# 0.12.1 - 2022-09-15
+# [0.12.1](https://github.com/Kayrros/eos-sar/compare/0.12.0..0.12.1) -- 2022-09-15
 
 ## Added
 - s1 product: add parameters source and image_opener to from_product_id
@@ -690,7 +693,7 @@
     * This allows to get rid of boundless=True, which has issues with osio.
 
 
-# 0.12.0 - 2022-09-14
+# [0.12.0](https://github.com/Kayrros/eos-sar/compare/0.11.0..0.12.0) -- 2022-09-14
 
 ## Added
 - test grd assembler: add localization/projection test
@@ -706,7 +709,7 @@
 - s1 orbits: fix ASF phoenix source
 
 
-# 0.11.0 - 2022-09-01
+# [0.11.0](https://github.com/Kayrros/eos-sar/compare/0.10.1..0.11.0) -- 2022-09-01
 
 ## Added
 - border noise: added border noise masking method and tests
@@ -724,7 +727,7 @@
 - s1 mosaic model: fix issue on multiple from_dict calls
 
 
-# 0.10.1 - 2022-08-01
+# [0.10.1](https://github.com/Kayrros/eos-sar/compare/0.10.0..0.10.1) -- 2022-08-01
 
 ## Added
 - s1 srgr: support extrapolation outside azimuth bounds
@@ -742,7 +745,7 @@
     * positions of the first row.
 
 
-# 0.10.0 - 2022-07-12
+# [0.10.0](https://github.com/Kayrros/eos-sar/compare/0.9.0..0.10.0) -- 2022-07-12
 
 ## Added
 - ortho: add eos.sar.ortho
@@ -765,7 +768,7 @@
 - rtc: remove slow path
 
 
-# 0.9.0 - 2022-07-04
+# [0.9.0](https://github.com/Kayrros/eos-sar/compare/0.8.0..0.9.0) -- 2022-07-04
 
 ## Added
 - grd: add usage/grd.py
@@ -805,7 +808,7 @@
 - model: Remove apd function
 
 
-# 0.8.0 - 2022-05-19
+# [0.8.0](https://github.com/Kayrros/eos-sar/compare/0.7.0..0.8.0) -- 2022-05-19
 
 ## Added
 - assembler: add Sentinel1Assembler constructor
@@ -856,7 +859,7 @@
 - proj_model: remove slant_range_time from Sentinel1BaseModel
 
 
-# 0.7.0 - 2022-04-14
+# [0.7.0](https://github.com/Kayrros/eos-sar/compare/0.6.0..0.7.0) -- 2022-04-14
 
 ## Added
 - readme: add code formatting information
@@ -919,7 +922,7 @@
 - io: Remove boto3 necessary import
 
 
-# 0.6.0 - 2022-02-01
+# [0.6.0](https://github.com/Kayrros/eos-sar/compare/0.5.1..0.6.0) -- 2022-02-01
 
 ## Added
 - Added srtm4 source
@@ -950,7 +953,7 @@
 - proj model: remove samples_per_burst from Sentinel1SwathModel
 
 
-# 0.5.1 - 2022-01-14
+# [0.5.1](https://github.com/Kayrros/eos-sar/compare/0.5.0..0.5.1) -- 2022-01-14
 
 ## Added
 - ci: add fakedeploy job to validate packaging
@@ -973,7 +976,7 @@
     * and refactor burstID function
 
 
-# 0.5.0 - 2022-01-14
+# [0.5.0](https://github.com/Kayrros/eos-sar/compare/0.4.0..0.5.0) -- 2022-01-14
 
 ## Added
 - calibration: add some asserts to make sure the grid is as expected
@@ -1013,7 +1016,7 @@
 - calibration: remove s1c dependency by copypasting its functions
 
 
-# 0.4.0 - 2021-12-13
+# [0.4.0](https://github.com/Kayrros/eos-sar/compare/0.3.0..0.4.0) -- 2021-12-13
 
 ## Added
 - s1 metadata: add attribut `approx_altitude`:
@@ -1096,7 +1099,7 @@
 - Removed inplace from parameters when default
 
 
-# 0.3.0 - 2021-08-19
+# [0.3.0](https://github.com/Kayrros/eos-sar/compare/0.2.0..0.3.0) -- 2021-08-19
 
 ## Added
 - io: support credentials through env vars
@@ -1144,7 +1147,7 @@
 - Removed Uppercase variables
 
 
-# 0.2.0 - 2021-08-17
+# [0.2.0](https://github.com/Kayrros/eos-sar/compare/0.1.0..0.2.0) -- 2021-08-17
 
 ## Added
 - src: add __init__.py files to fix packaging
@@ -1164,7 +1167,7 @@
 - S1 metadata: fix burst id computation when changing orbits
 
 
-# 0.1.0 - 2021-07-08
+# [0.1.0](https://github.com/Kayrros/eos-sar/compare/..0.1.0) -- 2021-07-08
 
 ## Added
 - S1 metadata: add function extract_burst_metadata and fix tests
