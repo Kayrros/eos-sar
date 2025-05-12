@@ -14,7 +14,7 @@ dependencies = [
     "pyproj>=3.5.0",
     "opencv-python-headless>=4.11.0",
     "shapely>=2.0.4",
-    "scipy>=1.13.0",
+    "scipy (>=1.13.0, !=1.15.0.*,!=1.15.1,!=1.15.2)",  # Exclude certain versions, see https://github.com/Kayrros/eos-sar/issues/173
     "rasterio>=1.4.0",
     "ortools>=9.12.0",
     "requests>=2.32.3",
