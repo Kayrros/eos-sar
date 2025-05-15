@@ -1,9 +1,16 @@
+# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.39.0..HEAD)
 
-# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.38.0..HEAD)
+
+# [0.39.0](https://github.com/Kayrros/eos-sar/compare/0.38.0..0.39.0) -- 2025-05-15
+
+## Added
+- Capella: add metadata parsing for SLC and GRD
+- Capella: add geometric model for SLC
 
 ## Changed
-- readme: update release instructions
-- changelog: link diffs
+- repo: move to src-layout packaging
+- dependencies: exclude scipy versions with slow linprog
+- io: add rasterio_session_kwargs as input to open_image
 
 
 # [0.38.0](https://github.com/Kayrros/eos-sar/compare/0.37.0..0.38.0) -- 2025-05-07
