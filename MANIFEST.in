@@ -1,11 +1,11 @@
+include CHANGELOG.md
+include LICENCE
+include README.md
+global-include *.pyx
+global-include *.pxd
+global-include py.typed
+
 recursive-exclude tests *
 recursive-exclude usage *
 recursive-exclude tools *
 
-include CHANGELOG.md
-include LICENCE
-include README.md
-include requirements.txt
-global-include *.pyx
-global-include *.pxd
-global-include py.typed

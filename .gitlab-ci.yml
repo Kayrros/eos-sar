@@ -33,7 +33,7 @@ test:compatibility:
 lint:
   stage: test
   script:
-    - uv run --all-extras mypy --non-interactive eos/ teosar/ tests/ usage/
+    - uv run --all-extras mypy --non-interactive src/ tests/ usage/
     - uv run ruff check .
     - uv run ruff format --check .
 
@@ -45,6 +45,8 @@ fakedeploy:
     - source .venv/bin/activate
     - pip install dist/*.tar.gz
     - pip install dist/*.whl
+    - python -c 'import eos.sar.io'
+    - python -c 'import eos.products.sentinel1.assembler'
     # also be exhaustive:
     - uv build --python 3.9
     - uv build --python 3.10

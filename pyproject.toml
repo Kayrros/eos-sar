@@ -46,11 +46,6 @@ kayrros = [
 requires = ["setuptools", "cython", "numpy"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["eos", "teosar"]
-# package data is specified in MANIFEST.in
-include-package-data = false
-
 [dependency-groups]
 dev = [
     # linting
@@ -64,7 +59,7 @@ dev = [
     "pytest>=8.2.2",
     "pytest-xdist>=3.6.1",
     # dem sources
-    "srtm4[crop]>=1.2.4",
+    "srtm4[crop]>=1.2.5",
     "dem-stitcher>=2.5.12",
     # network access
     "boto3>=1.34.133",
