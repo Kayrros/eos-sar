@@ -45,6 +45,8 @@ fakedeploy:
     - source .venv/bin/activate
     - pip install dist/*.tar.gz
     - pip install dist/*.whl
+    - python -c 'import eos.sar.io'
+    - python -c 'import eos.products.sentinel1.assembler'
     # also be exhaustive:
     - uv build --python 3.9
     - uv build --python 3.10
