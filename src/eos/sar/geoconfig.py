@@ -1,10 +1,12 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
-import pyproj
 
 from eos.sar import poly
-from eos.sar.model import SensorModel
+from eos.sar.model import Arrayf64, CoordArrayLike, SensorModel
 
 
 def compute_cosi_rng(points, sat):
@@ -135,6 +137,21 @@ def get_grid(width, height, grid_size_col, grid_size_row, train=True):
     return col, row
 
 
+def localize_on_ellipsoid(
+    proj_model: SensorModel,
+    rows: CoordArrayLike,
+    cols: CoordArrayLike,
+    alt: float = 0.0,
+) -> Arrayf64:
+    # localize points on ellipsoid
+    alts = np.full_like(rows, fill_value=alt, dtype=np.float64)
+
+    gx, gy, gz = proj_model.localization(rows, cols, alts, crs="epsg:4978")
+    # convert to geocentric cartesian
+    points_3D = np.column_stack([gx, gy, gz])
+    return points_3D
+
+
 def get_geom_config(
     primary_model: SensorModel,
     secondary_models: Sequence[SensorModel],
@@ -177,21 +194,12 @@ def get_geom_config(
     rows = row.ravel()
     cols = col.ravel()
     points = np.column_stack([cols, rows])
-    num_points = len(rows)
-
-    # coordinates in image to az time and range (for later)
-    azt, _ = primary_model.to_azt_rng(rows, cols)
 
     # geometric config parameters estim start
-    # localize points on ellipsoid
-    alts = np.asarray([0 for _ in range(num_points)])
-    lons, lats, _ = primary_model.localization(rows, cols, alts)
+    points_3D = localize_on_ellipsoid(primary_model, rows, cols, 0.0)
 
-    # convert to geocentric cartesian
-    to_gxyz = pyproj.Transformer.from_crs("epsg:4326", "epsg:4978", always_xy=True)
-    gx, gy, gz = to_gxyz.transform(lons, lats, alts)
-    points_3D = np.column_stack([gx, gy, gz])
-
+    # coordinates in image to az time and range
+    azt, _ = primary_model.to_azt_rng(rows, cols)
     # satellite position and speed
     sat_pos_prim = primary_model.orbit.evaluate(azt, order=0)
     sat_speed_prim = primary_model.orbit.evaluate(azt, order=1)
@@ -201,13 +209,19 @@ def get_geom_config(
     # local incidence on ellipsoid estimation
     theta_inc = np.arccos(cos_i)
 
+    num_points = len(rows)
     perp_baseline = np.zeros((len(secondary_models), num_points))
     delta_r = np.zeros((len(secondary_models), num_points))
 
     for sid, secondary_model in enumerate(secondary_models):
         # use projection to get position of closest approach on secondary orbit
-        rows_sec, cols_sec, _ = secondary_model.projection(lons, lats, alts)
-        azt_sec, _ = secondary_model.to_azt_rng(rows_sec, cols_sec)
+        azt_sec, _, _ = secondary_model.projection(
+            points_3D[:, 0],
+            points_3D[:, 1],
+            points_3D[:, 2],
+            crs="epsg:4978",
+            as_azt_rng=True,
+        )
 
         sat_pos_sec = secondary_model.orbit.evaluate(azt_sec, order=0)
         ps_sec = np.linalg.norm(sat_pos_sec - points_3D, axis=1)
@@ -372,3 +386,111 @@ class GeometryPredictor:
 
         """
         return self.polynom.eval_poly(cols, rows, [-1], grid_eval).reshape(-1, 1)
+
+
+def get_los_on_ellipsoid(
+    proj_model: SensorModel,
+    rows: CoordArrayLike,
+    cols: CoordArrayLike,
+    alt: float = 0.0,
+    *,
+    normalized: bool = True,
+) -> Arrayf64:
+    """
+    Compute the LOS for a set of pixel positions on ellipsoid with alitude alt.
+    This function can consume a lot of memory when len(rows) is big.
+    A rough estimate is around 1 GB peak memory consumption per 2 million pixels.
+
+    Returns
+    -------
+    LOS: (N, 3) NDArray[np.float64]
+        vector from satellite (start) to point (end), in epsg:4978 (ECEF)
+    """
+    points_3D = localize_on_ellipsoid(proj_model, rows, cols, 0.0)
+
+    # coordinates in image to az time and range
+    azt, _ = proj_model.to_azt_rng(rows, cols)
+
+    # satellite position
+    sat_pos = proj_model.orbit.evaluate(azt, order=0)
+
+    # line of sight computation
+    los = points_3D - sat_pos
+
+    if normalized:
+        los = normalize(los)
+
+    return los
+
+
+@dataclass(frozen=True)
+class LOSPredictor:
+    polynom: poly.polymodel
+
+    @staticmethod
+    def from_proj_model_grid_size(
+        proj_model: SensorModel,
+        grid_size_col: int,
+        grid_size_row: int,
+        degree: int = 7,
+        alt: float = 0.0,
+        *,
+        normalized: bool = True,
+    ) -> LOSPredictor:
+        col_grid, row_grid = get_grid(
+            proj_model.w,
+            proj_model.h,
+            grid_size_col=grid_size_col,
+            grid_size_row=grid_size_row,
+        )
+
+        rows = row_grid.ravel()
+        cols = col_grid.ravel()
+
+        return LOSPredictor.from_proj_model_grid_coords(
+            proj_model, rows, cols, degree, alt, normalized=normalized
+        )
+
+    @staticmethod
+    def from_proj_model_grid_coords(
+        proj_model: SensorModel,
+        rows_grid: CoordArrayLike,
+        cols_grid: CoordArrayLike,
+        degree: int = 7,
+        alt: float = 0.0,
+        *,
+        normalized: bool = True,
+    ) -> LOSPredictor:
+        # should not consume a lot of memory if grid size is reasonable
+        los = get_los_on_ellipsoid(
+            proj_model, rows_grid, cols_grid, alt=alt, normalized=normalized
+        )
+
+        return LOSPredictor.from_los_grid_coords(los, rows_grid, cols_grid, degree)
+
+    @staticmethod
+    def from_los_grid_coords(
+        los: Arrayf64,
+        rows_grid: CoordArrayLike,
+        cols_grid: CoordArrayLike,
+        degree: int = 7,
+    ) -> LOSPredictor:
+        polynom = poly.polymodel(degree)
+        # fit polynom
+        polynom.fit_poly(cols_grid, rows_grid, los)
+
+        return LOSPredictor(polynom)
+
+    def predict_los(
+        self, rows: CoordArrayLike, cols: CoordArrayLike, grid_eval: bool = False
+    ) -> Arrayf64:
+        """
+        Returns
+        -------
+        (N, 3), where
+                N=len(rows)=len(cols) if grid_eval = False
+                N = len(rows) * len(cols) if grid_eval = True
+
+        """
+
+        return self.polynom.eval_poly(cols, rows, grid_eval=grid_eval)

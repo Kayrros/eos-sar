@@ -6,7 +6,12 @@ import pytest
 import eos.dem
 import eos.products.sentinel1 as s1
 import eos.sar
-from eos.sar.geoconfig import get_geom_config
+from eos.sar.geoconfig import (
+    LOSPredictor,
+    get_geom_config,
+    get_grid,
+    get_los_on_ellipsoid,
+)
 from eos.sar.roi import Roi
 
 REF_GEOCONFIG = {
@@ -260,3 +265,63 @@ def test_geom_phase_prediction(models):
         cols + col_orig,
         wrapped=False,
     )
+
+
+def test_los(models):
+    primary_swath_model, _ = models
+
+    los_pred = LOSPredictor.from_proj_model_grid_size(
+        primary_swath_model,
+        primary_swath_model.w // 100,
+        primary_swath_model.h // 100,
+        degree=7,
+        alt=0.0,
+        normalized=True,
+    )
+    roi = Roi(2000, 1000, 100, 50)
+
+    # evaluate the polynom
+    # get a (50 * 100, 3) array
+    evaluated = los_pred.predict_los(
+        np.arange(roi.row, roi.row + roi.h),
+        np.arange(roi.col, roi.col + roi.w),
+        grid_eval=True,
+    )
+
+    # to compare, evaluate in a dense fashion with localization
+    cols_grid, rows_grid = roi.get_meshgrid()
+    # get a (50 * 100, 3) array
+    los_precise = get_los_on_ellipsoid(
+        primary_swath_model,
+        rows_grid.ravel(),
+        cols_grid.ravel(),
+        alt=0.0,
+        normalized=True,
+    )
+
+    # compare
+    np.testing.assert_allclose(evaluated, los_precise, atol=1e-5)
+
+    # also test normalization on a sparse grid
+    cols_grid, rows_grid = get_grid(roi.w, roi.h, grid_size_col=10, grid_size_row=10)
+
+    los_normalized = get_los_on_ellipsoid(
+        primary_swath_model,
+        rows_grid.ravel(),
+        cols_grid.ravel(),
+        alt=0.0,
+        normalized=True,
+    )
+
+    los = get_los_on_ellipsoid(
+        primary_swath_model,
+        rows_grid.ravel(),
+        cols_grid.ravel(),
+        alt=0.0,
+        normalized=False,
+    )
+
+    norm = np.linalg.norm(los, axis=1)
+    assert np.all(norm > 0)
+
+    np.testing.assert_allclose(los_normalized, los / norm[:, None])
