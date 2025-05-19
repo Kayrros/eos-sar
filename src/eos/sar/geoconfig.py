@@ -181,9 +181,9 @@ def get_geom_config(
         Image points locations (col, row).
     theta_inc : ndarray (N, )
         Incidence angle.
-    perp_baseline : ndarray (N, )
+    perp_baseline : ndarray (n_sec, N)
         Perpendicular baseline.
-    delta_r : ndarray (N, )
+    delta_r : ndarray (n_sec, N)
         Parallel baseline.
 
     """
@@ -194,6 +194,20 @@ def get_geom_config(
     rows = row.ravel()
     cols = col.ravel()
     points = np.column_stack([cols, rows])
+    theta_inc, perp_baseline, delta_r = get_geom_config_from_grid_coords(
+        primary_model, secondary_models, rows, cols
+    )
+    return points, theta_inc, perp_baseline, delta_r
+
+
+def get_geom_config_from_grid_coords(
+    primary_model: SensorModel,
+    secondary_models: Sequence[SensorModel],
+    rows: CoordArrayLike,
+    cols: CoordArrayLike,
+) -> tuple[Arrayf64, Arrayf64, Arrayf64]:
+    rows = np.atleast_1d(rows)
+    cols = np.atleast_1d(cols)
 
     # geometric config parameters estim start
     points_3D = localize_on_ellipsoid(primary_model, rows, cols, 0.0)
@@ -233,7 +247,7 @@ def get_geom_config(
         perp_baseline[sid] = _perp_baseline
         delta_r[sid] = ps.ravel() - ps_sec.ravel()
 
-    return points, theta_inc, perp_baseline, delta_r
+    return theta_inc, perp_baseline, delta_r
 
 
 class GeometryPredictor:

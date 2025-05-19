@@ -9,6 +9,7 @@ import eos.sar
 from eos.sar.geoconfig import (
     LOSPredictor,
     get_geom_config,
+    get_geom_config_from_grid_coords,
     get_grid,
     get_los_on_ellipsoid,
 )
@@ -325,3 +326,30 @@ def test_los(models):
     assert np.all(norm > 0)
 
     np.testing.assert_allclose(los_normalized, los / norm[:, None])
+
+
+def test_geom_config_from_grid_coords(models):
+    primary_swath_model, secondary_swath_model = models
+    pts = REF_GEOCONFIG["pts"]
+    cols = pts[:, 0]
+    rows = pts[:, 1]
+    inc, bperp, delta_r = get_geom_config_from_grid_coords(
+        primary_swath_model, [secondary_swath_model], rows, cols
+    )
+
+    np.testing.assert_allclose(inc, REF_GEOCONFIG["inc"])
+    np.testing.assert_allclose(bperp, REF_GEOCONFIG["bperp"])
+    np.testing.assert_allclose(delta_r, REF_GEOCONFIG["delta_r"])
+
+    # test scalar input
+    inc_scl, bperp_scl, delta_r_scl = get_geom_config_from_grid_coords(
+        primary_swath_model, [secondary_swath_model], rows[0], cols[0]
+    )
+
+    assert inc_scl.shape == (1,)
+    assert bperp_scl.shape == (1, 1)
+    assert delta_r_scl.shape == (1, 1)
+
+    assert inc_scl[0] == inc[0]
+    assert bperp_scl[0, 0] == bperp[0, 0]
+    assert delta_r_scl[0, 0] == delta_r_scl[0, 0]
