@@ -13,5 +13,5 @@ repos:
         name: mypy
         language: system
         entry: bash
-        args: [ -c, "mypy --non-interactive eos/ teosar/ tests/ usage/" ]
+        args: [ -c, "mypy --non-interactive src/eos/ src/teosar/ tests/ usage/" ]
         require_serial: true

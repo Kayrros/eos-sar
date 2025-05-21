@@ -1,14 +1,84 @@
 import os
 
 import numpy as np
+import pytest
 
 import eos.dem
 import eos.products.sentinel1 as s1
 import eos.sar
+from eos.sar.geoconfig import (
+    LOSPredictor,
+    get_geom_config,
+    get_geom_config_from_grid_coords,
+    get_grid,
+    get_los_on_ellipsoid,
+)
 from eos.sar.roi import Roi
 
+REF_GEOCONFIG = {
+    "pts": np.array(
+        [
+            [0.0, 0.0],
+            [11862.0, 0.0],
+            [23724.0, 0.0],
+            [0.0, 6097.0],
+            [11862.0, 6097.0],
+            [23724.0, 6097.0],
+            [0.0, 12194.0],
+            [11862.0, 12194.0],
+            [23724.0, 12194.0],
+        ]
+    ),
+    "inc": np.array(
+        [
+            0.72536266,
+            0.76440833,
+            0.79997491,
+            0.72508394,
+            0.76414932,
+            0.79973245,
+            0.72480184,
+            0.76388718,
+            0.79948711,
+        ]
+    ),
+    "bperp": np.array(
+        [
+            [
+                -173.47752162,
+                -169.96362793,
+                -166.64266185,
+                -173.46479529,
+                -169.94359065,
+                -166.61601424,
+                -173.42261988,
+                -169.89471236,
+                -166.56109973,
+            ]
+        ]
+    ),
+    "delta_r": np.array(
+        [
+            [
+                -104.82583265,
+                -110.43190335,
+                -115.38188407,
+                -104.99048797,
+                -110.59903964,
+                -115.5508141,
+                -105.13601113,
+                -110.74613258,
+                -115.6988936,
+            ]
+        ]
+    ),
+}
 
-def test_geom_phase_prediction(s3_client):
+
+@pytest.fixture(scope="module")
+def models(
+    s3_client,
+) -> tuple[s1.proj_model.Sentinel1SwathModel, s1.proj_model.Sentinel1SwathModel]:
     xml_folder = (
         "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
     )
@@ -56,6 +126,29 @@ def test_geom_phase_prediction(s3_client):
         secondary_bursts_meta, secondary_orbit
     )
 
+    return primary_swath_model, secondary_swath_model
+
+
+def test_geoconfig(models):
+    primary_swath_model, secondary_swath_model = models
+    # Test geoconfig against reference result
+    pts, inc, bperp, delta_r = get_geom_config(
+        primary_swath_model,
+        [
+            secondary_swath_model,
+        ],
+        grid_size_col=3,
+        grid_size_row=3,
+    )
+    np.testing.assert_allclose(pts, REF_GEOCONFIG["pts"])
+    np.testing.assert_allclose(inc, REF_GEOCONFIG["inc"])
+    np.testing.assert_allclose(bperp, REF_GEOCONFIG["bperp"])
+    np.testing.assert_allclose(delta_r, REF_GEOCONFIG["delta_r"])
+
+
+def test_geom_phase_prediction(models):
+    primary_swath_model, secondary_swath_model = models
+
     primary_swath_roi = Roi(10000, 785, 50, 100)
 
     dem_source = eos.dem.get_any_source()
@@ -67,6 +160,7 @@ def test_geom_phase_prediction(s3_client):
         grid_size=50,
         degree=7,
     )
+
     # predict flat earth
     flat_earth = topo.flat_earth_image(primary_swath_roi, wrapped=True)
     assert flat_earth.shape == (1,) + primary_swath_roi.get_shape(), (
@@ -85,7 +179,7 @@ def test_geom_phase_prediction(s3_client):
         approx_geometry=approx_geom,
         margin=margin,
     )
-    # %%
+
     # predict topographic phase
     topo_phase = topo.topo_phase_image(
         heights, primary_roi=primary_swath_roi, wrapped=False
@@ -172,3 +266,90 @@ def test_geom_phase_prediction(s3_client):
         cols + col_orig,
         wrapped=False,
     )
+
+
+def test_los(models):
+    primary_swath_model, _ = models
+
+    los_pred = LOSPredictor.from_proj_model_grid_size(
+        primary_swath_model,
+        primary_swath_model.w // 100,
+        primary_swath_model.h // 100,
+        degree=7,
+        alt=0.0,
+        normalized=True,
+    )
+    roi = Roi(2000, 1000, 100, 50)
+
+    # evaluate the polynom
+    # get a (50 * 100, 3) array
+    evaluated = los_pred.predict_los(
+        np.arange(roi.row, roi.row + roi.h),
+        np.arange(roi.col, roi.col + roi.w),
+        grid_eval=True,
+    )
+
+    # to compare, evaluate in a dense fashion with localization
+    cols_grid, rows_grid = roi.get_meshgrid()
+    # get a (50 * 100, 3) array
+    los_precise = get_los_on_ellipsoid(
+        primary_swath_model,
+        rows_grid.ravel(),
+        cols_grid.ravel(),
+        alt=0.0,
+        normalized=True,
+    )
+
+    # compare
+    np.testing.assert_allclose(evaluated, los_precise, atol=1e-5)
+
+    # also test normalization on a sparse grid
+    cols_grid, rows_grid = get_grid(roi.w, roi.h, grid_size_col=10, grid_size_row=10)
+
+    los_normalized = get_los_on_ellipsoid(
+        primary_swath_model,
+        rows_grid.ravel(),
+        cols_grid.ravel(),
+        alt=0.0,
+        normalized=True,
+    )
+
+    los = get_los_on_ellipsoid(
+        primary_swath_model,
+        rows_grid.ravel(),
+        cols_grid.ravel(),
+        alt=0.0,
+        normalized=False,
+    )
+
+    norm = np.linalg.norm(los, axis=1)
+    assert np.all(norm > 0)
+
+    np.testing.assert_allclose(los_normalized, los / norm[:, None])
+
+
+def test_geom_config_from_grid_coords(models):
+    primary_swath_model, secondary_swath_model = models
+    pts = REF_GEOCONFIG["pts"]
+    cols = pts[:, 0]
+    rows = pts[:, 1]
+    inc, bperp, delta_r = get_geom_config_from_grid_coords(
+        primary_swath_model, [secondary_swath_model], rows, cols
+    )
+
+    np.testing.assert_allclose(inc, REF_GEOCONFIG["inc"])
+    np.testing.assert_allclose(bperp, REF_GEOCONFIG["bperp"])
+    np.testing.assert_allclose(delta_r, REF_GEOCONFIG["delta_r"])
+
+    # test scalar input
+    inc_scl, bperp_scl, delta_r_scl = get_geom_config_from_grid_coords(
+        primary_swath_model, [secondary_swath_model], rows[0], cols[0]
+    )
+
+    assert inc_scl.shape == (1,)
+    assert bperp_scl.shape == (1, 1)
+    assert delta_r_scl.shape == (1, 1)
+
+    assert inc_scl[0] == inc[0]
+    assert bperp_scl[0, 0] == bperp[0, 0]
+    assert delta_r_scl[0, 0] == delta_r_scl[0, 0]

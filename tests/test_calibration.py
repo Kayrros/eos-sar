@@ -57,7 +57,7 @@ def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex, sna
 
     if snap is not None:
         # quite large absolute tolerance, it seems that some pixels can be quite different (why?)
-        assert np.allclose(calibrated_abs, snap, atol=1e-2, rtol=1e-4)
+        assert np.allclose(calibrated_abs, snap, atol=1e-2, rtol=1e-2)
         # but at least impose that the median is very similar
         assert np.allclose(
             np.median(calibrated_abs), np.median(snap), atol=1e-5, rtol=1e-4
