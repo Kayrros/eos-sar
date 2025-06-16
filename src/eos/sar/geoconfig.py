@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Optional, Sequence
 
 import numpy as np
 
 from eos.sar import poly
 from eos.sar.model import Arrayf64, CoordArrayLike, SensorModel
+from eos.sar.orbit import Orbit
+from eos.sar.range_doppler import iterative_projection
 
 
 def compute_cosi_rng(points, sat):
@@ -435,6 +437,56 @@ def get_los_on_ellipsoid(
         los = normalize(los)
 
     return los
+
+
+def get_los_squinted(
+    points_3D: Arrayf64,
+    azt: Arrayf64,
+    orbit: Orbit,
+    dop_centroid_freq: Arrayf64,
+    wavelength: float,
+    delta_azt: Optional[Arrayf64] = None,
+    rng: Optional[Arrayf64] = None,
+    *,
+    normalized: bool = True,
+) -> Arrayf64:
+    """
+    Computes the squinted LOS from 3D points,associated Zero Doppler times along an orbit,
+    associated Doppler frequencies that determine the squint. Optionnally pass the expected
+    delta_azt between sensing time and Zero-Doppler time, otherwise an estimate will be computed
+    in the function.
+    The returned LOS might be normalized or not.
+    """
+    if delta_azt is None:
+        # or a less accurate estimate by supposing that the orbit is a line locally
+        # and that the speed vector is constant, and drawing a right angled triangle
+        v = orbit.evaluate(azt, order=1)
+        sat_pos = orbit.evaluate(azt, order=0)
+        if rng is None:
+            rng = np.linalg.norm(points_3D - sat_pos, axis=1)
+        norm_v = np.linalg.norm(v, axis=1)
+        sin_squint = dop_centroid_freq * wavelength / (2 * norm_v)
+        cos_squint = np.sqrt(1 - sin_squint**2)
+        delta_azt = -rng * sin_squint / (cos_squint * norm_v)
+
+    azt_sensing_rough = azt + delta_azt
+
+    azt_sensing_exact, _, _ = iterative_projection(
+        orbit,
+        points_3D[:, 0],
+        points_3D[:, 1],
+        points_3D[:, 2],
+        azt_init=azt_sensing_rough,
+        half_wavelength_f_dc=wavelength / 2 * dop_centroid_freq,
+    )
+
+    pos_sat_center_beam = orbit.evaluate(azt_sensing_exact)
+    los_squinted = points_3D - pos_sat_center_beam
+
+    if normalized:
+        los_squinted = normalize(los_squinted)
+
+    return los_squinted
 
 
 @dataclass(frozen=True)
