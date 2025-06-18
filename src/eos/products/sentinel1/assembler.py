@@ -348,16 +348,18 @@ class Sentinel1AssemblyCropper:
         self.roi = roi
         self._cropper_fn = None
 
-    def _prepare(self, dem_source: DEMSource) -> None:
-        mosaic_model = self.assembler.get_mosaic_model()
-        primary_cutter = self.assembler.get_primary_cutter()
+        self.primary_cutter = self.assembler.get_primary_cutter()
 
         # get affected bsids and their within_burst/write rois
         # within_burst are relative to the primary bursts
         # write_rois are relative to the destination mosaic coordinates system
-        all_bsids, within_burst_rois, write_rois = primary_cutter.get_debursting_rois(
-            self.roi
+        self.all_bsids, self.within_burst_rois, self.write_rois = (
+            self.primary_cutter.get_debursting_rois(self.roi)
         )
+
+    def _prepare(self, dem_source: DEMSource) -> None:
+        mosaic_model = self.assembler.get_mosaic_model()
+
         out_shape = self.roi.get_shape()
 
         # fetch the dem over the ROI
@@ -376,10 +378,10 @@ class Sentinel1AssemblyCropper:
         pts_in_burst_mask = {}
         azt_primary = {}
         rng_primary = {}
-        for bsid in all_bsids:
+        for bsid in self.all_bsids:
             # Calling mask_pts_in_burst multiple times is inefficient due to the conversion from
             # from azt/rng to row/col in the burst. However, profiling shows that the dem.crop is by far slower.
-            burst_mask = primary_cutter.mask_pts_in_burst(
+            burst_mask = self.primary_cutter.mask_pts_in_burst(
                 bsid, azt_primary_flat, rng_primary_flat
             )
             pts_in_burst_mask[bsid] = burst_mask
@@ -416,7 +418,7 @@ class Sentinel1AssemblyCropper:
                 out_shape, np.nan, dtype=np.csingle if get_complex else np.single
             )
 
-            bsids = all_bsids.intersection(secondary_asm.bsids)
+            bsids = self.all_bsids.intersection(secondary_asm.bsids)
             if not bsids:
                 return out
 
@@ -441,7 +443,7 @@ class Sentinel1AssemblyCropper:
                     crs,
                     bsids,
                     pts_in_burst_mask,
-                    primary_cutter,
+                    self.primary_cutter,
                     azt_primary,
                     rng_primary,
                 )
@@ -451,26 +453,28 @@ class Sentinel1AssemblyCropper:
             resamplers = {
                 bsid: secondary_asm.get_burst_resampler(
                     bsid,
-                    primary_cutter.get_burst_outer_roi_in_tiff(bsid).get_shape(),
+                    self.primary_cutter.get_burst_outer_roi_in_tiff(bsid).get_shape(),
                     burst_resampling_matrices[bsid],
                 )
                 for bsid in bsids
             }
 
-            sentinel1.deburst.warp_rois_read_resample_deburst(
-                bsids,
-                resamplers,
-                within_burst_rois,
-                secondary_cutter,
-                secondary_readers,
-                write_rois,
-                out_shape,
-                out,
-                get_complex=get_complex,
-                reramp=reramp,
+            _, _, resamplers_on_rois = (
+                sentinel1.deburst.warp_rois_read_resample_deburst(
+                    bsids,
+                    resamplers,
+                    self.within_burst_rois,
+                    secondary_cutter,
+                    secondary_readers,
+                    self.write_rois,
+                    out_shape,
+                    out,
+                    get_complex=get_complex,
+                    reramp=reramp,
+                )
             )
 
-            return out
+            return out, resamplers_on_rois
 
         self._cropper_fn = regist
 
@@ -492,7 +496,7 @@ class Sentinel1AssemblyCropper:
             self._prepare(dem_source)
 
         assert self._cropper_fn
-        array = self._cropper_fn(
+        array, resamplers = self._cropper_fn(
             products,
             pol,
             statevectors,
@@ -501,7 +505,7 @@ class Sentinel1AssemblyCropper:
             calibration=calibration,
             reramp=reramp,
         )
-        return array
+        return array, resamplers
 
     def get_proj_model(self) -> Sentinel1MosaicModel:
         mosaic_model = self.assembler.get_mosaic_model()
