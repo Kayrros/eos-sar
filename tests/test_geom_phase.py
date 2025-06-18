@@ -8,6 +8,7 @@ import eos.products.sentinel1 as s1
 import eos.sar
 from eos.sar.geoconfig import (
     LOSPredictor,
+    convert_arrays_to_enu,
     get_geom_config,
     get_geom_config_from_grid_coords,
     get_grid,
@@ -278,6 +279,7 @@ def test_los(models):
         degree=7,
         alt=0.0,
         normalized=True,
+        estimate_in_enu=False,
     )
     roi = Roi(2000, 1000, 100, 50)
 
@@ -292,7 +294,7 @@ def test_los(models):
     # to compare, evaluate in a dense fashion with localization
     cols_grid, rows_grid = roi.get_meshgrid()
     # get a (50 * 100, 3) array
-    los_precise = get_los_on_ellipsoid(
+    los_precise, _ = get_los_on_ellipsoid(
         primary_swath_model,
         rows_grid.ravel(),
         cols_grid.ravel(),
@@ -306,26 +308,46 @@ def test_los(models):
     # also test normalization on a sparse grid
     cols_grid, rows_grid = get_grid(roi.w, roi.h, grid_size_col=10, grid_size_row=10)
 
-    los_normalized = get_los_on_ellipsoid(
-        primary_swath_model,
-        rows_grid.ravel(),
-        cols_grid.ravel(),
-        alt=0.0,
-        normalized=True,
-    )
+    for ell_alt in [0.0, 2000.0]:
+        los_normalized, points_3D = get_los_on_ellipsoid(
+            primary_swath_model,
+            rows_grid.ravel(),
+            cols_grid.ravel(),
+            alt=ell_alt,
+            normalized=True,
+        )
+        los_normalized_enu = convert_arrays_to_enu(
+            los_normalized, points_3D, ell_alt == 0
+        )
 
-    los = get_los_on_ellipsoid(
-        primary_swath_model,
-        rows_grid.ravel(),
-        cols_grid.ravel(),
-        alt=0.0,
-        normalized=False,
-    )
+        los, points_3D_bis = get_los_on_ellipsoid(
+            primary_swath_model,
+            rows_grid.ravel(),
+            cols_grid.ravel(),
+            alt=ell_alt,
+            normalized=False,
+        )
 
-    norm = np.linalg.norm(los, axis=1)
-    assert np.all(norm > 0)
+        assert np.all(points_3D_bis == points_3D)
+        los_enu = convert_arrays_to_enu(los, points_3D_bis, ell_alt == 0)
 
-    np.testing.assert_allclose(los_normalized, los / norm[:, None])
+        norm = np.linalg.norm(los, axis=1)
+        assert np.all(norm > 0)
+
+        # Check normalization
+        np.testing.assert_allclose(los_normalized, los / norm[:, None])
+
+        np.testing.assert_allclose(np.linalg.norm(los_normalized, axis=1), 1)
+
+        # Check that enu conversion preserves the norm
+        np.testing.assert_allclose(
+            np.linalg.norm(los_normalized, axis=1),
+            np.linalg.norm(los_normalized_enu, axis=1),
+        )
+
+        np.testing.assert_allclose(
+            np.linalg.norm(los, axis=1), np.linalg.norm(los_enu, axis=1)
+        )
 
 
 def test_geom_config_from_grid_coords(models):

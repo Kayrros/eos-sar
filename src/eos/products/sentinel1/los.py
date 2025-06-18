@@ -4,6 +4,7 @@ from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
 from eos.products.sentinel1.proj_model import Sentinel1MosaicModel
 from eos.sar.geoconfig import (
     LOSPredictor,
+    convert_arrays_to_enu,
     get_grid,
     get_los_squinted,
     localize_on_ellipsoid,
@@ -62,6 +63,7 @@ def get_los_on_roi(
     polynom_degree: int = 7,
     ellipsoid_alt: float = 0.0,
     normalized: bool = True,
+    estimate_in_ENU: bool = False,
 ) -> Arrayf64:
     assert roi_in_mosaic.get_shape() == resampler_on_roi.dst_roi_in_burst.get_shape()
 
@@ -96,6 +98,11 @@ def get_los_on_roi(
         normalized=normalized,
     )
 
+    if estimate_in_ENU:
+        los_squinted = convert_arrays_to_enu(
+            los_squinted, points_3D, ellipsoid_alt == 0
+        )
+
     # Interpolate with a polynomial predictor
     los_predictor = LOSPredictor.from_los_grid_coords(
         los_squinted, rows, cols, degree=polynom_degree
@@ -118,6 +125,7 @@ def get_los_squinted_mosaic(
     ellipsoid_alt: float = 0.0,
     *,
     normalized: bool = True,
+    estimate_in_ENU: bool = False,
 ) -> Arrayf64:
     out_shape = (mosaic_height, mosaic_width, 3)
     out = np.full(out_shape, np.nan, dtype=np.float64)
@@ -133,6 +141,7 @@ def get_los_squinted_mosaic(
                 polynom_degree=polynom_degree,
                 ellipsoid_alt=ellipsoid_alt,
                 normalized=normalized,
+                estimate_in_ENU=estimate_in_ENU,
             )
             yield los_on_roi, roi_in_mosaic
 
@@ -151,6 +160,7 @@ def get_los_ZeroDoppler_mosaic(
     ellipsoid_alt: float = 0.0,
     *,
     normalized: bool = True,
+    estimate_in_ENU: bool = False,
 ) -> Arrayf64:
     ZeroDoppler_los_predictor = LOSPredictor.from_proj_model_grid_size(
         mosaic_proj_model,
@@ -159,6 +169,7 @@ def get_los_ZeroDoppler_mosaic(
         degree=polynom_degree,
         alt=ellipsoid_alt,
         normalized=normalized,
+        estimate_in_enu=estimate_in_ENU,
     )
 
     los_mosaic = ZeroDoppler_los_predictor.predict_los(

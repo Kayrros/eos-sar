@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 import numpy as np
+import pyproj
+from numpy.typing import ArrayLike
 
-from eos.sar import poly
+from eos.sar import const, poly
 from eos.sar.model import Arrayf64, CoordArrayLike, SensorModel
 from eos.sar.orbit import Orbit
 from eos.sar.range_doppler import iterative_projection
@@ -45,7 +47,7 @@ def normalize(vec):
     normalize vec so that norm(Vec) = 1
     vec (n, 3)
     """
-    norm = np.linalg.norm(vec, axis=1).reshape(-1, 1)
+    norm = np.linalg.norm(vec, axis=1)[:, None]
     norm[norm == 0] = 1
     return vec / norm
 
@@ -411,7 +413,7 @@ def get_los_on_ellipsoid(
     alt: float = 0.0,
     *,
     normalized: bool = True,
-) -> Arrayf64:
+) -> tuple[Arrayf64, Arrayf64]:
     """
     Compute the LOS for a set of pixel positions on ellipsoid with alitude alt.
     This function can consume a lot of memory when len(rows) is big.
@@ -436,7 +438,7 @@ def get_los_on_ellipsoid(
     if normalized:
         los = normalize(los)
 
-    return los
+    return los, points_3D
 
 
 def get_los_squinted(
@@ -502,6 +504,7 @@ class LOSPredictor:
         alt: float = 0.0,
         *,
         normalized: bool = True,
+        estimate_in_enu: bool = False,
     ) -> LOSPredictor:
         col_grid, row_grid = get_grid(
             proj_model.w,
@@ -514,7 +517,13 @@ class LOSPredictor:
         cols = col_grid.ravel()
 
         return LOSPredictor.from_proj_model_grid_coords(
-            proj_model, rows, cols, degree, alt, normalized=normalized
+            proj_model,
+            rows,
+            cols,
+            degree,
+            alt,
+            normalized=normalized,
+            estimate_in_enu=estimate_in_enu,
         )
 
     @staticmethod
@@ -526,11 +535,14 @@ class LOSPredictor:
         alt: float = 0.0,
         *,
         normalized: bool = True,
+        estimate_in_enu: bool = False,
     ) -> LOSPredictor:
         # should not consume a lot of memory if grid size is reasonable
-        los = get_los_on_ellipsoid(
+        los, points_3D = get_los_on_ellipsoid(
             proj_model, rows_grid, cols_grid, alt=alt, normalized=normalized
         )
+        if estimate_in_enu:
+            los = convert_arrays_to_enu(los, points_3D, alt == 0)
 
         return LOSPredictor.from_los_grid_coords(los, rows_grid, cols_grid, degree)
 
@@ -560,3 +572,210 @@ class LOSPredictor:
         """
 
         return self.polynom.eval_poly(cols, rows, grid_eval=grid_eval)
+
+
+def rotation_matrices(rotation_axis: ArrayLike, theta: ArrayLike) -> Arrayf64:
+    """
+    Return the rotation matrix associated with counterclockwise rotation about
+    the given axis by theta radians.
+    # From https://stackoverflow.com/a/6802723
+
+    Parameters
+    ----------
+    rotation_axis: (3,) or (N, 3) ArrayLike
+        if (3,) all rotations will be w.r.t. the same axis.
+        Otherwise, the number N must be broadcastable with the number of angles:
+            it must match the number of angles or there must be only one angle.
+    theta: float or (N,) arraylike
+        Rotation angle in radians
+        if float, all rotations will have the same angle. Broadcasting rules apply.
+
+    Returns:
+    --------
+    rot_mats: NDArray[np.float64] (N, 3, 3)
+        rotation matrices. One matrix per couple of axis and rotation angle (lenght must match),
+        but broadcasting rules apply: it is possible to provide a single axis or a single angle.
+    """
+    rotation_axis = np.atleast_2d(np.array(rotation_axis, np.float64))
+    assert rotation_axis.shape[1] == 3
+
+    rotation_axis = normalize(rotation_axis)
+
+    theta = np.atleast_1d(np.array(theta))
+    assert len(theta.shape) == 1
+
+    a = np.cos(theta / 2.0)
+
+    # when one of them has 1 in shape[0], automatically broadcastable
+    if rotation_axis.shape[0] != 1 and theta.shape[0] != 1:
+        # otherwise, shape[0] must match
+        assert rotation_axis.shape[0] == theta.shape[0], (
+            "Should provide broadcastable input"
+        )
+
+    # brodcasting rules
+    # rotation_axis.T is (3, 1) or (3, N)
+    # theta is (1,) or (N,)
+
+    b, c, d = -rotation_axis.T * np.sin(theta / 2.0)
+
+    aa, bb, cc, dd = a * a, b * b, c * c, d * d
+    bc, ad, ac, ab, bd, cd = b * c, a * d, a * c, a * b, b * d, c * d
+    rot_mats = np.array(
+        [
+            [aa + bb - cc - dd, 2 * (bc + ad), 2 * (bd - ac)],
+            [2 * (bc - ad), aa + cc - bb - dd, 2 * (cd + ab)],
+            [2 * (bd + ac), 2 * (cd - ab), aa + dd - bb - cc],
+        ]
+    )
+    rot_mats = np.moveaxis(rot_mats, -1, 0)
+
+    return rot_mats
+
+
+def latitude_geodetic_to_geocentric(
+    lat_geod: CoordArrayLike, alt: Optional[CoordArrayLike] = None
+) -> CoordArrayLike:
+    """
+    Convert Geodetic latitude to geocentric latitude
+    See https://en.wikipedia.org/wiki/Latitude#Geocentric_latitude
+    Input in degree, output in degree
+    """
+    finv = const.EARTH_WG84_INVERSE_FLATTENING
+
+    f = 1 / finv
+    # https://en.wikipedia.org/wiki/Flattening#Identities
+    e_squared = f * (2 - f)
+
+    lat_geod_rad = np.deg2rad(lat_geod)
+
+    if alt is None:
+        # assume formula for zero altitude
+        lat_geoc = np.rad2deg(np.arctan((1 - e_squared) * np.tan(lat_geod_rad)))
+    else:
+        # https://en.wikipedia.org/wiki/Earth_radius#Prime_vertical
+        a = const.EARTH_WGS84_AXIS_A_M
+        N = a / np.sqrt(1 - e_squared * np.sin(lat_geod_rad) ** 2)
+        num = N * (1 - e_squared) + alt
+        denum = N + alt
+        lat_geoc = np.rad2deg(np.arctan(num * np.tan(lat_geod_rad) / denum))
+
+    return lat_geoc
+
+
+def get_rot_matrices_ECEF_to_ENU(
+    points_3D: Arrayf64, points_on_wgs84: bool = False
+) -> Arrayf64:
+    """
+    Get rotation matrices from ECEF to ENU convention.
+
+    Parameters
+    ----------
+    points_3D : Arrayf64
+        (N, 3) in Geocentric ECEF frame.
+    points_on_wgs84 : bool, optional
+        Boolean indicating if the points are sampled on wgs84 ellipsoid (0 altitude).
+        This knowledge simplifies the geodetic latitude formula.
+        If the user does not have this info, set it to False, since it is possible to get the same
+        result while ignoring the flag anyway.
+        The default is False.
+
+    Returns
+    -------
+    rot_matrices : Arrayf64
+        (N, 3, 3) rotation matrices from ECEF to ENU.
+    """
+    src_crs = pyproj.crs.CRS.from_epsg(4978)
+    dst_crs = pyproj.crs.CRS.from_epsg(4326)
+    transformer = pyproj.Transformer.from_crs(src_crs, dst_crs, always_xy=True)
+    lons, lats, alts = transformer.transform(
+        points_3D[:, 0], points_3D[:, 1], points_3D[:, 2]
+    )
+
+    # ECEF reference frame
+    # i1 = np.array([1,0,0]) # X-axis of the Earth
+    # j1 = np.array([0,1,0]) # Y-axis of the Earth
+    k1 = np.array([0, 0, 1])  # Z-axis of the Earth
+
+    # (N, 3, 3) shape, where N number of points
+    Rlon_k1 = rotation_matrices(k1, np.deg2rad(lons))
+    del lons
+    # (N, 3) shape for each axis
+    # one way to get j2 is to rotate j1
+    # j2 = np.dot(Rlon_k1, j1)
+    # but this is equivalent to taking the 2nd column of each rotation matrix
+    j2 = Rlon_k1[:, :, 1]
+
+    lats = latitude_geodetic_to_geocentric(lats, None if points_on_wgs84 else alts)
+    # (N, 3, 3) shape, where N number of points
+    Rlat_j2 = rotation_matrices(j2, np.deg2rad(-lats))  # /!\ change sign of latitude
+    del lats
+    del j2
+
+    # R_UEN_to_ECEF
+    rot_matrices = np.matmul(Rlat_j2, Rlon_k1)
+
+    del Rlon_k1
+    del Rlat_j2
+
+    # R_ECEF_to_UEN
+    # The inverse of an orthogonal matrix is its transpose
+    rot_matrices = np.moveaxis(rot_matrices, 2, 1)
+
+    # R_ECEF_to_ENU
+    # apply permutation to lines
+    rot_matrices = rot_matrices[:, [1, 2, 0], :]
+
+    return rot_matrices
+
+
+def rotate_arrays(arrays: Arrayf64, rot_matrices: Arrayf64) -> Arrayf64:
+    """
+    Rotate arrays with rotation matrices.
+
+    Parameters
+    ----------
+    arrays : Arrayf64
+        (N, 3) N arrays representing vectors in 3D space.
+    rot_matrices : Arrayf64
+        (N, 3, 3) rotation matrices.
+
+    Returns
+    -------
+    Arrayf64
+        (N, 3) rotated arrays.
+
+    """
+    return np.matmul(rot_matrices, arrays[..., None])[..., 0]
+
+
+def convert_arrays_to_enu(
+    arrays: Arrayf64, points_3D: Arrayf64, points_on_wgs84: bool = False
+) -> Arrayf64:
+    """
+    Convert arrays from ECEF to ENU convention.
+
+    Parameters
+    ----------
+    arrays: Arrayf64
+        (N, 3) N arrays representing vectors in ECEF frame.
+    points_3D : Arrayf64
+        (N, 3) points associated to arrays in ECEF frame.
+    points_on_wgs84 : bool, optional
+        Boolean indicating if the points are sampled on wgs84 ellipsoid (0 altitude).
+        This knowledge simplifies the geodetic latitude formula.
+        If the user does not have this info, set it to False, since it is possible to get the same
+        result while ignoring the flag anyway.
+        The default is False.
+
+    Returns
+    -------
+    arrays_enu: Arrayf64
+        (N, 3) arrays in ENU frame.
+    """
+    rot_matrices = get_rot_matrices_ECEF_to_ENU(
+        points_3D, points_on_wgs84=points_on_wgs84
+    )
+    arrays_enu = rotate_arrays(arrays, rot_matrices)
+
+    return arrays_enu
