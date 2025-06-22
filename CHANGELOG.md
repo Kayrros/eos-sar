@@ -1,4 +1,4 @@
-# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.39.0..HEAD)
+# [0.40.0](https://github.com/Kayrros/eos-sar/compare/0.39.0..0.40.0) -- 2025-06-22
 
 ## Added
 - usage:teosar: Add los computation example for teosar results

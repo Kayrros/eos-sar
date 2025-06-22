@@ -662,7 +662,7 @@ sdist = { url = "https://pypi.dev-kayrros.ovh/packages/kayrros-bursterio-0.2.0.t
 
 [[package]]
 name = "kayrros-eos-sar"
-version = "0.39.0"
+version = "0.40.0"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },
