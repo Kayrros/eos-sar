@@ -366,6 +366,59 @@ def test_debursting(dem, inputs):
         primary_bursts_meta,
     )
 
+    assert primary_crop.shape == roi_in_swath.get_shape()
+    # Estimate los test
+    grid_size_col = 50
+    grid_size_row = 50
+    polynom_degree = 7
+    ellipsoid_alt = 0
+    normalized = True
+    estimate_in_ENU = True
+
+    # swath model to mosaic model
+    mosaic_model = s1.proj_model.Sentinel1MosaicModel(
+        primary_swath_model.w,
+        primary_swath_model.h,
+        primary_swath_model.wavelength,
+        primary_swath_model.approx_centroid_lon,
+        primary_swath_model.approx_centroid_lat,
+        primary_swath_model.coordinate,
+        primary_swath_model.orbit,
+        max_iterations=primary_swath_model.max_iterations,
+        tolerance=primary_swath_model.localization_tolerance,
+    ).to_cropped_mosaic(roi_in_swath)
+
+    los_mosaic = s1.los.get_los_squinted_mosaic(
+        write_rois,
+        primary_resamplers,
+        roi_in_swath.h,
+        roi_in_swath.w,
+        mosaic_model,
+        grid_size_col=grid_size_col,
+        grid_size_row=grid_size_row,
+        polynom_degree=polynom_degree,
+        ellipsoid_alt=ellipsoid_alt,
+        normalized=normalized,
+        estimate_in_ENU=estimate_in_ENU,
+    )
+    assert los_mosaic.shape == (roi_in_swath.h, roi_in_swath.w, 3)
+    del los_mosaic
+
+    los_ZD_mosaic = s1.los.get_los_ZeroDoppler_mosaic(
+        roi_in_swath.h,
+        roi_in_swath.w,
+        mosaic_model,
+        grid_size_col=grid_size_col,
+        grid_size_row=grid_size_row,
+        polynom_degree=polynom_degree,
+        ellipsoid_alt=ellipsoid_alt,
+        normalized=normalized,
+        estimate_in_ENU=estimate_in_ENU,
+    )
+    assert los_ZD_mosaic.shape == (roi_in_swath.h, roi_in_swath.w, 3)
+    del los_ZD_mosaic
+    del mosaic_model
+
     # construct secondary swath model and burst models
     orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(secondary_bursts_meta))
     secondary_swath_model = s1.proj_model.swath_model_from_bursts_meta(

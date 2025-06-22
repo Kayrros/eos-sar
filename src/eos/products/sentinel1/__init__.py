@@ -7,6 +7,7 @@ from eos.products.sentinel1 import catalog as catalog
 from eos.products.sentinel1 import coordinate_correction as coordinate_correction
 from eos.products.sentinel1 import deburst as deburst
 from eos.products.sentinel1 import doppler_info as doppler_info
+from eos.products.sentinel1 import los as los
 from eos.products.sentinel1 import metadata as metadata
 from eos.products.sentinel1 import mosaic_zoom as mosaic_zoom
 from eos.products.sentinel1 import orbit_catalog as orbit_catalog

@@ -67,6 +67,13 @@ from shapely.geometry import shape
 
 from eos.cache import no_cache
 from eos.dem import DEMStitcherSource
+from eos.products.sentinel1.assembler import Sentinel1Assembler
+from eos.products.sentinel1.burst_resamp import Sentinel1BurstResample
+from eos.products.sentinel1.los import (
+    get_los_squinted_mosaic,
+    get_los_ZeroDoppler_mosaic,
+)
+from eos.sar.roi import Roi
 from eos.sar.roi_provider import GeometryRoiProvider
 from teosar import inout
 from teosar.tsinsar import (
@@ -76,7 +83,7 @@ from teosar.tsinsar import (
     main,
     run_ts_on_prods,
 )
-from teosar.utils import Ifg, filt_interf, pid2date
+from teosar.utils import Ifg, RoiCuttingInfo, filt_interf, pid2date
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -210,6 +217,82 @@ def generate_ifgs(dstdir: str):
         inout.save_img(os.path.join(outpath_filt, fname), filtered)
 
 
+def generate_los(teosar_dir: str):
+    with open(os.path.join(teosar_dir, "proc.json"), "r") as f:
+        proc_dict = json.load(f)
+
+    dir_builder = inout.DirectoryBuilder(teosar_dir)
+    dates = [pid2date(pids[0]) for pids in proc_dict["product_ids"]]
+
+    meta_primary = inout.json_to_dict(
+        dir_builder.get_meta_path(dates[proc_dict["primary_id"]])
+    )
+    primary_asm = Sentinel1Assembler.from_dict(meta_primary["asm"])
+    primary_mosaic_model = primary_asm.get_mosaic_model()
+
+    c, r, w, h = proc_dict["roi"]
+    roi = Roi(c, r, w, h)
+
+    cropped_proj = primary_mosaic_model.to_cropped_mosaic(
+        roi
+    )  # geometrical model on your ROI
+
+    roicuttinginfo = RoiCuttingInfo.from_dict(meta_primary["roi_cutting_info"])
+    assert roicuttinginfo.roi == roi
+    resamplers_on_roi = {
+        k: Sentinel1BurstResample.from_dict(v)
+        for k, v in meta_primary["debursting"]["resamplers_on_roi"].items()
+    }
+
+    grid_size_col = 50
+    grid_size_row = 50
+    ellipsoid_alt = 0
+    normalized: bool = True
+    polynom_degree = 7
+    estimate_in_ENU = True
+
+    los_mosaic = get_los_squinted_mosaic(
+        roicuttinginfo.write_rois,
+        resamplers_on_roi,
+        roi.h,
+        roi.w,
+        cropped_proj,
+        grid_size_col=grid_size_col,
+        grid_size_row=grid_size_row,
+        polynom_degree=polynom_degree,
+        ellipsoid_alt=ellipsoid_alt,
+        normalized=normalized,
+        estimate_in_ENU=estimate_in_ENU,
+    )
+
+    los_ZD_mosaic = get_los_ZeroDoppler_mosaic(
+        roi.h,
+        roi.w,
+        cropped_proj,
+        grid_size_col=grid_size_col,
+        grid_size_row=grid_size_row,
+        polynom_degree=polynom_degree,
+        ellipsoid_alt=ellipsoid_alt,
+        normalized=normalized,
+        estimate_in_ENU=estimate_in_ENU,
+    )
+
+    if estimate_in_ENU:
+        channels = "ENU"
+    else:
+        channels = "XYZ"
+
+    fname = "los_mosaic_squinted"
+    for i, channel in enumerate(channels):
+        fname_channel = f"{fname}_{channel}.tif"
+        inout.save_img(os.path.join(teosar_dir, fname_channel), los_mosaic[..., i])
+
+    fname = "los_mosaic_ZeroDoppler"
+    for i, channel in enumerate(channels):
+        fname_channel = f"{fname}_{channel}.tif"
+        inout.save_img(os.path.join(teosar_dir, fname_channel), los_ZD_mosaic[..., i])
+
+
 # %%
 if __name__ == "__main__":
     Fire(
@@ -217,5 +300,6 @@ if __name__ == "__main__":
             "run_on_predefined_pids": run_on_predefined_pids,
             "run_with_catalog_query": run_with_catalog_query,
             "generate_ifgs": generate_ifgs,
+            "generate_los": generate_los,
         }
     )

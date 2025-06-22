@@ -224,10 +224,10 @@ def stitch_arrays(iter, out_shape, out=None):
         if out is None:
             out = np.full(out_shape, np.nan, dtype=arr.dtype)
 
-        assert arr.shape == write_roi.get_shape(), (
+        assert arr.shape[:2] == write_roi.get_shape(), (
             "array shape must match write roi shape"
         )
-        write_roi.assert_valid(out_shape)
+        write_roi.assert_valid(out_shape[:2])
         col_min, row_min, w, h = write_roi.to_roi()
         out[row_min : row_min + h, col_min : col_min + w] = arr
 

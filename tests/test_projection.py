@@ -13,6 +13,8 @@ from eos.products.sentinel1.orbit_catalog import (
     Sentinel1OrbitCatalogQuery,
 )
 from eos.sar import range_doppler
+from eos.sar.const import LIGHT_SPEED_M_PER_SEC
+from eos.sar.geoconfig import get_grid, localize_on_ellipsoid, normalize
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector, SLCPxShiftCorrection
 
@@ -440,3 +442,95 @@ def test_projection_corner_reflectors(phx_client):
     assert (rows_pred - rows_meas).std() < 0.03, (
         "Row standard deviation higher than expected"
     )
+
+
+def test_projection_with_DopplerCentroid():
+    # get burst meta
+    xml_path = "./tests/data/s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
+    with open(xml_path) as f:
+        xml_content = f.read()
+    burst_meta = sentinel1.metadata.extract_burst_metadata(xml_content, burst_id=1)
+    burst_w, burst_h = burst_meta.burst_roi[2:]
+
+    # get a meshgrid
+    grid_size_col = 200
+    grid_size_row = 20
+
+    col_grid, row_grid = get_grid(
+        burst_w,
+        burst_h,
+        grid_size_col=grid_size_col,
+        grid_size_row=grid_size_row,
+    )
+
+    rows = row_grid.ravel()
+    cols = col_grid.ravel()
+
+    # create an orbit
+    orbit = Orbit(burst_meta.state_vectors)
+
+    # create a Sentinel1BurstModel
+    proj_model = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, orbit)
+
+    # 3D points on ellipsoid at Zero Doppler condition
+    points_3D = localize_on_ellipsoid(proj_model, rows, cols, 0.0)
+
+    # coordinates in image to azt time and range
+    azt, rng = proj_model.to_azt_rng(rows, cols)
+
+    # create a doppler
+    doppler = sentinel1.doppler_info.doppler_from_meta(burst_meta, orbit)
+
+    # compute doppler parameters
+    slrt = rng * 2 / LIGHT_SPEED_M_PER_SEC
+    eta = azt - doppler.burst_mid_time
+    range_dependent_doppler_rate, _, f_geom, f = doppler.get_doppler_quantities(
+        azt, slrt
+    )
+    ref_time = doppler.get_ref_time(f_geom, range_dependent_doppler_rate)
+    dop_centroid_freq = f + f_geom
+    alpha = 1 - doppler.krot / range_dependent_doppler_rate
+
+    # time between sensing and zero doppler
+    delta_t = (eta - ref_time) * (1 / alpha - 1)
+
+    # or a less accurate estimate by supposing that the orbit is a line locally
+    # and that the speed vector is constant, and drawing a right angled triangle
+    v = proj_model.orbit.evaluate(azt, order=1)
+    norm_v = np.linalg.norm(v, axis=1)
+    sin_squint = dop_centroid_freq * proj_model.wavelength / (2 * norm_v)
+    cos_squint = np.sqrt(1 - sin_squint**2)
+    delta_t_bis = -rng * sin_squint / (cos_squint * norm_v)
+
+    # check they are similar
+    np.testing.assert_allclose(delta_t_bis, delta_t, rtol=0.1, atol=0.1)
+
+    azt_sensing_rough = azt + delta_t
+
+    azt_sensing_exact, _, _ = range_doppler.iterative_projection(
+        proj_model.orbit,
+        points_3D[:, 0],
+        points_3D[:, 1],
+        points_3D[:, 2],
+        azt_init=azt_sensing_rough,
+        half_wavelength_f_dc=proj_model.wavelength / 2 * dop_centroid_freq,
+    )
+    delta_t_actual = azt_sensing_exact - azt
+    # check they are similar
+    np.testing.assert_allclose(delta_t, delta_t_actual, rtol=0.1, atol=0.1)
+
+    pos_sat_center_beam = orbit.evaluate(azt_sensing_exact)
+    los_squinted = points_3D - pos_sat_center_beam
+    los_squinted_normalized = normalize(los_squinted)
+
+    speed_sat_center_beam = orbit.evaluate(azt_sensing_exact, order=1)
+
+    # 2 / \lambda V.dot(los_unit)
+    dop_recalc = (
+        2
+        / proj_model.wavelength
+        * np.sum(speed_sat_center_beam * los_squinted_normalized, axis=1)
+    )
+
+    # Check that Doppler condition is verified
+    np.testing.assert_allclose(dop_recalc, dop_centroid_freq, rtol=1e-5)

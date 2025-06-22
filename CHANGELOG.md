@@ -1,5 +1,38 @@
 # [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.39.0..HEAD)
 
+## Added
+- usage:teosar: Add los computation example for teosar results
+- tests: Add los test after stitching
+- tutorial: Add los computation
+    breaking change in Sentinel1AssemblyCropper.crop which now returns
+    the array and the resampler as well
+- feat: Add conversion from ECEF to ENU
+    breaking change in eos.sar.geoconfig.get_los_on_ellipsoid
+    which now returns los, points_3D
+- sentinel1:los: Add functions to compute squinted/ZeroDopplerLos on mosaic
+    change in behaviour of eos.sar.utils.stitch_array which now can stich
+    arrays with arbitrary number of channels as long as their height and width
+    respects the writing rois.
+- geoconfig: Add function for squinted LOS
+- range_doppler: Add support for non zero Doppler in projection
+    change in eos.sar.range_doppler in iterative_projection and get_E_dE
+    which now can take as input (optionally) the doppler centroid
+    scaled by half the wavelength. This is necessary to estimate
+    the time along the orbit that corresponds to a non zero Doppler frequency
+- chore: add compiled .c to gitignore
+- geoconfig: Add code to predict los with tests
+- tests: Add test for geoconfig
+
+## Changed
+- ortho/tuto: comments about `resolution` units w.r.t the crs:
+    * [skip ci]
+- deps: lower the version requirement of ortools
+- geoconfig: Compute geomconfig from grid coords
+
+## Fixed
+- test: Relax constraint on unstable test
+- fix: Fix pre-commit for src layout
+
 
 # [0.39.0](https://github.com/Kayrros/eos-sar/compare/0.38.0..0.39.0) -- 2025-05-15
 

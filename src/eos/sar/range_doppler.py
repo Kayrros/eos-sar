@@ -7,22 +7,42 @@ from eos.sar.orbit import Orbit
 
 
 def iterative_projection(
-    orbit: Orbit, gx, gy, gz, azt_init=None, max_iterations=20, tol=1.2 * 1e-7
+    orbit: Orbit,
+    gx,
+    gy,
+    gz,
+    azt_init=None,
+    max_iterations=20,
+    tol=1.2 * 1e-7,
+    half_wavelength_f_dc=None,
 ):
-    """Solves the point of closest approach using the Newton-Raphson algorithm.
+    """
+    Solves the point of closest approach using the Newton-Raphson algorithm.
 
     Parameters
     ----------
-    orbit: fitted Orbit instance
+    orbit: Orbit
+        Fitted Orbit instance
     gx, gy, gz: Iterable
         Geocentric coordinates
     azt_init: Iterable
-           Initial guess for the azimuth time, same len as x
+        Initial guess for the azimuth time, same len as x
     max_iterations: int
-            Maximum number of iterations for reaching the solution
+        Maximum number of iterations for reaching the solution
     tol: float
-            Tolerance in seconds of azimuth time precision on the orbit
-            below which the iterations stop
+        Tolerance in seconds of azimuth time precision on the orbit
+        below which the iterations stop
+    half_wavelength_f_dc: Iterable, Optional
+        (lambda / 2) * f_dc, where lambda is the constant carrier wavelength
+        and f_dc is the Doppler centroid per point.
+        When None (the default behavior), it is assumed to be 0 everywhere, so that the
+        function yields the Zero-Doppler time along the orbit.
+        When specified, the function will yield the azimuth time along the orbit
+        where the Doppler condition is met, i.e.
+        V(t).(M - O(t)) -  (lambda / 2) * f_dc * || M - O(t) || = 0
+        with O(t) the satellite position and V(t) its speed, M the 3D target on the earth surface,
+
+
     Returns
     ------
         azt: ndarray
@@ -33,30 +53,48 @@ def iterative_projection(
             incidence angle
     """
     points = np.column_stack((gx, gy, gz))
+    n_points = len(points)
+
     if azt_init is None:
         # determine which state vectors to use
         sv_times = [s.time for s in orbit.sv]
         start = min(sv_times)
         end = max(sv_times)
         # initial guess
-        azt_curr = (start + end) / 2 * np.ones((len(points),))
+        azt_curr = (start + end) / 2 * np.ones((n_points,))
     else:
-        azt_curr = np.array(azt_init)
+        azt_curr = np.atleast_1d(np.array(azt_init))
+        assert len(azt_curr) == n_points
+
     # mask on points on which to iterate
-    index = np.ones((len(azt_curr),), dtype=bool)
+    index = np.ones((n_points,), dtype=bool)
     # initialization of step
     dazt = np.ones_like(azt_curr)
+
+    # checking half_wavelength_f_dc
+    if half_wavelength_f_dc is not None:
+        half_wavelength_f_dc = np.atleast_1d(half_wavelength_f_dc)
+        assert len(half_wavelength_f_dc) == n_points
+
     # Newton-Raphson iterations
     for j in range(max_iterations):
-        E, dE = get_E_dE(azt_curr[index], orbit, points[index])
+        E, dE = get_E_dE(
+            azt_curr[index],
+            orbit,
+            points[index],
+            None if half_wavelength_f_dc is None else half_wavelength_f_dc[index],
+        )
+
         dazt[index] = -E / dE
         azt_curr[index] += dazt[index]
         index = np.abs(dazt) >= tol
         if index.sum() == 0:
             break
-    closest_positions = orbit.evaluate(azt_curr).reshape(-1, 3)
+
+    sat_positions = orbit.evaluate(azt_curr)
+
     # apply the cosine rule to get the incidence angle
-    cos_i, rng = geoconfig.compute_cosi_rng(points, closest_positions)
+    cos_i, rng = geoconfig.compute_cosi_rng(points, sat_positions)
     i = np.arccos(cos_i)
 
     # support for scalar input
@@ -108,8 +146,9 @@ def ascending_node_crossing_time(
     return azt_curr
 
 
-def get_E_dE(azt, orbit: Orbit, M):
-    """Get the function that needs to be 0 and its derivative.
+def get_E_dE(azt, orbit: Orbit, M, half_wavelength_f_dc=None):
+    """
+    Get the function that needs to be 0 and its derivative.
 
     Parameters
     ----------
@@ -118,6 +157,10 @@ def get_E_dE(azt, orbit: Orbit, M):
     orbit : Orbit instance
     M : ndarray (N, 3 )
         Points in geocentric coordinates.
+    half_wavelength_f_dc: Iterable, Optional
+        (lambda / 2) * f_dc, where lambda is the constant carrier wavelength
+        and f_dc is the Doppler centroid per point.
+        When None, it is assumed to be zero (Zero-Doppler condition.)
 
     Returns
     -------
@@ -128,32 +171,47 @@ def get_E_dE(azt, orbit: Orbit, M):
 
     Notes
     -----
-    In this function is computed E = V(t).(M - Orbit(t)) the scalar product of
-    the speed with the LOS vector and
-    dE/dt  = acc(t).(M - Orbit(t))  - ||V(t)||^2.
-    Formula is taken from [0]
+    V(t).(M - O(t)) -  (lambda / 2) * f_dc * || M - O(t) || = 0 is the Doppler condition,
+    where O(t) the satellite position and V(t) its speed, M the 3D target on the earth surface.
+
+    In this function is computed
+    E = V(t).(M - O(t)) -  (lambda / 2) * f_dc * || M - O(t) ||
+    the function that needs to be zero to satisfy the Doppler condition.
+    Its derivative is returned as well
+    dE/dt  = acc(t).(M - O(t))  - ||V(t)||^2 + (lambda / 2) * f_dc V(t).(M - O(t))/|| M - O(t) ||.
+    Formula is taken from [0] (and adapted for Doppler condition) and from [1] (equation 19)
 
     References
     ----------
     [0] Delft Object-oriented Radar Interferometric Software User manual.
         Available at http://doris.tudelft.nl/usermanual/node195.html
-
+    [1] Small, D. and Schubert, A. (2019) Guide to Sentinel-1 Geocoding,
+    Tech. Rep. UZH-S1-GC-AD.
+    Available at:
+    https://sentinels.copernicus.eu/documents/247904/1653442/Guide-to-Sentinel-1-Geocoding.pdf
     """
     # speed
-    V = orbit.evaluate(azt, order=1).reshape(-1, 3)
+    V = orbit.evaluate(azt, order=1)
     # LOS vector
-    D = (M - orbit.evaluate(azt)).reshape(-1, 3)
+    D = M - orbit.evaluate(azt)
     # scalar product
-    E = np.sum(V * D, axis=1).squeeze()
+    V_dot_D = np.sum(V * D, axis=1)
     # acceleration
-    Acc = orbit.evaluate(azt, order=2).reshape(-1, 3)
+    Acc = orbit.evaluate(azt, order=2)
     # scalar product
-    term1 = np.sum(D * Acc, axis=1).squeeze()
+    Acc_dot_D = np.sum(D * Acc, axis=1)
     # squared speed norm
-    term2 = (np.linalg.norm(V, axis=1).squeeze()) ** 2
-    # combine
-    dE = term1 - term2
-    return E, dE
+    V_dot_V = np.sum(V * V, axis=1)
+
+    E = V_dot_D
+    dE_dt = Acc_dot_D - V_dot_V
+
+    if half_wavelength_f_dc is not None:
+        norm_D = np.linalg.norm(D, axis=1)
+        E = E - half_wavelength_f_dc * norm_D
+        dE_dt = dE_dt + half_wavelength_f_dc * V_dot_D / norm_D
+
+    return E, dE_dt
 
 
 # localization functions
