@@ -306,6 +306,12 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         assert im_geom_type == "slant_plane", (
             f"Unsupported image geometry type: {im_geom_type}"
         )
+        assert (
+            np.all(
+                np.array(image_geometry["doppler_centroid_polynomial"]["coefficients"])
+            )
+            == 0
+        ), "Only Zero-Doppler slant plane geometry supported for now"
 
         # The next attributes are only valid when the image geometry type is slant plane
         starting_range = image_geometry["range_to_first_sample"]
