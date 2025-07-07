@@ -158,6 +158,29 @@ class CapellaMetadata:
 
 
 @dataclass(frozen=True)
+class CapellaPolynomialMeta:
+    poly_type: Literal["standard", "chebyshev", "legendre"]
+    dimension: Literal[1, 2]
+    """
+    In theory, we could have any number of dimensions, but in practice according to the doc,
+    we can expect only 1D or 2D polynomials
+    """
+    degree: int
+    coefficients: Union[list[float], list[list[float]]]
+    """
+    Either 1D array or 2D Array
+    """
+
+    def __post_init__(self):
+        assert self.poly_type in ["standard", "chebyshev", "legendre"]
+        assert self.dimension in [1, 2]
+
+        np_coefs = np.array(self.coefficients)
+        assert len(np_coefs.shape) == self.dimension
+        assert np.all(np.array(np_coefs.shape) == self.degree + 1)
+
+
+@dataclass(frozen=True)
 class CapellaSLCMetadata(CapellaMetadata):
     starting_range: float
     """
@@ -176,6 +199,13 @@ meters
     first_line_time: np.datetime64
     """
     *collect/image/image_geometry/first_line_time*: The timestamp of the first line, converted to np.datetime64.
+    """
+    fdop_cen_poly2d_meta: CapellaPolynomialMeta
+    """
+    *collect/image/frequency_doppler_centroid_polynomial*:
+            A 2D polynomial mapping range and azimuth time to doppler centroid
+            frequency in Hz. Notice that the range dependence of the DC polynomial
+            uses range distance. The azimuth variable is seconds since first_line_time.
     """
 
     @property
@@ -287,6 +317,14 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         first_line_time = parse_date_as_numpy_datetime64(
             image_geometry["first_line_time"]
         )
+
+        fdop_poly_dict = image["frequency_doppler_centroid_polynomial"]
+        fdop_cen_poly2d_meta = CapellaPolynomialMeta(
+            fdop_poly_dict["type"],
+            fdop_poly_dict["dimension"],
+            fdop_poly_dict["degree"],
+            fdop_poly_dict["coefficients"],
+        )
         return CapellaSLCMetadata(
             start_timestamp=start_timestamp,
             stop_timestamp=stop_timestamp,
@@ -313,6 +351,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             range_pixel_size=range_pixel_size,
             delta_line_time=delta_line_time,
             first_line_time=first_line_time,
+            fdop_cen_poly2d_meta=fdop_cen_poly2d_meta,
         )
     elif product_type == "GEC":
         reproj_name = image["terrain_models"]["reprojection"]["name"]
