@@ -147,6 +147,11 @@ class CapellaMetadata:
     """
     Deduced from collect/state/state_vectors.
     """
+    state_vectors_origin: str
+    """
+    Deduced from collect/state/source: Orbit product used in processing. 
+    Ex: precise_determination, real_time
+    """
 
     @property
     def wavelength(self) -> float:
@@ -289,6 +294,9 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     assert orbit_direction in ["ascending", "descending", "null"], (
         "Unrecognized orbit direction string"
     )
+    assert state["coordinate_system"] == {"type": "ecef"}, (
+        "ECEF is the only supported coordinate system"
+    )
 
     # State vectors
     state_vectors = []
@@ -298,6 +306,8 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         sv_pos = _get_3D_tuple(p["position"])
         sv_velocity = _get_3D_tuple(p["velocity"])
         state_vectors.append(StateVector(sv_time_since_ref, sv_pos, sv_velocity))
+
+    state_vectors_origin = state["source"]
 
     if product_type == "SLC":
         image_geometry = image["image_geometry"]
@@ -352,6 +362,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             look_direction=look_direction,
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
+            state_vectors_origin=state_vectors_origin,
             # SLC specific:
             starting_range=starting_range,
             range_pixel_size=range_pixel_size,
@@ -388,6 +399,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             look_direction=look_direction,
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
+            state_vectors_origin=state_vectors_origin,
             # GEC specific:
             alt_inflated_wgs84=alt_inflated_wgs84,
         )
