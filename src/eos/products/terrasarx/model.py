@@ -24,6 +24,7 @@ class TSXModel(SensorModel):
     h: int
     orbit: Orbit
     wavelength: float
+    coordinate: coordinates.SLCCoordinate
 
     @staticmethod
     def from_metadata(
@@ -58,6 +59,7 @@ class TSXModel(SensorModel):
             h=meta.height,
             orbit=orbit,
             wavelength=meta.wavelength,
+            coordinate=coordinate
         )
 
     @override
