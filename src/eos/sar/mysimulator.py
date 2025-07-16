@@ -13,7 +13,6 @@ Define own class to map from range-doppler to terrain geometry.
 import numpy as np
 from rasterio.warp import reproject, Resampling
 from affine import Affine
-import pyproj
 
 from eos.sar.roi import Roi
 from eos.dem import DEM
