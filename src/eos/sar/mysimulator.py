@@ -18,13 +18,40 @@ from eos.sar.roi import Roi
 from eos.dem import DEM
 from eos.sar.simulator import MySARSimulator_small_roi
 
-import sys
-split_path = sys.path[0].split("/")[:-2]
-path = ""
-for folder in split_path:
-    path += folder + "/"
-sys.path.append(path[:-1])
-from useful_functions import point_geo2xyzWGS84
+
+
+def point_geo2xyzWGS84(latitude, longitude, altitude):
+    """"
+    This function is translated from the eos.sar.simulator.geo2xyzWGS84() function written in cython.
+    
+    Convert geodetic coordinate into cartesian XYZ coordinate with specified geodetic system (WGS84)
+
+    Equivalent to pyproj.Transformer.from_crs('epsg:4979', 'epsg:4978') but faster.
+
+    Inputs:
+        latitude  The latitude of a given pixel (in degree).
+        longitude The longitude of a given pixel (in degree).
+        altitude  The altitude of the given pixel (in m).
+    Outputs:
+        x/y/z     cartesian coordinates in the geodetic system
+    """
+    
+    WGS84_a = 6378137.0
+    WGS84_b = 6356752.3142451794975639665996337
+    WGS84_earthFlatCoef = 1.0 / ((WGS84_a - WGS84_b) / WGS84_a)
+    WGS84_e2 = 2.0 / WGS84_earthFlatCoef - 1.0 / (WGS84_earthFlatCoef * WGS84_earthFlatCoef)
+                                                                                                                                                                                                                          
+    lat = latitude * np.pi / 180.
+    lon = longitude * np.pi / 180.
+    sinLat = np.sin(lat)
+    N = WGS84_a / np.sqrt(1.0 - WGS84_e2 * sinLat * sinLat)
+    NcosLat = (N + altitude) * np.cos(lat)
+
+    x = NcosLat * np.cos(lon) # in m
+    y = NcosLat * np.sin(lon) # in m
+    z = (N + altitude - WGS84_e2 * N) * sinLat
+
+    return x, y, z
 
 
 
