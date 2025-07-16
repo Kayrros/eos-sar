@@ -13,6 +13,7 @@ Define own class to map from range-doppler to terrain geometry.
 import numpy as np
 from rasterio.warp import reproject, Resampling
 from affine import Affine
+import pyproj
 
 from eos.sar.roi import Roi
 from eos.dem import DEM
@@ -28,11 +29,14 @@ def point_geo2xyzWGS84(latitude, longitude, altitude):
 
     Equivalent to pyproj.Transformer.from_crs('epsg:4979', 'epsg:4978') but faster.
 
-    Inputs:
+    Parameters
+    ----------
         latitude  The latitude of a given pixel (in degree).
         longitude The longitude of a given pixel (in degree).
         altitude  The altitude of the given pixel (in m).
-    Outputs:
+
+    Returns
+    -------
         x/y/z     cartesian coordinates in the geodetic system
     """
     
@@ -158,7 +162,7 @@ class MySimulator(MySARSimulator_small_roi):
     
     col_img = None
     
-    def initialize(self, product_metadata, oversampling_columns=1):
+    def initialize(self, product_metadata, los_epsg4978, oversampling_columns=1):
         """
         Initialize the simulator by getting the mapping from the resampled DEM to the image coordinates.
 
@@ -166,6 +170,8 @@ class MySimulator(MySARSimulator_small_roi):
         ----------
         product_metadata : CapellaSLCProductInfo
             Object containing the metadata of the SAR product.
+        los_epsg4978: np.array of shape (3,)
+            LOS vector in geocentric reference frame (x, y, z).
         oversampling_columns : int, optional
             Oversampling factor along the columns of the resampled DEM.
 
@@ -178,7 +184,7 @@ class MySimulator(MySARSimulator_small_roi):
         self.product_metadata = product_metadata
         
         # Resample (crop and apply an affine transformation) the DEM to have DEM rows aligned with SAR image rows
-        roi = Roi(col=0, row=0, w=self.product_metadata.width, h=self.product_metadata.file_length)
+        roi = Roi(col=0, row=0, w=self.product_metadata.width, h=self.product_metadata.height)
         self.optim_roi = self.find_optimal_roi(roi)
         self.dem0 = self.get_cropped_dem(self.dem, self.optim_roi) # cropped DEM
         trf1 = self._get_dem_transform(self.proj_model, self.optim_roi)
@@ -193,7 +199,7 @@ class MySimulator(MySARSimulator_small_roi):
         
         # Get the column indices in the SAR image for each point of the resampled DEM    
         _, col_j0 = self.get_row_col_img(self.optim_roi, self.dem1.transform)
-        self.los_epsg4978 = self.product_metadata.get_los_vector_3D_epsg4978()
+        self.los_epsg4978 = los_epsg4978
         self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_size, col_j0))
         
         
