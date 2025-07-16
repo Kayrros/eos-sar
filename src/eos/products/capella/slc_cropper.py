@@ -89,6 +89,7 @@ def get_primary_crop(
     *,
     get_complex: bool = True,
     use_apd: bool = True,
+    calibrate: bool = True,
 ) -> CapellaCrop:
     primary_metadata = meta_from_slc_tif(primary_raster_path)
     primary_model = proj_model_from_meta(primary_metadata, use_apd=use_apd)
@@ -104,6 +105,8 @@ def get_primary_crop(
     primary_array = read_window(
         primary_reader, primary_roi, get_complex=get_complex, boundless=True
     )
+    if calibrate:
+        primary_array = primary_array * primary_metadata.scale_factor
 
     primary_crop = CapellaCrop(
         primary_product_id,
@@ -171,6 +174,7 @@ def get_primary_crop_dem_registLUT(
     *,
     get_complex: bool = True,
     use_apd: bool = True,
+    calibrate: bool = True,
 ) -> tuple[CapellaCrop, DEM, RegistrationLUT]:
     primary_crop = get_primary_crop(
         primary_raster_path,
@@ -178,6 +182,7 @@ def get_primary_crop_dem_registLUT(
         dem_source,
         get_complex=get_complex,
         use_apd=use_apd,
+        calibrate=calibrate,
     )
 
     dem = primary_crop.model.fetch_dem(dem_source, roi=primary_crop.roi)
@@ -197,6 +202,7 @@ def get_secondary_crop(
     *,
     get_complex: bool = True,
     use_apd: bool = True,
+    calibrate: bool = True,
 ) -> CapellaCrop:
     """
     Important ! registration refinement !
@@ -235,6 +241,8 @@ def get_secondary_crop(
     secondary_array = read_window(
         secondary_reader, roi_in_secondary, get_complex=get_complex, boundless=True
     )
+    if calibrate:
+        secondary_array = secondary_array * secondary_metadata.scale_factor
 
     # create a resampler
     doppler = CapellaDoppler.from_metadata(secondary_metadata)
@@ -282,6 +290,7 @@ def crop_images(
     get_complex: bool = True,
     use_apd: bool = True,
     refine_regist: bool = True,
+    calibrate: bool = True,
 ) -> tuple[list[CapellaCrop], DEM]:
     """
     Crop images and align with a primary image. A DEM covering the images is also returned.
@@ -298,6 +307,7 @@ def crop_images(
         dem_sampling_ratio,
         get_complex=get_complex,
         use_apd=use_apd,
+        calibrate=calibrate,
     )
 
     crops = []
@@ -312,6 +322,7 @@ def crop_images(
             primary_array=primary_crop.array if refine_regist else None,
             get_complex=get_complex,
             use_apd=use_apd,
+            calibrate=calibrate,
         )
 
         crops.append(secondary_crop)

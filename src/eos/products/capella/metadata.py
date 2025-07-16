@@ -152,6 +152,11 @@ class CapellaMetadata:
     Deduced from collect/state/source: Orbit product used in processing. 
     Ex: precise_determination, real_time
     """
+    scale_factor: float
+    """
+    Deduced from collect/image/scale_factor: The value to multiply the TIFF values by
+                                             to recover the true science data
+    """
 
     @property
     def wavelength(self) -> float:
@@ -280,6 +285,8 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     azimuth_resolution = image["azimuth_resolution"]
     azimuth_looks = image["azimuth_looks"]
 
+    scale_factor = image["scale_factor"]
+
     center_frequency = radar["center_frequency"]
 
     transmit_polarization = radar["transmit_polarization"]
@@ -363,6 +370,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
             state_vectors_origin=state_vectors_origin,
+            scale_factor=scale_factor,
             # SLC specific:
             starting_range=starting_range,
             range_pixel_size=range_pixel_size,
@@ -400,6 +408,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
             state_vectors_origin=state_vectors_origin,
+            scale_factor=scale_factor,
             # GEC specific:
             alt_inflated_wgs84=alt_inflated_wgs84,
         )

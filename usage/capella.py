@@ -67,6 +67,7 @@ def crop_and_store(
     get_complex: bool = True,
     use_apd: bool = True,
     refine_regist: bool = True,
+    calibrate: bool = True,
 ) -> tuple[list[CapellaCrop], DEM]:
     (crops, dem) = crop_images(
         raster_paths,
@@ -77,6 +78,7 @@ def crop_and_store(
         get_complex=get_complex,
         use_apd=use_apd,
         refine_regist=refine_regist,
+        calibrate=calibrate,
     )
 
     # save the dem on the disk
@@ -172,7 +174,7 @@ def compute_ifgs_coher_consec_and_store(
         save_img(os.path.join(out_ifgs[keys[3]], fname), coherence)
 
 
-def main(orb_str: str, use_apd=True, refine_regist=True):
+def main(orb_str: str, use_apd=True, refine_regist=True, calibrate=True):
     """
     This main function is specific to the Piton de la Fournaise InSAR stack but can be adapted.
     It is not optimal in any way in the way the arrays are kept in memory or stored on the disk.
@@ -212,12 +214,13 @@ def main(orb_str: str, use_apd=True, refine_regist=True):
     result_path = os.path.join(
         experiment_path,
         "results",
-        f"{orb_str}_useapd{use_apd}_refineregist{refine_regist}",
+        f"{orb_str}_useapd{use_apd}_refineregist{refine_regist}_calibrate{calibrate}",
     )
     os.makedirs(result_path, exist_ok=True)
     dir_builder = DirectoryBuilder(result_path)
     primary_id = 0
     dem_sampling_ratio = 0.2
+
     crops, dem = crop_and_store(
         tif_files,
         primary_id,
@@ -227,6 +230,7 @@ def main(orb_str: str, use_apd=True, refine_regist=True):
         dem_sampling_ratio=dem_sampling_ratio,
         use_apd=use_apd,
         refine_regist=refine_regist,
+        calibrate=calibrate,
     )
 
     product_ids = [c.product_id for c in crops]
