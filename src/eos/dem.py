@@ -446,8 +446,8 @@ class MyDEMSource(DEMSource):
         if set_nan:
             nodata = np.nan
 
-        if dem_reader.meta["crs"] != rasterio.CRS.from_epsg(4326) or dem_reader.meta["crs"] != rasterio.CRS.from_epsg(4979):
-            raise ValueError(f"CRS of '{path_to_dem}'")
+        #if dem_reader.meta["crs"] != rasterio.CRS.from_epsg(4326) or dem_reader.meta["crs"] != rasterio.CRS.from_epsg(4979):
+        #    raise ValueError(f"CRS of '{path_to_dem}'")
 
         # Get the DEM
         if set_nan:
