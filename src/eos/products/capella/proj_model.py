@@ -158,4 +158,5 @@ class CapellaSLCModel(SensorModel):
             h=roi.h,
             orbit=self.generic_model.orbit,
             wavelength=self.wavelength,
+            coordinate=coordinate
         )
