@@ -228,8 +228,12 @@ class MySimulator(MySARSimulator_small_roi):
         self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_size, col_no_nan, j_indices))
         
         # Get the layover and shadow masks of the resampled DEM
-        self.layover_mask = self.get_layover_mask(self.dem1)
-        self.shadow_mask = self.get_shadow_mask(self.dem1)
+        self.layover_mask_dem1 = self.get_layover_mask(self.dem1)
+        self.shadow_mask_dem1 = self.get_shadow_mask(self.dem1)
+
+        # Get the layover and shadow masks in image geometry
+        self.layover_mask_sar = self.mask_resampled_dem_2_image(self.layover_mask_dem1)
+        self.shadow_mask_sar = self.mask_resampled_dem_2_image(self.shadow_mask_dem1)
     
 
 
@@ -611,6 +615,37 @@ class MySimulator(MySARSimulator_small_roi):
         """
         slopes = compute_slopes_column_dem(dem)
         return slopes <= -self.product_metadata.center_pixel_incidence_angle
+    
+
+
+    def mask_resampled_dem_2_image(self, mask_dem):
+        """
+        Pass any mask from the resampled DEM geometry to the range-doppler geometry.
+
+        Parameters
+        ----------
+        mask_dem : np.ndarray of bool
+            Mask of shape (n,m1) = self.dem1.array.shape.
+
+        Returns
+        -------
+        mask_sar : np.ndarray of bool
+            Mask of shape (n,m) = self.product_metadata.shape.
+
+        """
+        n, m = self.product_metadata.shape
+        _, m1 = self.col_img.shape
+        mask_sar = np.zeros((n, m)).astype(bool)
+        row_img = (np.arange(n) * np.ones((n,m1)).T).T
+
+        row_mask = row_img[mask_dem].astype(int)
+        col_mask = self.col_img[mask_dem].astype(int)
+        mask = (col_mask < m) * (col_mask >= 0)
+        col_mask = col_mask[mask]
+        row_mask = row_mask[mask]
+
+        mask_sar[row_mask, col_mask] = True
+        return mask_sar
         
 
 
