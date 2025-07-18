@@ -225,7 +225,7 @@ class MySimulator(MySARSimulator_small_roi):
         j_indices = np.nanargmin(np.isnan(self.dem1.array), axis=1)   
         _, col_no_nan = self.get_row_col_img(self.dem1.transform, j_indices)
         self.los_epsg4978 = los_epsg4978
-        self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_size, col_no_nan, j_indices))
+        self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_spacing, col_no_nan, j_indices))
         
         # Get the layover and shadow masks of the resampled DEM
         self.layover_mask_dem1 = self.get_layover_mask(self.dem1)
@@ -633,7 +633,7 @@ class MySimulator(MySARSimulator_small_roi):
             Mask of shape (n,m) = self.product_metadata.shape.
 
         """
-        n, m = self.product_metadata.shape
+        n, m = self.product_metadata.height, self.product_metadata.width
         _, m1 = self.col_img.shape
         mask_sar = np.zeros((n, m)).astype(bool)
         row_img = (np.arange(n) * np.ones((n,m1)).T).T
