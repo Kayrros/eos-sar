@@ -154,6 +154,28 @@ def average_consecutive_series(nb_sequence):
 
 
 
+def compute_slopes_column_dem(dem):
+    """
+    Compute the slopes along the column of a DEM.
+
+    Parameters
+    ----------
+    dem : eos.dem.DEM
+        DEM used to compute the slopes. dem.array.shape = (n,m)
+
+    Returns
+    -------
+    slopes : np.ndarray of size (n,m)
+        Slopes along the column of the DEM in degree. The last column is filled with np.nan to match the shape of dem.array.
+
+    """
+    col_res = np.sqrt(dem.transform[0]**2 + dem.transform[3]**2) * 6370e3 * np.pi/180.
+    slopes = np.arctan(np.diff(dem, axis=1, append=0) / col_res) * 180./np.pi
+    slopes[:,-1] = np.nan
+    return slopes
+
+
+
 class MySimulator(MySARSimulator_small_roi):
     """
     MySimulator is a class that extends the functionalities of the SARSimulator_small_roi class in order to modify locally the synthetic images.
@@ -201,7 +223,11 @@ class MySimulator(MySARSimulator_small_roi):
         self.los_epsg4978 = los_epsg4978
         self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_size, col_j0))
         
+        # Get the layover and shadow masks of the resampled DEM
+        self.layover_mask = self.get_layover_mask(self.dem1)
+        self.shadow_mask = self.get_shadow_mask(self.dem1)
         
+
     
     def get_row_col_img(self, roi, transform, j_idx=0):
         """
@@ -220,7 +246,7 @@ class MySimulator(MySARSimulator_small_roi):
         -------
         row : np.ndarray
             Row indices in the image.
-        col : TYPE
+        col : np.ndarray
             Column indices in the image.
 
         """
@@ -513,6 +539,48 @@ class MySimulator(MySARSimulator_small_roi):
         if normalize:
             synth_image = (synth_image - np.nanmin(synth_image))/(np.nanmax(synth_image) - np.nanmin(synth_image))
         return synth_image
+    
+
+
+    def get_layover_mask(self, dem):
+        """
+        Compute the layover mask of a resampled DEM (ie. whose lines are aligned with the SAR image's rows).
+
+        Parameters
+        ----------
+        dem : eos.dem.DEM
+            Resampled DEM. dem.array.shape = (n,m)
+
+        Returns
+        -------
+        np.ndarray of size (n,m)
+            Mask with True in layover areas and False elsewhere.
+
+        """
+        slopes = compute_slopes_column_dem(dem)
+        return slopes >= self.product_metadata.center_pixel_incidence_angle
+    
+
+
+    def get_shadow_mask(self, dem):
+        """
+        Compute the shadow mask of a resampled DEM (ie. whose lines are aligned with the SAR image's rows).
+
+        Parameters
+        ----------
+        dem : eos.dem.DEM
+            Resampled DEM. dem.array.shape = (n,m)
+
+        Returns
+        -------
+        np.ndarray of size (n,m)
+            Mask with True in shadow areas and False elsewhere.
+
+        """
+        slopes = compute_slopes_column_dem(dem)
+        return slopes <= -self.product_metadata.center_pixel_incidence_angle
+        
+
         
 #------------------------------------------------------------------------------------------------------------------
 # Some plotting functions
