@@ -118,7 +118,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     wavelength = LIGHT_SPEED_M_PER_SEC / frequency
     orbit_direction = metadata["productInfo"]["missionInfo"]["orbitDirection"].lower()
     look_side = metadata["productInfo"]["acquisitionInfo"]["lookDirection"].lower()
-    center_pixel_incidence_angle = metadata["sceneInfo"]["ceneCenterCoord"]["incidenceAngle"]
+    center_pixel_incidence_angle = float(metadata["productInfo"]["sceneInfo"]["sceneCenterCoord"]["incidenceAngle"])
 
     assert orbit_direction in ("ascending", "descending")
     assert look_side in ("left", "right")
