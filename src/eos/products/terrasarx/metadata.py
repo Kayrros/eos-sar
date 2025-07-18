@@ -142,6 +142,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     approx_geom = [
         (float(c["lon"]), float(c["lat"])) for c in scene_info["sceneCornerCoord"]
     ]
+    approx_geom[2], approx_geom[3] = approx_geom[3], approx_geom[2]
 
     return TSXMetadata(
         width=width,
