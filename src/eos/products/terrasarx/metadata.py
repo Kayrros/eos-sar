@@ -26,6 +26,7 @@ class TSXMetadata:
     range_time_interval: float
     range_pixel_spacing: float
     wavelength: float
+    center_pixel_incidence_angle: float
 
     @property
     def azimuth_frequency(self) -> float:
@@ -57,6 +58,7 @@ class TSXMetadata:
             range_time_interval=d["range_time_interval"],
             range_pixel_spacing=d["range_pixel_spacing"],
             wavelength=d["wavelength"],
+            center_pixel_incidence_angle=d["center_pixel_incidence_angle"],
         )
 
 
@@ -116,6 +118,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     wavelength = LIGHT_SPEED_M_PER_SEC / frequency
     orbit_direction = metadata["productInfo"]["missionInfo"]["orbitDirection"].lower()
     look_side = metadata["productInfo"]["acquisitionInfo"]["lookDirection"].lower()
+    center_pixel_incidence_angle = metadata["sceneInfo"]["ceneCenterCoord"]["incidenceAngle"]
 
     assert orbit_direction in ("ascending", "descending")
     assert look_side in ("left", "right")
@@ -155,6 +158,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
         range_time_interval=range_time_interval,
         range_pixel_spacing=range_pixel_spacing,
         wavelength=wavelength,
+        center_pixel_incidence_angle=center_pixel_incidence_angle,
     )
 
 

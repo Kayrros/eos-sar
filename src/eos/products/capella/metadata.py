@@ -163,7 +163,7 @@ class CapellaSLCMetadata(CapellaMetadata):
     """
     *collect/image/image_geometry/range_to_first_sample*: The slant range distance to the first sample in meters
     """
-    range_pixel_size: float
+    range_pixel_spacing: float
     """
     *collect/image/image_geometry/delta_range_sample*: The slant range delta distance between each sample in
 meters
@@ -280,7 +280,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         # The next attributes are only valid when the image geometry type is slant plane
         starting_range = image_geometry["range_to_first_sample"]
 
-        range_pixel_size = image_geometry["delta_range_sample"]
+        range_pixel_spacing = image_geometry["delta_range_sample"]
 
         delta_line_time = image_geometry["delta_line_time"]
 
@@ -310,7 +310,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             state_vectors=state_vectors,
             # SLC specific:
             starting_range=starting_range,
-            range_pixel_size=range_pixel_size,
+            range_pixel_spacing=range_pixel_spacing,
             delta_line_time=delta_line_time,
             first_line_time=first_line_time,
         )
