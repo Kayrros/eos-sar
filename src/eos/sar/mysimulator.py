@@ -58,7 +58,7 @@ def point_geo2xyzWGS84(latitude, longitude, altitude):
 
 
 
-def get_image_column_resampled_dem(resampled_x, resampled_y, resampled_z, los_epsg4978, range_pixel_size, col0):
+def get_image_column_resampled_dem(resampled_x, resampled_y, resampled_z, los_epsg4978, range_pixel_size, col_no_nan, j_indices):
     """
     Find the column indices in the SAR image for each point of the corresponding resampled DEM of shape (N,M).
 
@@ -74,8 +74,10 @@ def get_image_column_resampled_dem(resampled_x, resampled_y, resampled_z, los_ep
         LOS vector in EPSG:4978.
     range_pixel_size : float
         Slant range pixel size. 
-    col0 : np.ndarray of shape (N,)
-        Column indices in the SAR image of the points of the first column of the resampled DEM.
+    col_no_nan : np.ndarray of shape (N,)
+        Column indices in the SAR image of the first point for each line of the resampled DEM that is not a np.nan.
+    j_indices : np.ndarray
+        Indices of the column of the first point for each line of the resampled DEM that is not a np.nan.
 
     Returns
     -------
@@ -84,15 +86,16 @@ def get_image_column_resampled_dem(resampled_x, resampled_y, resampled_z, los_ep
 
     """
     # Compute the vector (EPSG:4978) between each point of the resampled DEM and the first point of the same row
-    delta_x = resampled_x - np.atleast_2d(resampled_x[:,0]).T
-    delta_y = resampled_y - np.atleast_2d(resampled_y[:,0]).T
-    delta_z = resampled_z - np.atleast_2d(resampled_z[:,0]).T
+    row_indices = np.arange(len(j_indices))
+    delta_x = resampled_x - np.atleast_2d(resampled_x[row_indices,j_indices]).T
+    delta_y = resampled_y - np.atleast_2d(resampled_y[row_indices,j_indices]).T
+    delta_z = resampled_z - np.atleast_2d(resampled_z[row_indices,j_indices]).T
     
     # Project these vectors on the LOS vector
     los_distance = delta_x * los_epsg4978[0] + delta_y * los_epsg4978[1] + delta_z * los_epsg4978[2]
     
     # Translate these along LOS distances to column indices in the SAR image
-    column_image = los_distance/range_pixel_size + np.atleast_2d(col0).T
+    column_image = los_distance/range_pixel_size + np.atleast_2d(col_no_nan).T
     return column_image
 
 
@@ -170,7 +173,7 @@ def compute_slopes_column_dem(dem):
 
     """
     col_res = np.sqrt(dem.transform[0]**2 + dem.transform[3]**2) * 6370e3 * np.pi/180.
-    slopes = np.arctan(np.diff(dem, axis=1, append=0) / col_res) * 180./np.pi
+    slopes = np.arctan(np.diff(dem.array, axis=1, append=0) / col_res) * 180./np.pi
     slopes[:,-1] = np.nan
     return slopes
 
@@ -206,41 +209,40 @@ class MySimulator(MySARSimulator_small_roi):
         
         # Resample (crop and apply an affine transformation) the DEM to have DEM rows aligned with SAR image rows
         roi = Roi(col=0, row=0, w=self.product_metadata.width, h=self.product_metadata.height)
-        self.optim_roi = self.find_optimal_roi(roi)
+        self.optim_roi, self.nb_it_optim_roi = self.find_optimal_roi(roi)
         self.dem0 = self.get_cropped_dem(self.dem, self.optim_roi) # cropped DEM
         trf1 = self._get_dem_transform(self.proj_model, self.optim_roi)
         self.oversampling_columns = oversampling_columns
         self.dem1 = self.get_resampled_dem(self.dem, self.optim_roi, transform=trf1, oversampling=(self.oversampling_columns,1)) # resampled DEM
-        
+
         # Get the EPSG:4978 coordinates of the points of the resampled DEM
         x1, y1, z1 = self.get_resampled_coordinates_epsg4978(self.dem, self.optim_roi, trf1, oversampling=(self.oversampling_columns,1))
         self.x1 = x1
         self.y1 = y1
         self.z1 = z1
         
-        # Get the column indices in the SAR image for each point of the resampled DEM    
-        _, col_j0 = self.get_row_col_img(self.optim_roi, self.dem1.transform)
+        # Get the column indices in the SAR image for each point of the resampled DEM 
+        j_indices = np.nanargmin(np.isnan(self.dem1.array), axis=1)   
+        _, col_no_nan = self.get_row_col_img(self.dem1.transform, j_indices)
         self.los_epsg4978 = los_epsg4978
-        self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_size, col_j0))
+        self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_size, col_no_nan, j_indices))
         
         # Get the layover and shadow masks of the resampled DEM
         self.layover_mask = self.get_layover_mask(self.dem1)
         self.shadow_mask = self.get_shadow_mask(self.dem1)
-        
-
     
-    def get_row_col_img(self, roi, transform, j_idx=0):
+
+
+    def get_row_col_img(self, transform, j_indices):
         """
-        Get the row and column indices in the SAR image of the points of the column j_idx in the resampled DEM cropped on a specific region of interest.
+        Get the row and column indices in the SAR image of the points of the column j_indices in the resampled DEM.
 
         Parameters
         ----------
-        roi : eos.sar.roi.Roi
-            Region of interest in range-doppler coordinates.
         transform : affine.Affine
             Transform of the resampled DEM cropped on the region of interest.
-        j_idx : int, optional
-            Index of the column in the cropped resampled DEM. The default is 0.
+        j_indices : np.ndarray
+            Indices of the column in the cropped resampled DEM.
 
         Returns
         -------
@@ -250,7 +252,7 @@ class MySimulator(MySARSimulator_small_roi):
             Column indices in the image.
 
         """
-        lon, lat = transform * np.array([[j_idx]*roi.h,np.arange(roi.h)])
+        lon, lat = transform * np.array([j_indices,np.arange(len(j_indices))])
         alt = self.dem.elevation(lon, lat)
         row, col, _ = self.proj_model.projection(lon, lat, alt)
         return row, col
@@ -276,22 +278,17 @@ class MySimulator(MySARSimulator_small_roi):
         """
         optim_roi = roi.copy()
         transform = self._get_dem_transform(self.proj_model, optim_roi)
-        row, col = self.get_row_col_img(optim_roi, transform)
+        j_indices = [0]*optim_roi.h
+        _, col = self.get_row_col_img(transform, j_indices)
         counter = 0
         while np.nanmax(col) > roi.col and counter < nmax:    
             offset_col = int(np.nanmax(col)-roi.col)+10
             optim_roi.col -= offset_col
             optim_roi.w += 2*offset_col
             transform = self._get_dem_transform(self.proj_model, optim_roi)
-            row, col = self.get_row_col_img(optim_roi, transform)
+            _, col = self.get_row_col_img(transform, j_indices)
             counter += 1
-        #offset_row = 0
-        #delta_top = row[0] - roi.row
-        #delta_bottom = roi.row + roi.h - row[-1]
-        #if (delta_bottom > 0) or (delta_top > 0):
-        #    offset_row = int(max(delta_bottom, delta_top))+1
-        #optim_roi = Roi(col=optim_roi.col, row=optim_roi.row-offset_row, w=optim_roi.w, h=optim_roi.h+2*offset_row)
-        return optim_roi
+        return optim_roi, counter
      
         
      
@@ -581,7 +578,7 @@ class MySimulator(MySARSimulator_small_roi):
         return slopes <= -self.product_metadata.center_pixel_incidence_angle
         
 
-        
+
 #------------------------------------------------------------------------------------------------------------------
 # Some plotting functions
 #------------------------------------------------------------------------------------------------------------------
