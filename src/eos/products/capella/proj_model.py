@@ -40,7 +40,7 @@ class CapellaSLCModel(SensorModel):
             first_row_time=meta.first_line_time_since_ref,
             first_col_time=(2.0 * meta.starting_range) / C,
             azimuth_frequency=1.0 / meta.delta_line_time,
-            range_frequency=C / (2 * meta.range_pixel_size),
+            range_frequency=C / (2 * meta.range_pixel_spacing),
         )
 
         projection_tolerance = float(tolerance / np.linalg.norm(orbit.sv[0].velocity))

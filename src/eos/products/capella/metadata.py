@@ -278,7 +278,7 @@ def parse_metadata(metadata_path: str) -> Union[CapellaSLCMetadata, CapellaGECMe
 
 
     # Approximate (lon, lat) geometry
-    json_path = os.path.dirname(metadata_path) + os.path.basename(metadata_path)[:-14] + ".json"
+    json_path = os.path.dirname(metadata_path) + "/" + os.path.basename(metadata_path)[:-14] + ".json"
     approx_geom = json.loads(open(json_path).read())["geometry"]["coordinates"][0][:-1]
     approx_geom = [tuple(corner) for corner in approx_geom]
 
