@@ -504,6 +504,23 @@ class MySimulator(MySARSimulator_small_roi):
         
     
     def get_cropped_resampled_dem(self, roi, resampled_dem=None):
+        """
+        Crop any resampled DEM on a given region of interest in the image.
+
+        Parameters
+        ----------
+        roi : eos.sar.roi.Roi
+            Region of interest in range-doppler coordinates.
+        resampled_dem : eos.dem.DEM, optional
+            Resampled DEM (ie. with lines aligned with the SAR image's rows). The default is None.
+        
+
+        Returns
+        -------
+        cropped_dem1 : eos.dem.DEM
+            Resampled DEM cropped on the region of interest.
+
+        """
         # Check that the initialization has been done already
         if self.col_img is None:
             print("Please run self.initialize(product_metadata, oversampling_columns=1) first.")
@@ -526,13 +543,31 @@ class MySimulator(MySARSimulator_small_roi):
     
     
     def simulate_quick(self, roi, resampled_dem=None, normalize=True, nb_sigma=2, **kwargs):
+        """
+        Simulate a synthetic SAR image quickly on a given area of interest.
+
+        Parameters
+        ----------
+        roi : eos.sar.roi.Roi
+            Region of interest in range-doppler coordinates.
+        resampled_dem : eos.dem.DEM, optional
+            Resampled DEM (ie. with lines aligned with the SAR image's rows). The default is None.
+        normalize : bool, optional
+            Set to True if you want to normalize your synthetic image between 0 and 1. The default is True.
+        nb_sigma : int, optional
+            Number of standard deviations to saturate the synthetic image. The default is 2.
+        
+        Returns
+        -------
+        synth_image : np.ndarray
+            Synthetic SAR image.
+
+        """
         resampled_dem = self.get_cropped_resampled_dem(roi=roi, resampled_dem=resampled_dem)
         synth_image = self.simulate_with_resampled_dem(roi=roi, resampled_dem=resampled_dem, **kwargs)
         if nb_sigma is not None:
             mu, sigma = np.nanmean(synth_image), np.nanstd(synth_image)
-            vmax = mu+nb_sigma*sigma
-            mask_upper_outliers = synth_image > vmax
-            synth_image[mask_upper_outliers] = vmax
+            synth_image = np.minimum(synth_image, mu+nb_sigma*sigma)
         if normalize:
             synth_image = (synth_image - np.nanmin(synth_image))/(np.nanmax(synth_image) - np.nanmin(synth_image))
         return synth_image
