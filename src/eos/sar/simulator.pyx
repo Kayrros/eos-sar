@@ -204,7 +204,8 @@ class SARSimulator:
         x0, y0, w, h = roi.to_roi()
         row = np.asarray([y0, y0, y0+h, y0+h])
         col = np.asarray([x0, x0+w, x0+w, x0])
-        lon, lat, _ = proj_model.localization(row, col, alt=np.zeros_like(col))
+        lon, lat, _, masks = proj_model.localize_without_alt(row, col, dem=self.dem)
+        assert np.all(masks), "Error during ROI projection"
 
         gcps = [GroundControlPoint(row=r-y0, col=c-x0, x=ln, y=lt) for r, c, ln, lt in zip(row, col, lon, lat)]
         dst_transform = rasterio.transform.from_gcps(gcps)
@@ -473,7 +474,8 @@ class SARSimulator:
         cols = cols.ravel()
         rows = rows.ravel()
 
-        lon, lat, alt = self.proj_model.localization(rows, cols, alt=np.zeros_like(rows))
+        lon, lat, alt, masks = self.proj_model.localize_without_alt(rows, cols, dem=self.dem)
+        assert np.all(masks), "Error during ROI projection"
         alt = self.dem.elevation(lon, lat)
         _, cols2, _ = self.proj_model.projection(lon, lat, alt)
 
