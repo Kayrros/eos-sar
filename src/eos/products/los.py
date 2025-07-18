@@ -83,7 +83,7 @@ def get_los_vector(image_geometry, crs=None):
         lons, lats = transformer.transform(lats, lons)
     
     # Get the LOS vector
-    los_vector = np.array([lons[0] - lons[-1], lats[0] - lats[-1]])
+    los_vector = np.array([lons[1] - lons[0], lats[1] - lats[0]])
     los_vector = los_vector/np.sqrt(np.dot(los_vector, los_vector)) # normalise
     return los_vector
 
@@ -178,7 +178,7 @@ def get_track_vector(image_geometry, crs=None):
         lons, lats = transformer.transform(lats, lons)
     
     # Get the along-track vector
-    track_vector = np.array([lons[2] - lons[-1], lats[2] - lats[-1]])
+    track_vector = np.array([lons[3] - lons[0], lats[3] - lats[0]])
     track_vector = track_vector/np.sqrt(np.dot(track_vector, track_vector)) # normalise
     return track_vector
 
