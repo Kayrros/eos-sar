@@ -186,7 +186,7 @@ class MySimulator(MySARSimulator_small_roi):
     
     col_img = None
     
-    def initialize(self, product_metadata, los_epsg4978, oversampling_columns=1):
+    def initialize(self, product_metadata, los_epsg4978, roi=None, oversampling_columns=1):
         """
         Initialize the simulator by getting the mapping from the resampled DEM to the image coordinates.
 
@@ -196,6 +196,8 @@ class MySimulator(MySARSimulator_small_roi):
             Object containing the metadata of the SAR product.
         los_epsg4978: np.array of shape (3,)
             LOS vector in geocentric reference frame (x, y, z).
+        roi : eos.sar.roi.Roi, optional
+            Region of interest in range-doppler coordinates. The default is None.
         oversampling_columns : int, optional
             Oversampling factor along the columns of the resampled DEM.
 
@@ -208,7 +210,9 @@ class MySimulator(MySARSimulator_small_roi):
         self.product_metadata = product_metadata
         
         # Resample (crop and apply an affine transformation) the DEM to have DEM rows aligned with SAR image rows
-        roi = Roi(col=0, row=0, w=self.product_metadata.width, h=self.product_metadata.height)
+        if roi is None:
+            roi = Roi(col=0, row=0, w=self.product_metadata.width, h=self.product_metadata.height)
+        self.roi = roi
         self.optim_roi, self.nb_it_optim_roi = self.find_optimal_roi(roi)
         self.dem0 = self.get_cropped_dem(self.dem, self.optim_roi) # cropped DEM
         trf1 = self._get_dem_transform(self.proj_model, self.optim_roi)
@@ -633,7 +637,7 @@ class MySimulator(MySARSimulator_small_roi):
             Mask of shape (n,m) = self.product_metadata.shape.
 
         """
-        n, m = self.product_metadata.height, self.product_metadata.width
+        n, m = self.roi.h, self.roi.w
         _, m1 = self.col_img.shape
         mask_sar = np.zeros((n, m)).astype(bool)
         row_img = (np.arange(n) * np.ones((n,m1)).T).T
