@@ -774,25 +774,33 @@ class MySimulator(MySARSimulator_small_roi):
     
 
 
-    def mask_dem_2_resampled_dem(self, mask_dem0):
+    def mask_dem_2_resampled_dem(self, mask_dem0, dem0=None, dem1=None):
         """
         Pass any mask from the DEM geometry to the resampled DEM geometry.
 
         Parameters
         ----------
         mask_dem0 : np.ndarray of bool
-            Mask of shape (n,m0) = self.dem0.array.shape.
+            Mask of shape (n,m0) = dem0.shape.
+        dem0 : eos.dem.DEM, optional
+            DEM0 or a crop. The default is None.
+        dem1 : eos.dem.DEM, optional
+            DEM1 or a crop. The default is None.
 
         Returns
         -------
         np.ndarray of bool
-            Mask of shape (n,m1) = self.dem1.array.shape.
+            Mask of shape (n,m1) = dem1.shape.
 
         """
+        if dem0 is None:
+            dem0 = self.dem0
+        if dem1 is None:
+            dem1 = self.dem1
         polygon_dem0 = mask_to_polygons_layer(mask_dem0)
         polygon_dem1 = apply_transform_to_polygon(polygon_dem0, 
-                                                  transform=get_transform_demA_2_demB(self.dem0.transform, self.dem1.transform))
-        return polygons_to_mask(polygon_dem1, shape_mask=self.dem1.array.shape)
+                                                  transform=get_transform_demA_2_demB(dem0.transform, dem1.transform))
+        return polygons_to_mask(polygon_dem1, shape_mask=dem1.array.shape)
         
 
 
