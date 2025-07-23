@@ -17,6 +17,7 @@ from rasterio import features
 from affine import Affine
 import shapely
 import cv2
+import copy
 
 from eos.sar.roi import Roi
 from eos.dem import DEM
@@ -137,6 +138,32 @@ def map_demA_2_demB(i_demA, j_demA, trfA, trfB):
     i_demB = np.round(i_demB).astype(int)
     j_demB = np.round(j_demB).astype(int)
     return i_demB, j_demB
+
+
+
+def extend_cropped_dem(dem, cropped_dem):
+    """
+    Extend the area of a cropped DEM.
+
+    Parameters
+    ----------
+    dem : eos.dem.DEM
+        DEM with the desired extent.
+    cropped_dem : eos.dem.DEM
+        Cropped DEM you want to extend.
+
+    Returns
+    -------
+    eos.dem.DEM
+        DEM corresponding to cropped_dem padded with dem.
+        
+    """
+    n_cropped, m_cropped = cropped_dem.array.shape
+    imin, jmin = map_demA_2_demB(0, 0, cropped_dem.transform, dem.transform)
+    imax, jmax = map_demA_2_demB(n_cropped-1, m_cropped-1, cropped_dem.transform, dem.transform)
+    extended_cropped_dem = copy.copy(dem.array)
+    extended_cropped_dem[imin:imax+1,jmin:jmax+1] = cropped_dem.array
+    return DEM(array=extended_cropped_dem, crs=dem.crs, transform=dem.transform)
 
 
 
