@@ -11,8 +11,12 @@ Define own class to map from range-doppler to terrain geometry.
 """
 
 import numpy as np
+import rasterio
 from rasterio.warp import reproject, Resampling
+from rasterio import features
 from affine import Affine
+import shapely
+import cv2
 
 from eos.sar.roi import Roi
 from eos.dem import DEM
@@ -100,6 +104,11 @@ def get_image_column_resampled_dem(resampled_x, resampled_y, resampled_z, los_ep
 
 
 
+def get_transform_demA_2_demB(trfA, trfB):
+    return ~trfB * trfA
+
+
+
 def map_demA_2_demB(i_demA, j_demA, trfA, trfB):
     """
     Map from a DEMA to a DEMB.
@@ -123,8 +132,8 @@ def map_demA_2_demB(i_demA, j_demA, trfA, trfB):
         Column index in DEMB.
         
     """
-    lon, lat = trfA * np.array([j_demA,i_demA])
-    j_demB, i_demB = ~trfB * (lon, lat)
+    trfA2B = get_transform_demA_2_demB(trfA, trfB)
+    j_demB, i_demB = trfA2B * np.array([j_demA,i_demA])
     i_demB = np.round(i_demB).astype(int)
     j_demB = np.round(j_demB).astype(int)
     return i_demB, j_demB
@@ -176,6 +185,96 @@ def compute_slopes_column_dem(dem):
     slopes = np.arctan(np.diff(dem.array, axis=1, append=0) / col_res) * 180./np.pi
     slopes[:,-1] = np.nan
     return slopes
+
+
+
+# Source: https://www.kaggle.com/code/sohaibanwaar1203/polygons-and-masks-visualisation 
+def mask_to_polygons_layer(mask:np.array) -> shapely.geometry.Polygon:
+    """Converting mask to polygon object
+    
+    Input:
+        mask: (np.array): Image like Mask [0,1] where all 1 are consider as masks
+        
+    Output:
+        shapely.geometry.Polygon: Polygons
+    
+    """
+    all_polygons = []
+    for shape, value in features.shapes(mask.astype(np.int16), mask=(mask >0), transform=rasterio.Affine(1.0, 0, 0, 0, 1.0, 0)):
+        all_polygons.append(shapely.geometry.shape(shape))
+
+    all_polygons = shapely.geometry.MultiPolygon(all_polygons)
+    
+    if not all_polygons.is_valid:
+        all_polygons = all_polygons.buffer(0)
+        # Sometimes buffer() converts a simple Multipolygon to just a Polygon,
+        # need to keep it a Multi throughout
+        if all_polygons.geom_type == 'Polygon':
+            all_polygons = shapely.geometry.MultiPolygon([all_polygons])
+    return all_polygons
+###
+
+
+
+def polygons_to_mask(polygon, shape_mask):
+    mask = np.zeros(shape_mask)
+    if str(type(polygon)).split(".")[-2] == "multipolygon":
+        for p in polygon.geoms:
+            mask += polygons_to_mask(polygon=p, shape_mask=shape_mask)
+    else:
+        cv2.fillPoly(mask, [np.round(np.vstack((polygon.exterior.xy[0], polygon.exterior.xy[1]))).astype(int).T], 1)
+        for interior in polygon.interiors:
+            cv2.fillPoly(mask, [np.round(np.vstack((interior.xy[0], interior.xy[1]))).astype(int).T], 0)
+    return mask.astype(bool)
+
+    
+    
+def apply_transform_to_polygon(polygon, transform):
+    if str(type(polygon)).split(".")[-2] == "multipolygon":
+        polygons = []
+        for p in polygon.geoms:
+            polygons.append(apply_transform_to_polygon(polygon=p, transform=transform))
+        new_polygon = shapely.geometry.MultiPolygon(polygons=polygons)
+        return new_polygon
+    else:      
+        x_ext, y_ext = polygon.exterior.coords.xy
+        new_x_ext, new_y_ext = transform * np.vstack((x_ext, y_ext))
+        shell = [(x,y) for x, y in zip(new_x_ext, new_y_ext)]
+        holes = []
+        for i in range(len(polygon.interiors)):
+            x_int, y_int = polygon.interiors[i].coords.xy
+            new_x_int, new_y_int = transform * np.vstack((x_int, y_int))
+            hole = [(x,y) for x, y in zip(new_x_int, new_y_int)]
+            holes.append(hole[::-1])
+        new_polygon = shapely.geometry.Polygon(shell=shell, holes=holes)
+        return new_polygon
+    
+    
+    
+    
+def polygon_2_sar(polygon, proj_model, dem, proj_init=None):
+    if proj_init:
+        polygon = change_polygon_crs(polygon, proj_init=proj_init)
+    if str(type(polygon)).split(".")[-2] == "multipolygon":
+        polygons = []
+        for p in polygon.geoms:
+            polygons.append(polygon_2_sar(polygon=p, proj_model=proj_model, dem=dem))
+        new_polygon = shapely.geometry.MultiPolygon(polygons=polygons)
+        return new_polygon
+    else:
+        x_ext, y_ext = polygon.exterior.xy
+        z_ext = dem.elevation(x_ext, y_ext)
+        row_ext, col_ext, _ = proj_model.projection(x_ext, y_ext, z_ext)
+        shell = [(x,y) for x, y in zip(col_ext, row_ext)]
+        holes = []
+        for i in range(len(polygon.interiors)):
+            x_int, y_int = polygon.interiors[i].coords.xy
+            z_int = dem.elevation(x_int, y_int)
+            row_int, col_int, _ = proj_model.projection(x_int, y_int, z_int)
+            hole = [(x,y) for x, y in zip(col_int, row_int)]
+            holes.append(hole[::-1])
+        new_polygon = shapely.geometry.Polygon(shell=shell, holes=holes)
+        return new_polygon
 
 
 
@@ -644,13 +743,13 @@ class MySimulator(MySARSimulator_small_roi):
     
 
 
-    def mask_resampled_dem_2_image(self, mask_dem):
+    def mask_resampled_dem_2_image(self, mask_dem1):
         """
         Pass any mask from the resampled DEM geometry to the range-doppler geometry.
 
         Parameters
         ----------
-        mask_dem : np.ndarray of bool
+        mask_dem1 : np.ndarray of bool
             Mask of shape (n,m1) = self.dem1.array.shape.
 
         Returns
@@ -664,14 +763,36 @@ class MySimulator(MySARSimulator_small_roi):
         mask_sar = np.zeros((n, m)).astype(bool)
         row_img = (np.arange(n) * np.ones((n,m1)).T).T
 
-        row_mask = row_img[mask_dem].astype(int)
-        col_mask = self.col_img[mask_dem].astype(int)
+        row_mask = row_img[mask_dem1].astype(int)
+        col_mask = self.col_img[mask_dem1].astype(int)
         mask = (col_mask < m) * (col_mask >= 0)
         col_mask = col_mask[mask]
         row_mask = row_mask[mask]
 
         mask_sar[row_mask, col_mask] = True
         return mask_sar
+    
+
+
+    def mask_dem_2_resampled_dem(self, mask_dem0):
+        """
+        Pass any mask from the DEM geometry to the resampled DEM geometry.
+
+        Parameters
+        ----------
+        mask_dem0 : np.ndarray of bool
+            Mask of shape (n,m0) = self.dem0.array.shape.
+
+        Returns
+        -------
+        np.ndarray of bool
+            Mask of shape (n,m1) = self.dem1.array.shape.
+
+        """
+        polygon_dem0 = mask_to_polygons_layer(mask_dem0)
+        polygon_dem1 = apply_transform_to_polygon(polygon_dem0, 
+                                                  transform=get_transform_demA_2_demB(self.dem0.transform, self.dem1.transform))
+        return polygons_to_mask(polygon_dem1, shape_mask=self.dem1.array.shape)
         
 
 
