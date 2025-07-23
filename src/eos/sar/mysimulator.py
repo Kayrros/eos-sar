@@ -539,10 +539,37 @@ class MySimulator(MySARSimulator_small_roi):
             resampled_dem = self.dem1
         col_min, row_min, col_max, row_max = roi.to_bounds()
         j_dem1 = self.image_2_resampled_dem([row_min, row_max, row_max, row_min], [col_min, col_min, col_max, col_max])
-        jmax = np.nanmax(j_dem1)
-        jmin = np.nanmin(j_dem1)
+        jmax = np.nanmax([np.nanmax(j) for j in j_dem1])
+        jmin = np.nanmin([np.nanmin(j) for j in j_dem1])
         cropped_array = resampled_dem.array[row_min:row_max+1, jmin:jmax+1]
         new_lon, new_lat = resampled_dem.transform * (jmin, row_min)        
+        cropped_transform = Affine(resampled_dem.transform.a, resampled_dem.transform.b, new_lon,
+                                   resampled_dem.transform.d, resampled_dem.transform.e, new_lat)
+        cropped_dem1 = DEM(array=cropped_array, transform=cropped_transform, crs=None)
+        return cropped_dem1
+    
+
+    def get_cropped_resampled_dem_v2(self, roi_dem1, resampled_dem=None):
+        """
+        Crop any resampled DEM on a given region of interest in the image.
+
+        Parameters
+        ----------
+        roi_dem1 : eos.sar.roi.Roi
+            Region of interest in resampled DEM coordinates.
+        resampled_dem : eos.dem.DEM, optional
+            Resampled DEM (ie. with lines aligned with the SAR image's rows). The default is None.
+        
+
+        Returns
+        -------
+        cropped_dem1 : eos.dem.DEM
+            Resampled DEM cropped on the region of interest.
+
+        """
+        jmin, imin, jmax, imax = roi_dem1.to_bounds()
+        cropped_array = resampled_dem.array[imin:imax+1, jmin:jmax+1]
+        new_lon, new_lat = resampled_dem.transform * (jmin, imin)        
         cropped_transform = Affine(resampled_dem.transform.a, resampled_dem.transform.b, new_lon,
                                    resampled_dem.transform.d, resampled_dem.transform.e, new_lat)
         cropped_dem1 = DEM(array=cropped_array, transform=cropped_transform, crs=None)
@@ -550,7 +577,7 @@ class MySimulator(MySARSimulator_small_roi):
             
     
     
-    def simulate_quick(self, roi, resampled_dem=None, normalize=True, nb_sigma=2, **kwargs):
+    def simulate_quick(self, roi, resampled_dem=None, normalize=True, percentile=99, **kwargs):
         """
         Simulate a synthetic SAR image quickly on a given area of interest.
 
@@ -562,8 +589,8 @@ class MySimulator(MySARSimulator_small_roi):
             Resampled DEM (ie. with lines aligned with the SAR image's rows). The default is None.
         normalize : bool, optional
             Set to True if you want to normalize your synthetic image between 0 and 1. The default is True.
-        nb_sigma : int, optional
-            Number of standard deviations to saturate the synthetic image. The default is 2.
+        percentile : float, optional
+            Percentile to saturate the synthetic image. The default is 99.
         
         Returns
         -------
@@ -573,9 +600,8 @@ class MySimulator(MySARSimulator_small_roi):
         """
         resampled_dem = self.get_cropped_resampled_dem(roi=roi, resampled_dem=resampled_dem)
         synth_image = self.simulate_with_resampled_dem(roi=roi, resampled_dem=resampled_dem, **kwargs)
-        if nb_sigma is not None:
-            mu, sigma = np.nanmean(synth_image), np.nanstd(synth_image)
-            synth_image = np.minimum(synth_image, mu+nb_sigma*sigma)
+        if percentile is not None:
+            synth_image = np.minimum(synth_image, np.percentile(synth_image, percentile))
         if normalize:
             synth_image = (synth_image - np.nanmin(synth_image))/(np.nanmax(synth_image) - np.nanmin(synth_image))
         return synth_image
