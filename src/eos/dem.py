@@ -161,6 +161,48 @@ class DEM:
             return False
         return True
 
+    def interpolate_array(
+        self,
+        x_coords: NDArray[np.float64],
+        y_coords: NDArray[np.float64],
+        interpolation: str = "bilinear",
+        raise_error: bool = True,
+    ) -> NDArray[np.float32]:
+        xmin = x_coords.min()
+        xmax = x_coords.max()
+        ymin = y_coords.min()
+        ymax = y_coords.max()
+
+        if raise_error:
+            self._assert_in_raster(
+                xmin, xmax, ymin, ymax, w=1 if interpolation == "nearest" else 2
+            )
+
+        if interpolation == "nearest":
+            alts = np.array(
+                [
+                    self.array[int(round(y)), int(round(x))]
+                    if self._in_raster(x, y)
+                    else np.nan
+                    for x, y in zip(x_coords, y_coords)
+                ]
+            )
+        else:
+            dem_subparts = []
+            for x, y in zip(x_coords, y_coords):
+                xx = int(x)
+                yy = int(y)
+                if self._in_raster(x, y, w=2):
+                    window = self.array[yy : yy + 2, xx : xx + 2]
+                else:
+                    window = np.asarray([[np.nan, np.nan], [np.nan, np.nan]])
+                dem_subparts.append(window)
+
+            dem_subparts = np.stack(dem_subparts, axis=0)
+            alts = _bilinear_interp(dem_subparts, x_coords, y_coords)
+
+        return alts
+
     def elevation(
         self,
         lons: ArrayLike,
@@ -194,38 +236,12 @@ class DEM:
         # the transform's convention is pixel is area so we shift half a pixel
         img_coords = np.around(~self.transform * geo_coords, 6) - 0.5
 
-        xmin = img_coords[0].min()
-        xmax = img_coords[0].max()
-        ymin = img_coords[1].min()
-        ymax = img_coords[1].max()
-
-        if raise_error:
-            self._assert_in_raster(
-                xmin, xmax, ymin, ymax, w=1 if interpolation == "nearest" else 2
-            )
-
-        if interpolation == "nearest":
-            alts = np.array(
-                [
-                    self.array[int(round(y)), int(round(x))]
-                    if self._in_raster(x, y)
-                    else np.nan
-                    for x, y in zip(*img_coords)
-                ]
-            )
-        else:
-            dem_subparts = []
-            for x, y in zip(img_coords[0], img_coords[1]):
-                xx = int(x)
-                yy = int(y)
-                if self._in_raster(x, y, w=2):
-                    window = self.array[yy : yy + 2, xx : xx + 2]
-                else:
-                    window = np.asarray([[np.nan, np.nan], [np.nan, np.nan]])
-                dem_subparts.append(window)
-
-            dem_subparts = np.stack(dem_subparts, axis=0)
-            alts = _bilinear_interp(dem_subparts, img_coords[0], img_coords[1])
+        alts = self.interpolate_array(
+            img_coords[0],
+            img_coords[1],
+            interpolation=interpolation,
+            raise_error=raise_error,
+        )
 
         if not is_input_iterable:
             return alts[0]
