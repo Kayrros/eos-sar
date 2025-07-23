@@ -130,12 +130,17 @@ class DEM:
         # make the array read-only, just in case
         self.array.setflags(write=False)
 
-    def _assert_in_raster(self, xmin: float, xmax: float, ymin: float, ymax: float):
+    def _assert_in_raster(
+        self, xmin: float, xmax: float, ymin: float, ymax: float, w: int = 1
+    ):
+        """
+        w corresponds to the window size. Default is 1 but sometimes (e.g. bilinear interp), we need 2.
+        """
         if xmin < 0:
             raise OutOfBoundsException(
                 f"x coord min {xmin} negative, out of raster bounds"
             )
-        if xmax > self.array.shape[1] - 1:
+        if xmax > self.array.shape[1] - w:
             raise OutOfBoundsException(
                 f"x coord max {xmax}, out of raster bounds, shape: {self.array.shape}"
             )
@@ -143,13 +148,25 @@ class DEM:
             raise OutOfBoundsException(
                 f"y coord min {ymin} negative, out of raster bounds"
             )
-        if ymax > self.array.shape[0] - 1:
+        if ymax > self.array.shape[0] - w:
             raise OutOfBoundsException(
                 f"y coord max {ymax}, out of raster bounds, shape: {self.array.shape}"
             )
 
+    def _in_raster(self, x: float, y: float, w: int = 1):
+        """
+        w corresponds to the window size. Default is 1 but sometimes (e.g. bilinear interp), we need 2.
+        """
+        if x < 0 or x > self.array.shape[1] - w or y < 0 or y > self.array.shape[0] - w:
+            return False
+        return True
+
     def elevation(
-        self, lons: ArrayLike, lats: ArrayLike, interpolation: str = "bilinear"
+        self,
+        lons: ArrayLike,
+        lats: ArrayLike,
+        interpolation: str = "bilinear",
+        raise_error: bool = True,
     ) -> Union[float, list[float], NDArray[np.float32]]:
         """
         Gives the altitude of a (list of) point(s).
@@ -158,6 +175,8 @@ class DEM:
             lons, lats: longitude (or list of longitudes) and latitude (or list of latitudes)
             interpolation (str): if 'bilinear' (default) returns the height bilinearily interpolated,
                 else if 'nearest' returns the nearest neighbor value
+            raise_error (bool): whether it should raise an error when the point is outside
+                the range of the DEM
         Returns:
             alts: height (or list/array of heights) in meters above the ellipsoid
 
@@ -179,18 +198,30 @@ class DEM:
         xmax = img_coords[0].max()
         ymin = img_coords[1].min()
         ymax = img_coords[1].max()
-        self._assert_in_raster(xmin, xmax, ymin, ymax)
+
+        if raise_error:
+            self._assert_in_raster(
+                xmin, xmax, ymin, ymax, w=1 if interpolation == "nearest" else 2
+            )
 
         if interpolation == "nearest":
             alts = np.array(
-                [self.array[int(round(y)), int(round(x))] for x, y in zip(*img_coords)]
+                [
+                    self.array[int(round(y)), int(round(x))]
+                    if self._in_raster(x, y)
+                    else np.nan
+                    for x, y in zip(*img_coords)
+                ]
             )
         else:
             dem_subparts = []
             for x, y in zip(img_coords[0], img_coords[1]):
                 xx = int(x)
                 yy = int(y)
-                window = self.array[yy : yy + 2, xx : xx + 2]
+                if self._in_raster(x, y, w=2):
+                    window = self.array[yy : yy + 2, xx : xx + 2]
+                else:
+                    window = np.asarray([[np.nan, np.nan], [np.nan, np.nan]])
                 dem_subparts.append(window)
 
             dem_subparts = np.stack(dem_subparts, axis=0)

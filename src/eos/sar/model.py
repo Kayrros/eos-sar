@@ -411,7 +411,9 @@ class SensorModel(abc.ABC):
         return buffered_geom
 
 
-def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM):
+def localized_vs_dem(
+    sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM, raise_error: bool = True
+):
     """
     Computes the error between localized point at a certain height and the dem.
 
@@ -426,6 +428,8 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
     alt : ndarray
         Altitude to test vs dem.
     dem: eos.dem.DEM
+    raise_error: bool
+        Whether this function should raise an error if the point is outside of the DEM (for compatibility with previous behaviour)
 
     Returns
     -------
@@ -438,7 +442,7 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
         querying for points at various altitudes along the line of sight.
     """
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - dem.elevation(lon, lat)
+    return alt - dem.elevation(lon, lat, raise_error=raise_error)
 
 
 def shrink_interval(
@@ -504,13 +508,14 @@ def shrink_interval(
         utils.hrepeat(cols, num_alt).ravel(),
         potential_alt.ravel(),
         dem,
+        raise_error=False,
     )
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
     # check if any of the potential alts
     # yielded points exactly on the dem
-    zero_id = utils.first_nonzero(alt_diff == 0, axis=1)
+    zero_id = utils.first_nonzero(np.abs(alt_diff) < 1e-8, axis=1)
     zero_mask = zero_id != -1
 
     # Check for sign change in alt_diff
