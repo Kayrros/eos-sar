@@ -509,8 +509,35 @@ class MySimulator(MySARSimulator_small_roi):
         else:
             return None
         
+
+
+    def get_cropped_resampled_dem_roi_dem1(self, roi_dem1, resampled_dem=None):
+        """
+        Crop any resampled DEM on a given region of interest in the image.
+
+        Parameters
+        ----------
+        roi_dem1 : eos.sar.roi.Roi
+            Region of interest in resampled DEM coordinates.
+        resampled_dem : eos.dem.DEM, optional
+            Resampled DEM (ie. with lines aligned with the SAR image's rows). The default is None.
         
+
+        Returns
+        -------
+        eos.dem.DEM
+            Resampled DEM cropped on the region of interest (in resampled DEM coordinates).
+
+        """
+        jmin, imin, jmax, imax = roi_dem1.to_bounds()
+        cropped_array = resampled_dem.array[imin:imax+1, jmin:jmax+1]
+        new_lon, new_lat = resampled_dem.transform * (jmin, imin)        
+        cropped_transform = Affine(resampled_dem.transform.a, resampled_dem.transform.b, new_lon,
+                                   resampled_dem.transform.d, resampled_dem.transform.e, new_lat)
+        return DEM(array=cropped_array, transform=cropped_transform, crs=None)
     
+
+
     def get_cropped_resampled_dem(self, roi, resampled_dem=None):
         """
         Crop any resampled DEM on a given region of interest in the image.
@@ -525,7 +552,7 @@ class MySimulator(MySARSimulator_small_roi):
 
         Returns
         -------
-        cropped_dem1 : eos.dem.DEM
+        eos.dem.DEM
             Resampled DEM cropped on the region of interest.
 
         """
@@ -541,39 +568,8 @@ class MySimulator(MySARSimulator_small_roi):
         j_dem1 = self.image_2_resampled_dem([row_min, row_max, row_max, row_min], [col_min, col_min, col_max, col_max])
         jmax = np.nanmax([np.nanmax(j) for j in j_dem1])
         jmin = np.nanmin([np.nanmin(j) for j in j_dem1])
-        cropped_array = resampled_dem.array[row_min:row_max+1, jmin:jmax+1]
-        new_lon, new_lat = resampled_dem.transform * (jmin, row_min)        
-        cropped_transform = Affine(resampled_dem.transform.a, resampled_dem.transform.b, new_lon,
-                                   resampled_dem.transform.d, resampled_dem.transform.e, new_lat)
-        cropped_dem1 = DEM(array=cropped_array, transform=cropped_transform, crs=None)
-        return cropped_dem1
-    
-
-    def get_cropped_resampled_dem_v2(self, roi_dem1, resampled_dem=None):
-        """
-        Crop any resampled DEM on a given region of interest in the image.
-
-        Parameters
-        ----------
-        roi_dem1 : eos.sar.roi.Roi
-            Region of interest in resampled DEM coordinates.
-        resampled_dem : eos.dem.DEM, optional
-            Resampled DEM (ie. with lines aligned with the SAR image's rows). The default is None.
-        
-
-        Returns
-        -------
-        cropped_dem1 : eos.dem.DEM
-            Resampled DEM cropped on the region of interest.
-
-        """
-        jmin, imin, jmax, imax = roi_dem1.to_bounds()
-        cropped_array = resampled_dem.array[imin:imax+1, jmin:jmax+1]
-        new_lon, new_lat = resampled_dem.transform * (jmin, imin)        
-        cropped_transform = Affine(resampled_dem.transform.a, resampled_dem.transform.b, new_lon,
-                                   resampled_dem.transform.d, resampled_dem.transform.e, new_lat)
-        cropped_dem1 = DEM(array=cropped_array, transform=cropped_transform, crs=None)
-        return cropped_dem1
+        roi_dem1 = Roi.from_bounds_tuple((jmin, row_min, jmax, row_max))
+        return self.get_cropped_resampled_dem_roi_dem1(roi_dem1=roi_dem1, resampled_dem=resampled_dem)
             
     
     
