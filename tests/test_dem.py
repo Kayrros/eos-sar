@@ -164,3 +164,213 @@ def test_mydemsource(tmp_path):
     assert source.get_extent()[1] < dem.get_extent()[1]
     assert source.get_extent()[2] > dem.get_extent()[2]
     assert source.get_extent()[3] > dem.get_extent()[3]
+
+
+@pytest.fixture(scope="module")
+def small_dem() -> eos.dem.DEM:
+    bounds = (3, 44, 3.1, 44.05)
+    dem_source = eos.dem.DEMStitcherSource()
+    dem = dem_source.fetch_dem(bounds)
+    return dem
+
+
+@pytest.mark.parametrize("interpolation", ["nearest", "bilinear"])
+def test_interp_btw_last_two_cols_rows(small_dem, interpolation: str):
+    h, w = small_dem.array.shape
+    # should be able to interpolate points that fall between last 2 cols and last 2 rows
+    n_test = 10
+
+    # sample some points for interpolation
+    # avoid falling exactly on h - 1 and w - 1 for this test as it is a special case
+
+    # first do it between last two columns
+    x_coords = (
+        np.linspace(0, 0.99, num=n_test) + w - 2
+    )  # points in [w-2, w - 1) interval
+    y_coords = np.linspace(0, h - 1.02, n_test)  # points between 0 and h - 1.02
+    interpolated = small_dem.interpolate_array(
+        x_coords, y_coords, interpolation=interpolation, raise_error=True
+    )
+    assert len(interpolated) == len(x_coords)
+    assert interpolated.dtype == small_dem.array.dtype
+
+    # Then do it between last two rows
+    y_coords = (
+        np.linspace(0, 0.99, num=n_test) + h - 2
+    )  # points in [h-2, h - 1) interval
+    x_coords = np.linspace(0, w - 1.02, n_test)  # points between 0 and w- 1.02
+    interpolated = small_dem.interpolate_array(
+        x_coords, y_coords, interpolation=interpolation, raise_error=True
+    )
+
+    assert len(interpolated) == len(x_coords)
+    assert interpolated.dtype == small_dem.array.dtype
+
+
+def test_bilinear_vs_avg_last_two_cols_rows(small_dem):
+    h, w = small_dem.array.shape
+    # First last two cols
+    # sample x exactly middle of last two cols
+    x_coords = np.full((h - 1,), w - 1.5, dtype=np.float64)
+    # integer line coords
+    y_coords = np.arange(h - 1, dtype=np.float64)
+    interpolated = small_dem.interpolate_array(
+        x_coords, y_coords, interpolation="bilinear", raise_error=True
+    )
+    np.testing.assert_allclose(
+        interpolated, np.mean(small_dem.array[: h - 1, w - 2 : w], axis=1)
+    )
+
+    # Then last two lines
+    # sample x exactly middle of last two cols
+    y_coords = np.full((w - 1,), h - 1.5, dtype=np.float64)
+    # integer line coords
+    x_coords = np.arange(w - 1, dtype=np.float64)
+    interpolated = small_dem.interpolate_array(
+        x_coords, y_coords, interpolation="bilinear", raise_error=True
+    )
+    np.testing.assert_allclose(
+        interpolated, np.mean(small_dem.array[h - 2 : h, : w - 1], axis=0)
+    )
+
+
+@pytest.mark.parametrize("interpolation", ["nearest", "bilinear"])
+def test_interp_pts_border(small_dem, interpolation: str):
+    h, w = small_dem.array.shape
+
+    # Points falling exactly on first or last column
+    # Exactly in the middle between two lines
+
+    # lines coords in the middle of all lines [0.5, 1.5, 2.5, ...]
+    y_coords = np.arange(0.5, h - 1, 1, dtype=np.float64)
+    for col, col_str in zip([0, w - 1], ["first col", "last col"]):
+        x_coords = np.full((h - 1,), col, dtype=np.float64)
+        interpolated = small_dem.interpolate_array(
+            x_coords, y_coords, interpolation=interpolation, raise_error=True
+        )
+
+        col_dem = small_dem.array[:, col]
+        if interpolation == "bilinear":
+            gt = (col_dem[:-1] + col_dem[1:]) / 2
+        if interpolation == "nearest":
+            gt = np.zeros_like(interpolated)
+            # np.round for nearest neighbors will always choose the even index for .5 floats, i.e
+            # 1.5 rounds to 2 and 2.5 rounds to 2 as well
+            gt[::2] = col_dem[:-1:2]
+            gt[1::2] = col_dem[2::2]
+        np.testing.assert_allclose(
+            interpolated, gt, atol=1e-3, rtol=1e-5, err_msg=f"Error for {col_str}"
+        )
+
+    # Points falling exactly on first or last line
+    # Exactly in the middle between two columns
+
+    interpolation = "nearest"
+    # column coords in the middle of all columns [0.5, 1.5, 2.5, ...]
+    x_coords = np.arange(0.5, w - 1, 1, dtype=np.float64)
+    for row, row_str in zip([0, h - 1], ["first row", "last row"]):
+        y_coords = np.full((w - 1,), row, dtype=np.float64)
+        interpolated = small_dem.interpolate_array(
+            x_coords, y_coords, interpolation=interpolation, raise_error=True
+        )
+
+        row_dem = small_dem.array[row]
+        if interpolation == "bilinear":
+            gt = (row_dem[:-1] + row_dem[1:]) / 2
+
+        if interpolation == "nearest":
+            gt = np.zeros_like(interpolated)
+            # np.round for nearest neighbors will always choose the even index for .5 floats, i.e
+            # 1.5 rounds to 2 and 2.5 rounds to 2 as well
+            gt[::2] = row_dem[:-1:2]
+            gt[1::2] = row_dem[2::2]
+        np.testing.assert_allclose(
+            interpolated, gt, atol=1e-3, rtol=1e-5, err_msg=f"Error for {row_str}"
+        )
+
+
+@pytest.mark.parametrize("interpolation", ["nearest", "bilinear"])
+@pytest.mark.parametrize("raise_error", [True, False])
+def test_interp_with_exceeding_dem_limits(
+    small_dem, interpolation: str, raise_error: bool
+):
+    h, w = small_dem.array.shape
+
+    eps = 0.01
+    margin = 5
+    # check on the right
+
+    # integer coords + eps, to check that as soon as we exceed w - 1 by eps, we get error or nan
+    x_coords = np.arange(w - margin + eps, w + margin + 2 * eps, 1)
+    y_coords = np.full_like(x_coords, h // 2)
+    if raise_error:
+        with pytest.raises(eos.dem.OutOfBoundsException):
+            interpolated = small_dem.interpolate_array(
+                x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+            )
+    else:
+        interpolated = small_dem.interpolate_array(
+            x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+        )
+
+        # margin - 1 is the cutoff where everything becomes nan (outside of raster)
+        assert not np.any(np.isnan(interpolated[: margin - 1]))
+        assert np.all(np.isnan(interpolated[margin - 1 :]))
+
+    # check on the left
+    # integer coords - eps, to check that as soon as we hit -eps, we get error or nan
+    x_coords = np.arange(-margin - eps, margin, 1)
+    y_coords = np.full_like(x_coords, h // 2)
+    if raise_error:
+        with pytest.raises(eos.dem.OutOfBoundsException):
+            interpolated = small_dem.interpolate_array(
+                x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+            )
+    else:
+        interpolated = small_dem.interpolate_array(
+            x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+        )
+
+        # margin + 1 is the cutoff where everything becomes nan (outside of raster)
+        assert np.all(np.isnan(interpolated[: margin + 1]))
+        assert not np.any(np.isnan(interpolated[margin + 1 :]))
+
+    # Repeat to check with vertical lines now (top and bottom), by inverting role of x and y
+
+    # Check on the bottom
+    # integer coords + eps, to check that as soon as we exceed h - 1 by eps, we get error or nan
+    y_coords = np.arange(h - margin + eps, h + margin + 2 * eps, 1)
+    x_coords = np.full_like(y_coords, w // 2)
+
+    if raise_error:
+        with pytest.raises(eos.dem.OutOfBoundsException):
+            interpolated = small_dem.interpolate_array(
+                x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+            )
+    else:
+        interpolated = small_dem.interpolate_array(
+            x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+        )
+
+        # margin - 1 is the cutoff where everything becomes nan (outside of raster)
+        assert not np.any(np.isnan(interpolated[: margin - 1]))
+        assert np.all(np.isnan(interpolated[margin - 1 :]))
+
+    # check on the top
+    # integer coords - eps, to check that as soon as we hit -eps, we get error or nan
+    y_coords = np.arange(-margin - eps, margin, 1)
+    x_coords = np.full_like(y_coords, w // 2)
+
+    if raise_error:
+        with pytest.raises(eos.dem.OutOfBoundsException):
+            interpolated = small_dem.interpolate_array(
+                x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+            )
+    else:
+        interpolated = small_dem.interpolate_array(
+            x_coords, y_coords, interpolation=interpolation, raise_error=raise_error
+        )
+
+        # margin + 1 is the cutoff where everything becomes nan (outside of raster)
+        assert np.all(np.isnan(interpolated[: margin + 1]))
+        assert not np.any(np.isnan(interpolated[margin + 1 :]))
