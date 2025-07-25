@@ -549,7 +549,7 @@ class MySimulator(MySARSimulator_small_roi):
     
     
     
-    def image_2_resampled_dem(self, i_img, j_img, tolerance=1, one_per_group=True):
+    def image_2_resampled_dem(self, i_img, j_img, tolerance=1, one_per_group=True, average_col_layover=False):
         """
         Get the column index (or indices) in the resampled DEM corresponding to a given pixel in the image.
 
@@ -563,6 +563,8 @@ class MySimulator(MySARSimulator_small_roi):
             Tolerance if we do not find a point in the resampled DEM that falls exactly in the chosen image pixel. The default is 1.
         one_per_group : bool, optional
             Set to True if, in case of consecutive column indices, you only want to get the average column index. The default is True.
+        average_col_layover : bool, optional
+            Set to True if you only want the average column index (in resampled DEM coordinates) for points in layover areas. The default is False.
 
         Returns
         -------
@@ -582,6 +584,8 @@ class MySimulator(MySARSimulator_small_roi):
             col_ids = np.array(np.where(np.abs(self.col_img[i_img,:] - j_img)<=tolerance)[0])
             if one_per_group:
                 col_ids = average_consecutive_series(col_ids)
+            if average_col_layover:
+                col_ids = np.array([np.round(np.nanmean(col_ids)).astype(int)])
             return col_ids
         # ... or for every pixel successively if several were given
         else:
@@ -590,6 +594,8 @@ class MySimulator(MySARSimulator_small_roi):
                 col_ids = np.array(np.where(np.abs(self.col_img[i_img[i],:] - j_img[i])<=tolerance)[0])
                 if one_per_group:
                     col_ids = average_consecutive_series(col_ids)
+                if average_col_layover:
+                    col_ids = np.array([np.round(np.nanmean(col_ids)).astype(int)])
                 col_ids_list.append(col_ids)
             return col_ids_list
             
