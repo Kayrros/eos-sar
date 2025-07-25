@@ -215,15 +215,21 @@ def compute_slopes_column_dem(dem):
 
 
 
-# Source: https://www.kaggle.com/code/sohaibanwaar1203/polygons-and-masks-visualisation 
-def mask_to_polygons_layer(mask:np.array) -> shapely.geometry.Polygon:
-    """Converting mask to polygon object
+def mask_to_polygons_layer(mask):
+    """
+    Source: https://www.kaggle.com/code/sohaibanwaar1203/polygons-and-masks-visualisation 
+
+    Converting mask to polygon(s).
     
-    Input:
-        mask: (np.array): Image like Mask [0,1] where all 1 are consider as masks
+    Parameters
+    ----------
+    mask : np.array of bool
+        Mask that want to convert in polygon(s).
         
-    Output:
-        shapely.geometry.Polygon: Polygons
+    Returns
+    -------
+    all_polygons : shapely.geometry.Polygon (or shapely.geometry.MultiPolygon)
+        Polygon(s) containing the area(s) where the mask is True.
     
     """
     all_polygons = []
@@ -234,12 +240,9 @@ def mask_to_polygons_layer(mask:np.array) -> shapely.geometry.Polygon:
     
     if not all_polygons.is_valid:
         all_polygons = all_polygons.buffer(0)
-        # Sometimes buffer() converts a simple Multipolygon to just a Polygon,
-        # need to keep it a Multi throughout
         if all_polygons.geom_type == 'Polygon':
             all_polygons = shapely.geometry.MultiPolygon([all_polygons])
     return all_polygons
-###
 
 
 
@@ -276,32 +279,6 @@ def apply_transform_to_polygon(polygon, transform):
         new_polygon = shapely.geometry.Polygon(shell=shell, holes=holes)
         return new_polygon
     
-    
-    
-    
-def polygon_2_sar(polygon, proj_model, dem, proj_init=None):
-    if proj_init:
-        polygon = change_polygon_crs(polygon, proj_init=proj_init)
-    if str(type(polygon)).split(".")[-2] == "multipolygon":
-        polygons = []
-        for p in polygon.geoms:
-            polygons.append(polygon_2_sar(polygon=p, proj_model=proj_model, dem=dem))
-        new_polygon = shapely.geometry.MultiPolygon(polygons=polygons)
-        return new_polygon
-    else:
-        x_ext, y_ext = polygon.exterior.xy
-        z_ext = dem.elevation(x_ext, y_ext)
-        row_ext, col_ext, _ = proj_model.projection(x_ext, y_ext, z_ext)
-        shell = [(x,y) for x, y in zip(col_ext, row_ext)]
-        holes = []
-        for i in range(len(polygon.interiors)):
-            x_int, y_int = polygon.interiors[i].coords.xy
-            z_int = dem.elevation(x_int, y_int)
-            row_int, col_int, _ = proj_model.projection(x_int, y_int, z_int)
-            hole = [(x,y) for x, y in zip(col_int, row_int)]
-            holes.append(hole[::-1])
-        new_polygon = shapely.geometry.Polygon(shell=shell, holes=holes)
-        return new_polygon
 
 
 
