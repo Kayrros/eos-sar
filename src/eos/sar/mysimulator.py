@@ -616,7 +616,49 @@ class MySimulator(MySARSimulator_small_roi):
                 i_dem0_arr, j_dem0_arr = map_demA_2_demB([i_img]*len(j_dem1_arr), list(j_dem1_arr), self.dem1.transform, trf0)
                 return i_dem0_arr, j_dem0_arr
         else:
-            return None
+                       return None, None
+        
+
+
+    def map_imageA_2_imageB(self, i_imgA, j_imgA, mysim_imgB, **kwargs):
+        """
+        Map from imageA (image associated to MySimulator) to imageB.
+
+        Parameters
+        ----------
+        i_imgA : int (or 1D np.ndarray of integers)
+            Row index in imageA.
+        j_img : int (or 1D np.ndarray of integers)
+            Column index in imageA.
+        mysim_imgB : eos.sar.mysimulator.MySimulator
+            MySimulator object of imageB.
+        **kwargs for the self.image_2_resampled_dem method.
+        
+
+        Returns
+        -------
+        i_imgB_arr : np.ndarray of integer(s) / i_imgB_arr_list : list of np.ndarray (for several pixels)
+            Row index (or indices) in imageB.
+        j_imgB_arr : np.ndarray of integer(s) / j_imgB_arr_list : list of np.ndarray (for several pixels)
+            Column index (or indices) in imageB.
+
+        """
+        j_dem1_arr = self.image_2_resampled_dem(i_imgA, j_imgA, **kwargs)
+        if j_dem1_arr is not None:
+            if type(j_dem1_arr) == list:
+                i_imgB_arr_list, j_imgB_arr_list = [], []
+                for i in range(len(j_dem1_arr)):
+                    i_imgB_arr, j_dem1_B = map_demA_2_demB([i_imgA[i]]*len(j_dem1_arr[i]), list(j_dem1_arr[i]), self.dem1.transform, mysim_imgB.dem1.transform)
+                    j_imgB_arr = mysim_imgB.col_img[i_imgB_arr, j_dem1_B]
+                    i_imgB_arr_list.append(i_imgB_arr)
+                    j_imgB_arr_list.append(j_imgB_arr)
+                return i_imgB_arr_list, j_imgB_arr_list
+            else:   
+                i_imgB_arr, j_dem1_B = map_demA_2_demB([i_imgA]*len(j_dem1_arr), list(j_dem1_arr), self.dem1.transform, mysim_imgB.dem1.transform)
+                j_imgB_arr = mysim_imgB.col_img[i_imgB_arr, j_dem1_B]
+                return i_imgB_arr, j_imgB_arr
+        else:
+            return None, None
         
 
 
