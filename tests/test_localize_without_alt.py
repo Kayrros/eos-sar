@@ -1,6 +1,8 @@
+import logging
 import os
 
 import numpy as np
+import pytest
 import shapely.geometry
 
 import eos.dem
@@ -9,15 +11,14 @@ from eos.sar import io, model, roi
 from eos.sar.orbit import Orbit
 
 
-def test_localize_without_alt(s3_client):
-    xml_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
-    )
+@pytest.fixture(scope="module")
+def bmod_dem():
+    xml_folder = "./tests/data"
     basename = "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
     xml_path = os.path.join(xml_folder, basename)
 
     # read xml
-    xml_content = io.read_xml_file(xml_path, s3_client)
+    xml_content = io.read_xml_file(xml_path)
 
     burst_id = 1
 
@@ -28,14 +29,22 @@ def test_localize_without_alt(s3_client):
     orbit = Orbit(burst_meta.state_vectors)
     # create a Sentinel1BurstModel
     bmod = sentinel1.proj_model.burst_model_from_burst_meta(burst_meta, orbit)
-    rows = np.round(np.random.rand(5) * 1000)
-    cols = np.round(np.random.rand(5) * 20000)
-    # test recursively shrinking the interval on a single point
-    precision = 1e-1
     dem_source = eos.dem.get_any_source()
     alt_min = -10000
     alt_max = 10000
     dem = bmod.fetch_dem(dem_source, alt_min=alt_min, alt_max=alt_max)
+
+    return bmod, dem
+
+
+def test_localize_without_alt(bmod_dem):
+    bmod, dem = bmod_dem
+
+    rows = np.round(np.random.rand(5) * 1000)
+    cols = np.round(np.random.rand(5) * 20000)
+    # test recursively shrinking the interval on a single point
+    precision = 1e-1
+
     (
         amin,
         amax,
@@ -46,8 +55,8 @@ def test_localize_without_alt(s3_client):
         sensor_model=bmod,
         row=0,
         col=0,
-        alt_min=alt_min,
-        alt_max=alt_max,
+        alt_min=-10000,
+        alt_max=10000,
         num_alt=50,
         max_iter=10,
         eps=1e-1,
@@ -138,3 +147,131 @@ def test_localize_without_alt(s3_client):
     assert coarse_approx_geom_shp.contains(approx_geom_shp), (
         "coarse_approx_geom does not contain the approx_geom"
     )
+
+
+def test_invalid_localize_without_alt(bmod_dem, caplog):
+    bmod, dem = bmod_dem
+
+    # create failure cases
+
+    # Here we expect the point to be to far outside of the burst
+    # that it would not intersect the dem that was download on the burst approximate geometry
+    # We expect nans in the result, since nans appear when the points fall outside the DEM
+    row = col = -1e5
+    lon, lat, alt, masks = bmod.localize_without_alt(row, col, dem=dem)
+    assert np.isnan(lon)
+    assert np.isnan(lat)
+    assert np.isnan(alt)
+    assert masks["invalid"]
+
+    # Here we expect a failure just because the search interval is too small
+    # So the result will not be nan, but will be invalid nonetheless
+    lon, lat, alt, masks = bmod.localize_without_alt(
+        0, 0, dem=dem, alt_min=-1, alt_max=1
+    )
+    assert not np.isnan(lon)
+    assert not np.isnan(lat)
+    assert not np.isnan(alt)
+    assert masks["invalid"]
+
+    # take point near boundary of dem
+    # Here we take near the lower right point because upper left is nan(water)
+    # !!!!!! The test depends on the input image/DEM !!!!!!!
+    h, w = dem.array.shape
+
+    # integer offset of lower right point
+    offset = 3
+    lon, lat = dem.transform * (w - offset - 0.5, h - offset - 0.5)
+    alt = dem.array[-offset, -offset]
+
+    # project it
+    row, col, _ = bmod.projection(lon, lat, alt)
+    # then try localize without alt
+    # Decrease the sampling of points to provoke a failure
+    lon, lat, alt, masks = bmod.localize_without_alt(row, col, dem=dem, num_alt=10)
+    # The result should contain nan because the failure is due to exceeding DEM bounds
+    assert np.isnan(lon)
+    assert np.isnan(lat)
+    assert np.isnan(alt)
+    assert masks["invalid"]
+
+    h, w = bmod.h, bmod.w
+    # localize some points in the middle
+    # select a region in the middle of the burst to work with
+    size = 200  # 200x200 Roi
+    roi_mid = roi.Roi(w // 2 - size // 2, h // 2 - size // 2, size, size)
+
+    alt_min = np.nanmin(dem.array)
+    alt_max = np.nanmax(dem.array)
+
+    geometry = shapely.geometry.Polygon(
+        bmod.get_buffered_geom(dem, roi_mid, margin=0, alt_min=alt_min, alt_max=alt_max)
+    )
+
+    # subset the dem
+    dem_subset = dem.subset(geometry.bounds)
+
+    with caplog.at_level(logging.WARNING):
+        geometry_with_subset = shapely.geometry.Polygon(
+            bmod.get_buffered_geom(
+                dem_subset, roi_mid, margin=0, alt_min=alt_min, alt_max=alt_max
+            )
+        )
+        assert "some points may be invalid" in caplog.text
+
+    # Here you might fail to localize some points but you get away
+    IoU = (
+        geometry.intersection(geometry_with_subset).area
+        / geometry.union(geometry_with_subset).area
+    )
+    assert IoU > 0.5, (
+        "roi geometry with subseted dem is too different from the on with full dem"
+    )
+
+    with pytest.raises(AssertionError):
+        # When you add a margin, you should not be able to localize any point
+        geometry_with_subset = shapely.geometry.Polygon(
+            bmod.get_buffered_geom(
+                dem_subset, roi_mid, margin=200, alt_min=alt_min, alt_max=alt_max
+            )
+        )
+
+    size = 100  # 100x100 roi inside mid_roi
+    inner_roi = roi.Roi(w // 2 - size // 2, h // 2 - size // 2, size, size)
+
+    # For inner_roi, should not have a problem for both dems, and should get the same result
+    geometry = shapely.geometry.Polygon(
+        bmod.get_buffered_geom(
+            dem, inner_roi, margin=0, alt_min=alt_min, alt_max=alt_max
+        )
+    )
+
+    # reset logs
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        geometry_with_subset = shapely.geometry.Polygon(
+            bmod.get_buffered_geom(
+                dem_subset, inner_roi, margin=0, alt_min=alt_min, alt_max=alt_max
+            )
+        )
+        assert "some points may be invalid" not in caplog.text
+
+    IoU = (
+        geometry.intersection(geometry_with_subset).area
+        / geometry.union(geometry_with_subset).area
+    )
+
+    assert IoU == 1, "localization of same roi with two dems gave different result"
+
+    # Test approx geom
+    approx_geom, alts, masks = bmod.get_approx_geom(roi_mid, margin=0, dem=dem)
+    assert not np.any(masks["invalid"])
+
+    # Test approx geom with dem_subset
+    # should fail because DEM too small and localizing corner points is risky
+    with pytest.raises(AssertionError):
+        bmod.get_approx_geom(roi_mid, margin=0, dem=dem_subset)
+
+    # Test approx geom with dem_subset and inner_roi
+    approx_geom, alts, masks = bmod.get_approx_geom(inner_roi, margin=0, dem=dem_subset)
+    assert not np.any(masks["invalid"])
