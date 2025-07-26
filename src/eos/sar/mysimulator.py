@@ -167,7 +167,7 @@ def extend_cropped_dem(dem, cropped_dem):
 
 
 
-def average_consecutive_series(nb_sequence):
+def average_consecutive_series(nb_sequence, nan_value=-999):
     """
     Get the average number in case case of consecutive numbers in the sequence.
 
@@ -175,10 +175,12 @@ def average_consecutive_series(nb_sequence):
     ----------
     nb_sequence : 1D np.ndarray
         Sequence of numbers.
+    nan_value : int, optional
+        Value to set instead of np.nan. The default is -999.
 
     Returns
     -------
-    1D np.ndarray
+    mean_gps : 1D np.ndarray
         Sequence from which groups of consecutive numbers have been replaced by their mean.
 
     """
@@ -189,7 +191,11 @@ def average_consecutive_series(nb_sequence):
         gps.append(nb_sequence[idx0:idx1+1])
         idx0 = idx1+1
     gps.append(nb_sequence[idx0:])
-    return np.array([int(np.nanmean(gp)) for gp in gps])
+    mean_gps = np.array([np.nanmean(gp) for gp in gps])
+    if nan_value is not None:
+        mean_gps[np.isnan(mean_gps)] = nan_value
+        mean_gps = mean_gps.astype(int)
+    return mean_gps    
 
 
 
@@ -341,7 +347,10 @@ class MySimulator(MySARSimulator_small_roi):
         # Get the layover and shadow masks in image geometry
         self.layover_mask_sar = self.mask_resampled_dem_2_image(self.layover_mask_dem1)
         self.shadow_mask_sar = self.mask_resampled_dem_2_image(self.shadow_mask_dem1)
-    
+
+        # Set NaN value for integers
+        self.nan_value = int(np.nanmin(self.col_img)) - 1000
+
 
 
     def get_row_col_img(self, transform, j_indices):
@@ -560,7 +569,7 @@ class MySimulator(MySARSimulator_small_roi):
         if n == 1:
             col_ids = np.array(np.where(np.abs(self.col_img[i_img,:] - j_img)<=tolerance)[0])
             if one_per_group:
-                col_ids = average_consecutive_series(col_ids)
+                col_ids = average_consecutive_series(col_ids, nan_value=self.nan_value)
             if average_col_layover:
                 col_ids = np.array([np.round(np.nanmean(col_ids)).astype(int)])
             return col_ids
@@ -570,7 +579,7 @@ class MySimulator(MySARSimulator_small_roi):
             for i in range(n):
                 col_ids = np.array(np.where(np.abs(self.col_img[i_img[i],:] - j_img[i])<=tolerance)[0])
                 if one_per_group:
-                    col_ids = average_consecutive_series(col_ids)
+                    col_ids = average_consecutive_series(col_ids, nan_value=self.nan_value)
                 if average_col_layover:
                     col_ids = np.array([np.round(np.nanmean(col_ids)).astype(int)])
                 col_ids_list.append(col_ids)
@@ -602,6 +611,7 @@ class MySimulator(MySARSimulator_small_roi):
 
         """
         j_dem1_arr = self.image_2_resampled_dem(i_img, j_img, **kwargs)
+        mask_nan = j_dem1_arr == self.nan_value
         if j_dem1_arr is not None:
             if trf0 is None:
                 trf0 = self.dem0.transform
@@ -609,11 +619,15 @@ class MySimulator(MySARSimulator_small_roi):
                 i_dem0_arr_list, j_dem0_arr_list = [], []
                 for i in range(len(j_dem1_arr)):
                     i_dem0_arr, j_dem0_arr = map_demA_2_demB([i_img[i]]*len(j_dem1_arr[i]), list(j_dem1_arr[i]), self.dem1.transform, trf0)
+                    i_dem0_arr[mask_nan] = self.nan_value
+                    j_dem0_arr[mask_nan] = self.nan_value
                     i_dem0_arr_list.append(i_dem0_arr)
                     j_dem0_arr_list.append(j_dem0_arr)
                 return i_dem0_arr_list, j_dem0_arr_list
             else:   
                 i_dem0_arr, j_dem0_arr = map_demA_2_demB([i_img]*len(j_dem1_arr), list(j_dem1_arr), self.dem1.transform, trf0)
+                i_dem0_arr[mask_nan] = self.nan_value
+                j_dem0_arr[mask_nan] = self.nan_value
                 return i_dem0_arr, j_dem0_arr
         else:
                        return None, None
@@ -644,19 +658,24 @@ class MySimulator(MySARSimulator_small_roi):
 
         """
         j_dem1_arr = self.image_2_resampled_dem(i_imgA, j_imgA, **kwargs)
+        mask_nan = j_dem1_arr == self.nan_value
         if j_dem1_arr is not None:
             if type(j_dem1_arr) == list:
                 i_imgB_arr_list, j_imgB_arr_list = [], []
                 for i in range(len(j_dem1_arr)):
                     i_imgB_arr, j_dem1_B = map_demA_2_demB([i_imgA[i]]*len(j_dem1_arr[i]), list(j_dem1_arr[i]), self.dem1.transform, mysim_imgB.dem1.transform)
                     j_imgB_arr = mysim_imgB.col_img[i_imgB_arr, j_dem1_B]
+                    i_imgB_arr[mask_nan] = self.nan_value
+                    j_imgB_arr[mask_nan] = self.nan_value
                     i_imgB_arr_list.append(i_imgB_arr)
-                    j_imgB_arr_list.append(j_imgB_arr)
+                    j_imgB_arr_list.append(j_imgB_arr.astype(int))
                 return i_imgB_arr_list, j_imgB_arr_list
             else:   
                 i_imgB_arr, j_dem1_B = map_demA_2_demB([i_imgA]*len(j_dem1_arr), list(j_dem1_arr), self.dem1.transform, mysim_imgB.dem1.transform)
                 j_imgB_arr = mysim_imgB.col_img[i_imgB_arr, j_dem1_B]
-                return i_imgB_arr, j_imgB_arr
+                i_imgB_arr[mask_nan] = self.nan_value
+                j_imgB_arr[mask_nan] = self.nan_value
+                return i_imgB_arr, j_imgB_arr.astype(int)
         else:
             return None, None
         
