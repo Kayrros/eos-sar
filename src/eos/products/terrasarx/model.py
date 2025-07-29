@@ -14,6 +14,7 @@ from eos.sar.model import Arrayf64, CoordArrayLike, SensorModel
 from eos.sar.model_helper import GenericSensorModelHelper
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector
+from eos.sar.roi import Roi
 
 
 @dataclass(frozen=True)
@@ -100,7 +101,53 @@ class TSXModel(SensorModel):
         return self.generic_model.localization(
             row, col, alt, crs, vert_crs, x_init, y_init, z_init
         )
+    
+    def to_cropped_model(self, roi: Roi):
+        coordinate_prev = self.generic_model.coordinate
+        assert isinstance(coordinate_prev, coordinates.SLCCoordinate)  # for mypy
 
+        first_col_time = (
+            coordinate_prev.first_col_time + roi.col / coordinate_prev.range_frequency
+        )
+        first_row_time = (
+            coordinate_prev.first_row_time + roi.row / coordinate_prev.azimuth_frequency
+        )
+
+        coordinate = coordinates.SLCCoordinate(
+            first_row_time=first_row_time,
+            first_col_time=first_col_time,
+            azimuth_frequency=coordinate_prev.azimuth_frequency,
+            range_frequency=coordinate_prev.range_frequency,
+        )
+
+        # estimate the lon/lat center of the crop
+        # it is only an approximation, so we can use alt=0.0
+        center_x = roi.col + roi.w // 2
+        center_y = roi.row + roi.h // 2
+        approx_centroid_lon, approx_centroid_lat, _ = self.localization(
+            center_y, center_x, 0.0
+        )
+
+        generic_model = GenericSensorModelHelper(
+            orbit=self.generic_model.orbit,
+            coordinate=coordinate,
+            azt_init=float(coordinate.to_azt(roi.h / 2)),
+            projection_tolerance=self.generic_model.projection_tolerance,
+            localization_tolerance=self.generic_model.localization_tolerance,
+            max_iterations=self.generic_model.max_iterations,
+            coord_corrector=self.generic_model.coord_corrector,
+            approx_centroid_lon=approx_centroid_lon,
+            approx_centroid_lat=approx_centroid_lat,
+        )
+
+        return TSXModel(
+            generic_model=generic_model,
+            w=roi.w,
+            h=roi.h,
+            orbit=self.generic_model.orbit,
+            wavelength=self.wavelength,
+            coordinate=coordinate
+        )
 
 def main(xml_annotation_file_path):
     """
