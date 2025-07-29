@@ -415,7 +415,7 @@ def get_los_on_ellipsoid(
     normalized: bool = True,
 ) -> tuple[Arrayf64, Arrayf64]:
     """
-    Compute the LOS for a set of pixel positions on ellipsoid with alitude alt.
+    Compute the LOS for a set of pixel positions on inflated ellipsoid with alitude alt.
     This function can consume a lot of memory when len(rows) is big.
     A rough estimate is around 1 GB peak memory consumption per 2 million pixels.
 
@@ -423,8 +423,10 @@ def get_los_on_ellipsoid(
     -------
     LOS: (N, 3) NDArray[np.float64]
         vector from satellite (start) to point (end), in epsg:4978 (ECEF)
+    points_3D: (N, 3) NDArray[np.float64]
+        position of the ground points in epsg:4978
     """
-    points_3D = localize_on_ellipsoid(proj_model, rows, cols, 0.0)
+    points_3D = localize_on_ellipsoid(proj_model, rows, cols, alt)
 
     # coordinates in image to az time and range
     azt, _ = proj_model.to_azt_rng(rows, cols)
