@@ -664,7 +664,9 @@ class MySimulator(MySARSimulator_small_roi):
                 i_imgB_arr_list, j_imgB_arr_list = [], []
                 for i in range(len(j_dem1_arr)):
                     i_imgB_arr, j_dem1_B = map_demA_2_demB([i_imgA[i]]*len(j_dem1_arr[i]), list(j_dem1_arr[i]), self.dem1.transform, mysim_imgB.dem1.transform)
-                    j_imgB_arr = mysim_imgB.col_img[i_imgB_arr, j_dem1_B]
+                    n_col_imgB, m_col_imgB = mysim_imgB.col_img.shape
+                    mask_col_imgB = (i_imgB_arr >= 0) * (i_imgB_arr < n_col_imgB) * (j_dem1_B >= 0) * (j_dem1_B < m_col_imgB)
+                    j_imgB_arr = mysim_imgB.col_img[i_imgB_arr[mask_col_imgB], j_dem1_B[mask_col_imgB]]
                     i_imgB_arr[mask_nan] = self.nan_value
                     j_imgB_arr[mask_nan] = self.nan_value
                     i_imgB_arr_list.append(i_imgB_arr)
@@ -672,7 +674,9 @@ class MySimulator(MySARSimulator_small_roi):
                 return i_imgB_arr_list, j_imgB_arr_list
             else:   
                 i_imgB_arr, j_dem1_B = map_demA_2_demB([i_imgA]*len(j_dem1_arr), list(j_dem1_arr), self.dem1.transform, mysim_imgB.dem1.transform)
-                j_imgB_arr = mysim_imgB.col_img[i_imgB_arr, j_dem1_B]
+                n_col_imgB, m_col_imgB = mysim_imgB.col_img.shape
+                mask_col_imgB = (i_imgB_arr >= 0) * (i_imgB_arr < n_col_imgB) * (j_dem1_B >= 0) * (j_dem1_B < m_col_imgB)
+                j_imgB_arr = mysim_imgB.col_img[i_imgB_arr[mask_col_imgB], j_dem1_B[mask_col_imgB]]
                 i_imgB_arr[mask_nan] = self.nan_value
                 j_imgB_arr[mask_nan] = self.nan_value
                 return i_imgB_arr, j_imgB_arr.astype(int)
