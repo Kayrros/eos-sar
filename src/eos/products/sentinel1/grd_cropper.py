@@ -164,6 +164,55 @@ class MemoryResultDestination:
         return self._profile
 
 
+@dataclass(frozen=True)
+class LosAngles:
+    """From satellite to ground."""
+
+    los: tuple[float, float, float]
+    """ (east,north,up), normalized """
+    altitude: float
+    """ ellipsoid """
+
+    @property
+    def easting(self) -> float:
+        return self.los[0]
+
+    @property
+    def northing(self) -> float:
+        return self.los[1]
+
+    @property
+    def up(self) -> float:
+        return self.los[2]
+
+    @property
+    def azimuth_angle(self) -> float:
+        """
+        clockwise angle from north in [0,360] degrees
+        """
+        az_angle = np.atan2(self.easting, self.northing)
+        if az_angle < 0:
+            # [-pi, 0[
+            az_angle += 2 * np.pi
+        az_angle = np.rad2deg(az_angle)
+        return az_angle
+
+    @property
+    def incidence_angle(self) -> float:
+        """in degrees"""
+        assert self.up < 0, "satellite should always point down"
+        incidence = np.rad2deg(np.arccos(-self.up))
+        return incidence
+
+
+@dataclass(frozen=True)
+class CropMetadata:
+    los_angles: LosAngles
+    """
+    Computed on the center of the crop
+    """
+
+
 ResultDestination = Union[FilesystemResultDestination, MemoryResultDestination]
 
 
@@ -290,7 +339,31 @@ def _prepare_reader(
     return reader
 
 
-def process(input: CropperInput) -> None:
+def _compute_los_angles(
+    dem: eos.dem.DEM, proj_model: SensorModel, roi: Roi
+) -> LosAngles:
+    alt = float(np.nanmean(dem.array))
+
+    center_row = roi.row + (roi.h - 1) / 2.0
+    center_col = roi.col + (roi.w - 1) / 2.0
+
+    los, points_3D = eos.sar.geoconfig.get_los_on_ellipsoid(
+        proj_model,
+        center_row,
+        center_col,
+        alt=alt,
+        normalized=True,
+    )
+    los = eos.sar.geoconfig.convert_arrays_to_enu(los, points_3D, alt == 0)[0]
+    los = tuple(los.tolist())
+
+    return LosAngles(
+        los=los,
+        altitude=alt,
+    )
+
+
+def process(input: CropperInput) -> CropMetadata:
     products = [p.into_product_info() for p in input.products]
     product_ids = [p.product_id for p in products]
 
@@ -319,6 +392,7 @@ def process(input: CropperInput) -> None:
     proj_model = asm.get_proj_model(corrector)
 
     roi: Roi
+    dem: eos.dem.DEM
     dst_geom = input.destination_geometry
     if isinstance(dst_geom, FromImageRoiDestinationGeometry):
         roi = dst_geom.roi
@@ -419,18 +493,21 @@ def process(input: CropperInput) -> None:
             roi,
             product_roi,
         )
-        return
+    else:
+        for pol in input.params.polarizations:
+            readers = {
+                p.product_id: _prepare_reader(p, pol, input.params.calibration)
+                for p in products
+            }
 
-    for pol in input.params.polarizations:
-        readers = {
-            p.product_id: _prepare_reader(p, pol, input.params.calibration)
-            for p in products
-        }
+            raster = asm.crop(roi, readers)
+            mask = sentinel1.border_noise_grd.compute_border_mask(raster)
+            raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)
 
-        raster = asm.crop(roi, readers)
-        mask = sentinel1.border_noise_grd.compute_border_mask(raster)
-        raster = sentinel1.border_noise_grd.apply_border_mask(raster, mask)
+            raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
 
-        raster = orthorectifier.apply(raster, eos.sar.ortho.LanczosInterpolation)
+            write_output(raster, pol)
 
-        write_output(raster, pol)
+    los_angles = _compute_los_angles(dem, proj_model, roi)
+    crop_metadata = CropMetadata(los_angles=los_angles)
+    return crop_metadata
