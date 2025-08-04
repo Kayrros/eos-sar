@@ -57,12 +57,23 @@ def test_grd_cropper(phx_client, tmp_path):
         orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
     )
 
-    process(input)
+    metadata = process(input)
     assert os.path.exists(f"{tmp_path}/vv.tif")
     assert os.path.exists(f"{tmp_path}/vh.tif")
 
     r = rasterio.open(f"{tmp_path}/vv.tif").read(1)
     assert np.isnan(r).sum() == 0
+
+    np.testing.assert_allclose(
+        metadata.los_angles.los,
+        (-0.5239635338760896, 0.09782481122050468, -0.8461043206825931),
+    )
+    np.testing.assert_allclose(metadata.los_angles.altitude, 107.51067352294922)
+    np.testing.assert_allclose(metadata.los_angles.azimuth_angle, 280.57545555)
+    np.testing.assert_allclose(
+        metadata.los_angles.incidence_angle,
+        32.20955155179675,
+    )
 
 
 def test_grd_cropper_2(phx_client, tmp_path):
