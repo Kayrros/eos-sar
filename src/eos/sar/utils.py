@@ -13,10 +13,11 @@ def vrepeat(arr, h):
     return np.repeat(arr.reshape(1, -1), repeats=h, axis=0)
 
 
+# First non-zero, also when there are NaNs
 def first_nonzero(arr, axis, invalid_val=-1):
     """Compute the index of the first non zero entry along an axis. If all
     entries are zeroes, invalid_val is returned"""
-    mask = arr != 0
+    mask = np.logical_and(~np.isnan(arr), arr != 0)
     return np.where(mask.any(axis=axis), mask.argmax(axis=axis), invalid_val)
 
 

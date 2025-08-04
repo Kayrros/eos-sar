@@ -81,26 +81,33 @@ def lonlat_list_to_bounds(lons: ArrayLike, lats: ArrayLike) -> Bounds:
     return (lon_min, lat_min, lon_max, lat_max)
 
 
-def _bilinear_interp(array, x, y):
-    """Returns the value for the fractional row/col using bilinear interpolation
-        between the cells.
+def _bilinear_interp(
+    array: NDArray[np.float32], dx: NDArray[np.floating], dy: NDArray[np.floating]
+) -> NDArray[np.float32]:
+    """
+    Returns the value for the fractional row/col using bilinear interpolation
+    between the cells.
 
     Args:
-        array : numpy.ndarray
+        array : NDArray[np.float32]
             Values to interpolate. It should be a 3D array of shape (N, 2, 2),
             where (2, 2) represent the window around each sample, N samples.
-        x (list): horizontal image coordinates.
-        y (list): vertical image coordinates.
+        dx: NDArray[np.floating]
+            horizontal image offset to top left 2x2 grid corner, in [0, 1] interval.
+        dy: NDArray[np.floating]
+            vertical image offset to top left 2x2 grid corner, in [0, 1] interval.
 
     Returns:
-        numpy.ndarray: 1-D array of floats.
+        NDArray[np.float32]: 1-D array of floats.
+
+    Note:
+        No checking is done for 0<=dx<=1 and 0<=dy<=1 as this is internal function.
+        No casting to array is done for dx and dy as well, input should be array.
     """
-    i = np.array(np.floor(x), dtype=int)
-    j = np.array(np.floor(y), dtype=int)
-
-    dx, dy = x - i, y - j
-
-    ones = np.ones(len(x))
+    # Do all computations in float32
+    ones = np.ones(len(dx), dtype=np.float32)
+    dx = dx.astype(np.float32)
+    dy = dy.astype(np.float32)
     u, v = ones - dx, ones - dy
 
     h_interp = (
@@ -115,6 +122,38 @@ def _bilinear_interp(array, x, y):
 
 class OutOfBoundsException(IndexError):
     pass
+
+
+def get_2x2_crops(
+    array: NDArray, i_indices: NDArray[np.int64], j_indices: NDArray[np.int64]
+):
+    """
+    Extract 2x2 crops from a 2D array at specified indices in a vectorized manner.
+
+    Parameters
+    ----------
+    array : NDArray
+        Input 2D array to extract crops from.
+    i_indices : NDArray[np.int64]
+        Row indices for the top-left corner of each 2x2 crop. Shape: (N,)
+    j_indices : NDArray[np.int64]
+        Column indices for the top-left corner of each 2x2 crop. Shape: (N,)
+
+    Returns
+    -------
+    NDArray
+        Array containing all 2x2 crops. Shape: (N, 2, 2)
+
+    """
+    # Create meshgrids for the 2x2 offsets
+    i_offsets = np.arange(2)[:, None]  # Shape: (2, 1)
+    j_offsets = np.arange(2)[None, :]  # Shape: (1, 2)
+
+    # Broadcast indices with offsets
+    i_coords = i_indices[:, None, None] + i_offsets  # Shape: (N, 2, 1)
+    j_coords = j_indices[:, None, None] + j_offsets  # Shape: (N, 1, 2)
+
+    return array[i_coords, j_coords]  # Shape: (N, 2, 2)
 
 
 @dataclass(frozen=True)
@@ -148,8 +187,66 @@ class DEM:
                 f"y coord max {ymax}, out of raster bounds, shape: {self.array.shape}"
             )
 
+    def interpolate_array(
+        self,
+        x_coords: NDArray[np.floating],
+        y_coords: NDArray[np.floating],
+        interpolation: str = "bilinear",
+        raise_error: bool = True,
+    ) -> NDArray[np.float32]:
+        assert len(x_coords.shape) == 1 and x_coords.shape == y_coords.shape, (
+            f"should have 1d arrays of same length as input, got x_coords.shape={x_coords.shape} and y_coords.shape={y_coords.shape}"
+        )
+
+        xmin = x_coords.min()
+        xmax = x_coords.max()
+        ymin = y_coords.min()
+        ymax = y_coords.max()
+
+        if raise_error:
+            self._assert_in_raster(xmin, xmax, ymin, ymax)
+            mask = np.full_like(x_coords, True, dtype=bool)
+        else:
+            mask = (
+                (x_coords >= 0)
+                & (x_coords <= self.array.shape[1] - 1)
+                & (y_coords >= 0)
+                & (y_coords <= self.array.shape[0] - 1)
+            )
+
+        alts = np.full_like(x_coords, fill_value=np.nan, dtype=np.float32)
+        valid_x = x_coords[mask]
+        valid_y = y_coords[mask]
+
+        if interpolation == "nearest":
+            alts[mask] = self.array[
+                np.round(valid_y).astype(np.int64), np.round(valid_x).astype(np.int64)
+            ]
+
+        else:
+            i = np.floor(valid_y).astype(np.int64)  # Row indices (N,)
+            j = np.floor(valid_x).astype(np.int64)  # Column indices (N,)
+
+            # for points where flooring gives the last row,
+            # it means they fall exactly on the last row
+            # so we take the square starting with the previous row
+            i[i == self.array.shape[0] - 1] -= 1
+            # The same goes for the last column
+            j[j == self.array.shape[1] - 1] -= 1
+
+            # Gather the crops
+            dem_subparts = get_2x2_crops(self.array, i, j)
+
+            alts[mask] = _bilinear_interp(dem_subparts, valid_x - j, valid_y - i)
+
+        return alts
+
     def elevation(
-        self, lons: ArrayLike, lats: ArrayLike, interpolation: str = "bilinear"
+        self,
+        lons: ArrayLike,
+        lats: ArrayLike,
+        interpolation: str = "bilinear",
+        raise_error: bool = True,
     ) -> Union[float, list[float], NDArray[np.float32]]:
         """
         Gives the altitude of a (list of) point(s).
@@ -158,6 +255,8 @@ class DEM:
             lons, lats: longitude (or list of longitudes) and latitude (or list of latitudes)
             interpolation (str): if 'bilinear' (default) returns the height bilinearily interpolated,
                 else if 'nearest' returns the nearest neighbor value
+            raise_error (bool): whether it should raise an error when the point is outside
+                the range of the DEM
         Returns:
             alts: height (or list/array of heights) in meters above the ellipsoid
 
@@ -175,26 +274,12 @@ class DEM:
         # the transform's convention is pixel is area so we shift half a pixel
         img_coords = np.around(~self.transform * geo_coords, 6) - 0.5
 
-        xmin = img_coords[0].min()
-        xmax = img_coords[0].max()
-        ymin = img_coords[1].min()
-        ymax = img_coords[1].max()
-        self._assert_in_raster(xmin, xmax, ymin, ymax)
-
-        if interpolation == "nearest":
-            alts = np.array(
-                [self.array[int(round(y)), int(round(x))] for x, y in zip(*img_coords)]
-            )
-        else:
-            dem_subparts = []
-            for x, y in zip(img_coords[0], img_coords[1]):
-                xx = int(x)
-                yy = int(y)
-                window = self.array[yy : yy + 2, xx : xx + 2]
-                dem_subparts.append(window)
-
-            dem_subparts = np.stack(dem_subparts, axis=0)
-            alts = _bilinear_interp(dem_subparts, img_coords[0], img_coords[1])
+        alts = self.interpolate_array(
+            img_coords[0],
+            img_coords[1],
+            interpolation=interpolation,
+            raise_error=raise_error,
+        )
 
         if not is_input_iterable:
             return alts[0]

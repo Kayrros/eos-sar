@@ -169,24 +169,37 @@ class SensorModel(abc.ABC):
         -------
         lon : ndarray
             longitude of point (wgs84).
+            lon might be nan when the solution is invalid.
         lat : ndarray
             latitude of point (wgs84).
+            lat might be nan when the solution is invalid.
         alt_opt : ndarray
             altitude of point (wgs84).
+            alt_opt might be nan when the solution is invalid.
         masks : dict
             Masks on the returned points to indicate the status of the optim.
             mask["zeros"] indicates points that have exactly converged (error of 0)
             mask["converged"] indicates points that converged within eps tolerance.
-            mask["invalid"] indicates the points for which no solution was found,
-            probably because the actual altitude is outside the given range.
+            mask["invalid"] indicates the points for which no solution was found.
 
-        Raises:
-            eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
-            querying for points at various altitudes along the line of sight.
+        Notes
+        -----
+        lon, lat, alt_opt might be nan:
+            This occurs when the search for the intersection fails and at least one of the points
+            defined by [alt_min, alt_max] is outside the DEM interval.
+        The causes of failure:
+            - the actual altitude is outside the given range [alt_min, alt_max].
+            - when the DEM has nans, the function is expected to misbehave around them.
+            - when the DEM is too small:
+                - the intersection might be completly outside of the DEM extent
+                - the intersection is in the DEM extent but near its boundary, it is
+                likely than no change of sign will be detected because the altitude sampling
+                defined by num_alt is not fine enough and one of the samples in the intersection
+                interval will fall outside of the DEM.
         """
         # get the bounds in altitude for the search space
-        # (these lines were added to avoid troubles with the OutOfBoundsException of
-        # the eos.dem.DEM._assert_in_raster method when the search space if too large)
+        # These lines allow to restrict the search space to reasonable values
+        # because it makes no sense to search for an intersection outside of dem range
         if alt_min is None:
             alt_min = np.nanmin(dem.array)
         if alt_max is None:
@@ -312,8 +325,7 @@ class SensorModel(abc.ABC):
 
         Raises
         ------
-            eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
-            querying for points at various altitudes along the line of sight.
+        AssertionError: If the localization(without alt) fails on any point of the four corners.
         """
         if roi is None:
             roi = Roi(0, 0, self.w, self.h)
@@ -328,8 +340,9 @@ class SensorModel(abc.ABC):
 
         approx_geom = [(lon, lat) for lon, lat in zip(lons, lats)]
 
-        if np.any(masks["invalid"]):
-            logger.warning("get_approx_geom: some points may be invalid.")
+        msg = f"Failed localization occured when intersecting with DEM.\nInvalid mask: {masks['invalid']}.\nSee localize_without_alt documentation to solve this error."
+        assert not np.any(masks["invalid"]), msg
+
         return approx_geom, alts, masks
 
     def get_buffered_geom(
@@ -362,8 +375,10 @@ class SensorModel(abc.ABC):
 
         Raises
         ------
-            eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
-            querying for points at various altitudes along the line of sight.
+        AssertionError: If the localization(without alt) fails on all points
+        on either the left (near range) or the right side (far range) of the roi.
+        If only a subset of points fail, a warning is issued to indicate the possibility of
+        a slight degradation in the quality of the result.
         """
         if roi is None:
             roi = Roi(0, 0, self.w, self.h)
@@ -379,30 +394,58 @@ class SensorModel(abc.ABC):
         lons_left, lats_left, alts, masks = self.localize_without_alt(
             _rows, col * np.ones_like(_rows), dem=dem, **kwargs
         )
+        invalid_left = masks["invalid"]
+        msg = "Failed localization occured when intersecting with DEM for all points sampled on the left roi column. See localize_without_alt documentation to solve this error."
 
-        if np.any(masks["invalid"]):
-            logger.warning("get_buffered_geom: some points may be invalid.")
+        # Exception if all invalid
+        assert not np.all(invalid_left), msg
 
-        min_alt = np.amin(alts)
+        # If a subset is invalid, continue
+        if np.any(invalid_left):
+            logger.warning(
+                "get_buffered_geom: some points may be invalid on the left roi column."
+            )
+
+        min_alt = np.amin(alts[~invalid_left])
 
         # deal with the right boundary
         lons_right, lats_right, alts, masks = self.localize_without_alt(
             _rows, (col + w - 1) * np.ones_like(_rows), dem=dem, **kwargs
         )
+        invalid_right = masks["invalid"]
+        msg = "Failed localization occured when intersecting with DEM for all points sampled on the right roi column. See localize_without_alt documentation to solve this error."
+        assert not np.all(invalid_right), msg
 
-        if np.any(masks["invalid"]):
-            logger.warning("get_buffered_geom: some points may be invalid.")
+        if np.any(invalid_right):
+            logger.warning(
+                "get_buffered_geom: some points may be invalid on the right roi column."
+            )
 
-        max_alt = np.amax(alts)
+        max_alt = np.amax(alts[~invalid_right])
 
         rows, cols = roi.to_bounding_points()
+
+        # Try to initialize final localization with previous values
+        # if any invalid, for simplicity sake, we don't initialize
+        invalid_mask = [
+            invalid_left[0],
+            invalid_right[0],
+            invalid_right[-1],
+            invalid_left[-1],
+        ]
+        if np.any(invalid_mask):
+            x_init: Optional[list] = None
+            y_init: Optional[list] = None
+        else:
+            x_init = [lons_left[0], lons_right[0], lons_right[-1], lons_left[-1]]
+            y_init = [lats_left[0], lats_right[0], lats_right[-1], lats_left[-1]]
 
         lons, lats, _ = self.localization(
             rows,
             cols,
             [min_alt, max_alt, max_alt, min_alt],
-            x_init=[lons_left[0], lons_right[0], lons_right[-1], lons_left[-1]],
-            y_init=[lats_left[0], lats_right[0], lats_right[-1], lats_left[-1]],
+            x_init=x_init,
+            y_init=y_init,
             z_init=[min_alt, max_alt, max_alt, min_alt],
         )
 
@@ -411,7 +454,9 @@ class SensorModel(abc.ABC):
         return buffered_geom
 
 
-def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM):
+def localized_vs_dem(
+    sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM, raise_error: bool = True
+):
     """
     Computes the error between localized point at a certain height and the dem.
 
@@ -426,6 +471,8 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
     alt : ndarray
         Altitude to test vs dem.
     dem: eos.dem.DEM
+    raise_error: bool
+        Whether this function should raise an error if the point is outside of the DEM (for compatibility with previous behaviour)
 
     Returns
     -------
@@ -438,7 +485,7 @@ def localized_vs_dem(sensor_model: SensorModel, row, col, alt, dem: eos.dem.DEM)
         querying for points at various altitudes along the line of sight.
     """
     lon, lat, _ = sensor_model.localization(row, col, alt)
-    return alt - dem.elevation(lon, lat)
+    return alt - dem.elevation(lon, lat, raise_error=raise_error)
 
 
 def shrink_interval(
@@ -478,11 +525,6 @@ def shrink_interval(
         masks["valid"] indicates points where the search space was shrinked
         masks["invalid"] indicates points where the true solution lies outside
         of the search space.
-
-    Raises
-    ------
-        eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
-        querying for points at various altitudes along the line of sight.
     """
     # TODO to make this call faster, localization seems to have a bottelneck
     # related to the pyproj transformer
@@ -504,13 +546,14 @@ def shrink_interval(
         utils.hrepeat(cols, num_alt).ravel(),
         potential_alt.ravel(),
         dem,
+        raise_error=False,
     )
 
     alt_diff = alt_diff.reshape(potential_alt.shape)  # N x num_alt
 
     # check if any of the potential alts
     # yielded points exactly on the dem
-    zero_id = utils.first_nonzero(alt_diff == 0, axis=1)
+    zero_id = utils.first_nonzero(np.abs(alt_diff) < 1e-8, axis=1)
     zero_mask = zero_id != -1
 
     # Check for sign change in alt_diff
@@ -603,11 +646,6 @@ def recursive_shrink_interval(
         mask["converged"] indicates points that converged within eps tolerance.
         mask["invalid"] indicates the points for which no solution was found,
         probably because the actual altitude is outside the given range.
-
-    Raises
-    ------
-        eos.dem.OutOfBoundsException if the DEM is not sufficiently big to allow
-        querying for points at various altitudes along the line of sight.
     """
     row = np.atleast_1d(row)
     col = np.atleast_1d(col)

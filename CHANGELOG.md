@@ -2,6 +2,21 @@
 
 ## Added
 - grd cropper: `process` now returns a CropMetadata object, which allows to retrieve the LOS angles of the center of the crop
+- tests: Add tests for validity of localize_without_alt
+- test_dem: Add some tests for dem interpolation
+
+## Changed
+- model: Change get_approx_geom and get_buffered_geom behavior:
+    * This is a consequence of the change of behavior of localize without alt,
+    * which now is more prone to returning invalid results. All functions
+    * using it must check the validity mask and decide to raise an exception
+    * or not on a case by case basis.
+- dem: Move some interpolation code into DEM.interpolate_array
+- localize_without_alt and DEM.elevation: take into account points falling outside of the DEM extent thus avoiding costly DEM padding
+
+## Fixed
+- dem: Fix interpolation near right and lower border
+
 
 # [0.40.0](https://github.com/Kayrros/eos-sar/compare/0.39.0..0.40.0) -- 2025-06-22
 

@@ -37,10 +37,11 @@ def get_gcps_localization(
     )
     rows = Rows.ravel()
     cols = Cols.ravel()
-    lons, lats, alts, _ = proj_model.localize_without_alt(rows, cols, dem=dem)
+    lons, lats, alts, masks = proj_model.localize_without_alt(rows, cols, dem=dem)
     gcps = [
         rasterio.control.GroundControlPoint(row - roi.row, col - roi.col, x, y, z)
-        for row, col, x, y, z in zip(rows, cols, lons, lats, alts)
+        for row, col, x, y, z, m in zip(rows, cols, lons, lats, alts, masks["invalid"])
+        if not m
     ]
     return gcps
 
