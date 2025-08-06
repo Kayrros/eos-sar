@@ -1,4 +1,4 @@
-# [unreleased](https://github.com/Kayrros/eos-sar/compare/0.40.0..)
+# [0.41.0](https://github.com/Kayrros/eos-sar/compare/0.40.0..0.41.0) -- 2025-08-06
 
 ## Added
 - grd cropper: `process` now returns a CropMetadata object, which allows to retrieve the LOS angles of the center of the crop
