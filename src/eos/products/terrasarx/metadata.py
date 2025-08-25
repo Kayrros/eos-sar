@@ -35,6 +35,10 @@ class TSXMetadata:
     @property
     def range_frequency(self):
         return 1.0 / self.range_time_interval
+    
+    @property
+    def shape(self) -> tuple[int, int]:
+        return (self.height, self.width)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
