@@ -105,7 +105,7 @@ class CapellaMetadata:
     """
     *collect/image/range_looks*: The number of looks in the range direction.
     """
-    azimuth_pixel_size: float
+    azimuth_pixel_spacing: float
     """
     *collect/image/pixel_spacing_row*: The meters between samples in the
                                     row direction at the center of the
@@ -248,7 +248,7 @@ def parse_metadata(metadata_path: str) -> Union[CapellaSLCMetadata, CapellaGECMe
     ground_range_resolution = image["ground_range_resolution"]
     range_looks = image["range_looks"]
 
-    azimuth_pixel_size = image["pixel_spacing_row"]
+    azimuth_pixel_spacing = image["pixel_spacing_row"]
     azimuth_resolution = image["azimuth_resolution"]
     azimuth_looks = image["azimuth_looks"]
 
@@ -312,7 +312,7 @@ def parse_metadata(metadata_path: str) -> Union[CapellaSLCMetadata, CapellaGECMe
             range_resolution=range_resolution,
             ground_range_resolution=ground_range_resolution,
             range_looks=range_looks,
-            azimuth_pixel_size=azimuth_pixel_size,
+            azimuth_pixel_spacing=azimuth_pixel_spacing,
             azimuth_resolution=azimuth_resolution,
             azimuth_looks=azimuth_looks,
             center_frequency=center_frequency,
@@ -348,7 +348,7 @@ def parse_metadata(metadata_path: str) -> Union[CapellaSLCMetadata, CapellaGECMe
             range_resolution=range_resolution,
             ground_range_resolution=ground_range_resolution,
             range_looks=range_looks,
-            azimuth_pixel_size=azimuth_pixel_size,
+            azimuth_pixel_spacing=azimuth_pixel_spacing,
             azimuth_resolution=azimuth_resolution,
             azimuth_looks=azimuth_looks,
             center_frequency=center_frequency,
