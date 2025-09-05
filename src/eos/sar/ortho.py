@@ -186,6 +186,8 @@ class Orthorectifier:
     This step is simply the warping of the input raster according to the coordinate maps that were precomputed.
     The resulting array has a geometry defined by the orthorectifier `shape`, `transform` and `crs` fields.
 
+    The method `on_multilooked_raster` can be used to create a new Orthorectifier that is adapted to the multilooked rasters. The Orthorectifier itself will not perform any multilooking, it is the user's responsibility to ensure that the raster that is given to `apply` has been multilooked with the same factors as those provided to `on_multilooked_raster`.
+
     An Orthorecifier can be reused for multiple orthorectification, as long as the projection model (SensorModel) and Roi is the same.
     This is typically true for different polarizations of a single product, or when the products in a timeseries are all registered to a common geometry (for example in an interferometric stack).
     """
@@ -274,3 +276,19 @@ class Orthorectifier:
                 borderValue=(np.nan,),
             )
         return out
+
+    def on_multilooked_raster(self, azimuth: float, range: float) -> Orthorectifier:
+        """
+        Create a new Orthorectifier that is a multilooked version of the current one.
+        The new Orthorectifier can be used to orthorectify a multilooked raster that was generated from the same sensor model and roi.
+        """
+        new_coordinate_map = self.coordinate_map.copy()
+        new_coordinate_map[0] /= range
+        new_coordinate_map[1] /= azimuth
+        return Orthorectifier(
+            shape=self.shape,
+            transform=self.transform,
+            crs=self.crs,
+            coordinate_map=new_coordinate_map,
+            _deminfo=self._deminfo,
+        )
