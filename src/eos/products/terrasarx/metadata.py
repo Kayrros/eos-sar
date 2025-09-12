@@ -26,6 +26,7 @@ class TSXMetadata:
     range_time_interval: float
     range_pixel_spacing: float
     wavelength: float
+    center_pixel_incidence_angle: float
 
     @property
     def azimuth_frequency(self) -> float:
@@ -34,6 +35,10 @@ class TSXMetadata:
     @property
     def range_frequency(self):
         return 1.0 / self.range_time_interval
+    
+    @property
+    def shape(self) -> tuple[int, int]:
+        return (self.height, self.width)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -57,6 +62,7 @@ class TSXMetadata:
             range_time_interval=d["range_time_interval"],
             range_pixel_spacing=d["range_pixel_spacing"],
             wavelength=d["wavelength"],
+            center_pixel_incidence_angle=d["center_pixel_incidence_angle"],
         )
 
 
@@ -116,6 +122,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     wavelength = LIGHT_SPEED_M_PER_SEC / frequency
     orbit_direction = metadata["productInfo"]["missionInfo"]["orbitDirection"].lower()
     look_side = metadata["productInfo"]["acquisitionInfo"]["lookDirection"].lower()
+    center_pixel_incidence_angle = float(metadata["productInfo"]["sceneInfo"]["sceneCenterCoord"]["incidenceAngle"])
 
     assert orbit_direction in ("ascending", "descending")
     assert look_side in ("left", "right")
@@ -139,6 +146,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     approx_geom = [
         (float(c["lon"]), float(c["lat"])) for c in scene_info["sceneCornerCoord"]
     ]
+    approx_geom[2], approx_geom[3] = approx_geom[3], approx_geom[2]
 
     return TSXMetadata(
         width=width,
@@ -155,6 +163,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
         range_time_interval=range_time_interval,
         range_pixel_spacing=range_pixel_spacing,
         wavelength=wavelength,
+        center_pixel_incidence_angle=center_pixel_incidence_angle,
     )
 
 

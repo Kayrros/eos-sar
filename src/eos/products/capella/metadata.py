@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import dataclass
 from typing import Literal, Union
 
@@ -54,7 +55,7 @@ def _get_3D_tuple(vec_3D: list[float]) -> tuple[float, float, float]:
 class CapellaMetadata:
     """
     Filled attributes can be interpreted from Capella_Space_SAR_Products_Format_Specification_v1.8.pdf
-    In the documentation below, items represented as *item* refer to the name in the Capella metdata.
+    In the documentation below, items represented as *item* refer to the name in the Capella metadata.
     """
 
     start_timestamp: np.datetime64
@@ -104,7 +105,7 @@ class CapellaMetadata:
     """
     *collect/image/range_looks*: The number of looks in the range direction.
     """
-    azimuth_pixel_size: float
+    azimuth_pixel_spacing: float
     """
     *collect/image/pixel_spacing_row*: The meters between samples in the
                                     row direction at the center of the
@@ -148,6 +149,11 @@ class CapellaMetadata:
     Deduced from collect/state/state_vectors.
     """
 
+    approx_geom: list[tuple[float, float]]
+    """
+    Approximate (lon, lat) geometry of the image.
+    """
+
     @property
     def wavelength(self) -> float:
         return C / self.center_frequency
@@ -163,7 +169,7 @@ class CapellaSLCMetadata(CapellaMetadata):
     """
     *collect/image/image_geometry/range_to_first_sample*: The slant range distance to the first sample in meters
     """
-    range_pixel_size: float
+    range_pixel_spacing: float
     """
     *collect/image/image_geometry/delta_range_sample*: The slant range delta distance between each sample in
 meters
@@ -201,8 +207,9 @@ class CapellaGECMetadata(CapellaMetadata):
     """
 
 
-def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMetadata]:
-    data = json.loads(json_content)
+def parse_metadata(metadata_path: str) -> Union[CapellaSLCMetadata, CapellaGECMetadata]:
+    extended_json_content = open(metadata_path).read()
+    data = json.loads(extended_json_content)
 
     product_type = data["product_type"]
 
@@ -241,7 +248,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     ground_range_resolution = image["ground_range_resolution"]
     range_looks = image["range_looks"]
 
-    azimuth_pixel_size = image["pixel_spacing_row"]
+    azimuth_pixel_spacing = image["pixel_spacing_row"]
     azimuth_resolution = image["azimuth_resolution"]
     azimuth_looks = image["azimuth_looks"]
 
@@ -269,6 +276,12 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         sv_velocity = _get_3D_tuple(p["velocity"])
         state_vectors.append(StateVector(sv_time_since_ref, sv_pos, sv_velocity))
 
+
+    # Approximate (lon, lat) geometry
+    json_path = os.path.dirname(metadata_path) + "/" + os.path.basename(metadata_path)[:-14] + ".json"
+    approx_geom = json.loads(open(json_path).read())["geometry"]["coordinates"][0][:-1]
+    approx_geom = [tuple(corner) for corner in approx_geom]
+
     if product_type == "SLC":
         image_geometry = image["image_geometry"]
 
@@ -280,7 +293,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         # The next attributes are only valid when the image geometry type is slant plane
         starting_range = image_geometry["range_to_first_sample"]
 
-        range_pixel_size = image_geometry["delta_range_sample"]
+        range_pixel_spacing = image_geometry["delta_range_sample"]
 
         delta_line_time = image_geometry["delta_line_time"]
 
@@ -299,7 +312,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             range_resolution=range_resolution,
             ground_range_resolution=ground_range_resolution,
             range_looks=range_looks,
-            azimuth_pixel_size=azimuth_pixel_size,
+            azimuth_pixel_spacing=azimuth_pixel_spacing,
             azimuth_resolution=azimuth_resolution,
             azimuth_looks=azimuth_looks,
             center_frequency=center_frequency,
@@ -308,9 +321,10 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             look_direction=look_direction,
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
+            approx_geom=approx_geom,
             # SLC specific:
             starting_range=starting_range,
-            range_pixel_size=range_pixel_size,
+            range_pixel_spacing=range_pixel_spacing,
             delta_line_time=delta_line_time,
             first_line_time=first_line_time,
         )
@@ -334,7 +348,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             range_resolution=range_resolution,
             ground_range_resolution=ground_range_resolution,
             range_looks=range_looks,
-            azimuth_pixel_size=azimuth_pixel_size,
+            azimuth_pixel_spacing=azimuth_pixel_spacing,
             azimuth_resolution=azimuth_resolution,
             azimuth_looks=azimuth_looks,
             center_frequency=center_frequency,
@@ -343,6 +357,7 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             look_direction=look_direction,
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
+            approx_geom=approx_geom,
             # GEC specific:
             alt_inflated_wgs84=alt_inflated_wgs84,
         )

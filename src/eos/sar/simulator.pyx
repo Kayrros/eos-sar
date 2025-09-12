@@ -204,7 +204,8 @@ class SARSimulator:
         x0, y0, w, h = roi.to_roi()
         row = np.asarray([y0, y0, y0+h, y0+h])
         col = np.asarray([x0, x0+w, x0+w, x0])
-        lon, lat, _ = proj_model.localization(row, col, alt=np.zeros_like(col))
+        lon, lat, _, masks = proj_model.localize_without_alt(row, col, dem=self.dem)
+        assert np.all(masks), "Error during ROI projection"
 
         gcps = [GroundControlPoint(row=r-y0, col=c-x0, x=ln, y=lt) for r, c, ln, lt in zip(row, col, lon, lat)]
         dst_transform = rasterio.transform.from_gcps(gcps)
@@ -473,7 +474,8 @@ class SARSimulator:
         cols = cols.ravel()
         rows = rows.ravel()
 
-        lon, lat, alt = self.proj_model.localization(rows, cols, alt=np.zeros_like(rows))
+        lon, lat, alt, masks = self.proj_model.localize_without_alt(rows, cols, dem=self.dem)
+        assert np.all(masks), "Error during ROI projection"
         alt = self.dem.elevation(lon, lat)
         _, cols2, _ = self.proj_model.projection(lon, lat, alt)
 
@@ -482,3 +484,171 @@ class SARSimulator:
 
         roi.col -= max_offset
         roi.w += max_offset * 2
+
+
+### 
+# MODIF: Simulator Arthur Hauck 2025-03-13 
+###       
+class MySARSimulator_small_roi(SARSimulator):
+    
+    coordinate: Union[SLCCoordinate, GRDCoordinate]
+
+    def simulate_with_resampled_dem(self, roi: Roi, resampled_dem: eos.dem.DEM, *, detect_shadows: bool=True):
+        """
+        Inputs:
+            roi: region of interest, defined according to the proj_model
+            resampled_dem: resampled DEM as eos.dem.DEM object
+            detect_shadows (optional): sets to 0 values that are not visible by the sensor due to elevation
+        Outputs:
+            array: simulated image of the shape of the roi
+        """
+        cdef int _detect_shadows = detect_shadows
+        assert roi.col == int(roi.col)
+        assert roi.row == int(roi.row)
+        assert roi.w == int(roi.w)
+        assert roi.h == int(roi.h)
+
+        cdef int x0, y0, w, h
+        x0, y0, w, h = roi.to_roi()
+
+        # NOTE: rangeSpacing and azimuthSpacing are defined by the IPF
+        # here, we use a different definition for the azimuthSpacing simply because it is more convenient
+        cdef double azimuthSpacing = self._get_sar_resolutions(x0 + w // 2, y0 + h // 2)[1]
+        cdef double rangeSpacing
+        if isinstance(self.coordinate, GRDCoordinate):
+            rangeSpacing = self.coordinate.range_pixel_spacing
+        elif isinstance(self.coordinate, SLCCoordinate):
+            rangeSpacing = const.LIGHT_SPEED_M_PER_SEC / (2 * self.coordinate.range_frequency)
+        else:
+            assert False
+
+        # TODO: make sure this definition of aBeta is ok
+        cdef double aBeta = azimuthSpacing * rangeSpacing
+
+        dem_, dem_transform = resampled_dem.array, resampled_dem.transform
+        cdef np.ndarray[np.float32_t, ndim=2] dem = dem_
+
+        cdef int Nrows = dem.shape[0] - 1
+        cdef int Ncols = dem.shape[1] - 1
+        cdef np.ndarray[np.int64_t, ndim=1] rrow = np.arange(0, Nrows+1)
+        cdef np.ndarray[np.int64_t, ndim=1] rcol = np.arange(0, Ncols+1)
+
+        cdef double gamma0
+        cdef double elevation
+
+        cdef np.ndarray[np.float64_t, ndim=2] gamma0ReferenceArea = np.zeros([h, w], dtype=np.float64)
+        cdef double [:,:] gamma0ReferenceArea_view = gamma0ReferenceArea
+        # posData
+        cdef double sensorPos_x, sensorPos_y, sensorPos_z
+        cdef double earthPoint_x, earthPoint_y, earthPoint_z
+        cdef double t00_x, t00_y, t00_z
+        cdef double t01_x, t01_y, t01_z
+        cdef double t10_x, t10_y, t10_z
+        cdef double t11_x, t11_y, t11_z
+        cdef double sld_x, sld_y, sld_z, norm
+        # altitude
+        cdef double maxElevAngle
+
+        cdef np.ndarray[np.float64_t, ndim=1] row0_lons = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_lats = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_alts = np.empty((Ncols+1,))
+
+        cdef np.ndarray[np.float64_t, ndim=1] row0_gx = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_gy = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_gz = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row1_gx = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row1_gy = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row1_gz = np.empty((Ncols+1,))
+
+        cdef np.ndarray[np.float64_t, ndim=1] row0_sx = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_sy = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_sz = np.empty((Ncols+1,))
+
+        cdef np.ndarray[np.int8_t, ndim=1] row0_successes = np.empty((Ncols+1,), dtype=np.int8)
+        cdef np.ndarray[np.float64_t, ndim=1] row0_rangeIndices = np.empty((Ncols+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] row0_azimuthIndices = np.empty((Ncols+1,))
+
+        cdef np.ndarray[np.float64_t, ndim=1] col0_lons = np.empty((Nrows+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] col0_lats = np.empty((Nrows+1,))
+        cdef np.ndarray[np.float64_t, ndim=1] col0_alts = np.empty((Nrows+1,))
+        cdef int mid = dem.shape[1] // 2
+        col0_alts = dem[rrow, mid].astype(np.float64)
+        col0_lons, col0_lats = dem_transform * (mid, rrow)
+        row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
+        cdef np.ndarray[np.float64_t, ndim=1] azt0 = self.coordinate.to_azt(row0)
+
+        cdef np.ndarray[np.float64_t, ndim=2] sats = self.proj_model.orbit.evaluate(azt0)
+
+        cdef int i, j
+        cdef bint ok
+        with nogil:
+            for i in range(0, Nrows):
+                maxElevAngle = 0.0
+
+                # move previous row to row1_* and fill row0 with new data
+                with gil:
+                    row1_gx, row0_gx = row0_gx, row1_gx
+                    row1_gy, row0_gy = row0_gy, row1_gy
+                    row1_gz, row0_gz = row0_gz, row1_gz
+
+                    # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
+                    row0_alts = dem[i].astype(np.float64)
+                    row0_lons, row0_lats = dem_transform * (rcol, i)
+
+                for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
+                    row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])
+
+                with gil:
+                    ok = self._compute_ground_coordinates(x0, y0, w, h, row0_gx, row0_gy, row0_gz, azt0[i], sats[i],
+                                    row0_successes, row0_rangeIndices, row0_azimuthIndices)
+                if not ok:  # fast path in case the azimuth is outside [y0, y0+h]
+                    continue
+
+                sensorPos_x = sats[i,0]
+                sensorPos_y = sats[i,1]
+                sensorPos_z = sats[i,2]
+
+                for j in range(Ncols-1):
+                    if not row0_successes[j]:
+                        continue
+
+                    earthPoint_x = row0_gx[j]
+                    earthPoint_y = row0_gy[j]
+                    earthPoint_z = row0_gz[j]
+
+                    # Prepare computeIlluminatedArea: fetch positions of t00, t01, t10 and t11
+                    # TODO: is row1 OK? or do we want row-1 (next row)?
+                    # probably not a big deal for low res DEM, but could have an impact for high res DEM
+                    t00_x, t00_y, t00_z = row0_gx[j],   row0_gy[j],   row0_gz[j]
+                    t01_x, t01_y, t01_z = row1_gx[j],   row1_gy[j],   row1_gz[j]
+                    t10_x, t10_y, t10_z = row0_gx[j+1], row0_gy[j+1], row0_gz[j+1]
+                    t11_x, t11_y, t11_z = row1_gx[j+1], row1_gy[j+1], row1_gz[j+1]
+
+                    # Prepare computeIlluminatedArea: compute slant range direction
+                    sld_x = sensorPos_x - earthPoint_x
+                    sld_y = sensorPos_y - earthPoint_y
+                    sld_z = sensorPos_z - earthPoint_z
+                    norm = sqrt(sld_x*sld_x + sld_y*sld_y + sld_z*sld_z)
+                    sld_x /= norm
+                    sld_y /= norm
+                    sld_z /= norm
+
+                    gamma0 = computeIlluminatedArea(t00_x, t00_y, t00_z,
+                                                    t01_x, t01_y, t01_z,
+                                                    t10_x, t10_y, t10_z,
+                                                    t11_x, t11_y, t11_z,
+                                                    sld_x, sld_y, sld_z)
+
+                    if _detect_shadows:
+                        elevation = computeElevationAngle(earthPoint_x, earthPoint_y, earthPoint_z,
+                                                          sensorPos_x, sensorPos_y, sensorPos_z)
+                    else:
+                        elevation = 0
+
+                    if elevation >= maxElevAngle:
+                        maxElevAngle = elevation
+                        saveIlluminationArea(x0, y0, w, h, row0_azimuthIndices[j], row0_rangeIndices[j],
+                                             gamma0, gamma0ReferenceArea_view)
+
+        gamma0ReferenceArea /= aBeta # Normalize (note: original code did it in outputSimulatedArea)
+        return gamma0ReferenceArea
