@@ -80,6 +80,10 @@ class CapellaCrop:
     """roi for current image, i.e. primary_roi only for primary_image"""
     resampling_matrix: NDArray[np.float64]
     """ 3x3 matrix. (Identity for the primary product) from primary_roi to secondary_roi"""
+    translation: tuple[float, float] = (0.0, 0.0)
+    """
+    image based translation
+    """
 
 
 def get_primary_crop(
@@ -267,6 +271,9 @@ def get_secondary_crop(
         )
         secondary_resampled = resampler.resample(secondary_array)
 
+        translation = (-tcol, -trow)
+    else:
+        translation = (0.0, 0.0)
     secondary_crop = CapellaCrop(
         secondary_product_id,
         secondary_model,
@@ -274,6 +281,7 @@ def get_secondary_crop(
         secondary_resampled,
         roi_in_secondary,
         A_crop,
+        translation,
     )
 
     return secondary_crop

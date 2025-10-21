@@ -100,6 +100,7 @@ def crop_and_store(
             # "meta": crop.meta.to_dict(),
             "roi": crop.roi.to_roi(),
             "resampling_matrix": crop.resampling_matrix.tolist(),
+            "translation": crop.translation,
         }
 
     # save logs
