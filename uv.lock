@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.9, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13' and sys_platform == 'darwin'",
@@ -665,6 +665,7 @@ name = "kayrros-eos-sar"
 version = "0.41.0"
 source = { editable = "." }
 dependencies = [
+    { name = "h5py" },
     { name = "lxml" },
     { name = "numpy" },
     { name = "opencv-python-headless" },
@@ -722,6 +723,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "h5py", specifier = ">=3.12.1" },
     { name = "kayrros-burster", marker = "extra == 'kayrros'", specifier = ">=1.0.0", index = "https://pypi.dev-kayrros.ovh/" },
     { name = "kayrros-bursterio", marker = "extra == 'kayrros'", specifier = ">=0.2.0", index = "https://pypi.dev-kayrros.ovh/" },
     { name = "kayrros-osio", marker = "extra == 'kayrros'", specifier = ">=0.3.0", index = "https://pypi.dev-kayrros.ovh/" },
