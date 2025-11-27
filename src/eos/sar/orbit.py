@@ -36,8 +36,8 @@ class StateVector:
     def from_dict(dict: dict[str, Any]) -> StateVector:
         return StateVector(
             time=dict["time"],
-            position=dict["position"],
-            velocity=dict["velocity"],
+            position=tuple(dict["position"]),
+            velocity=tuple(dict["velocity"]),
         )
 
 
