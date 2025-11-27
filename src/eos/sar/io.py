@@ -3,6 +3,7 @@ import os
 from typing import Any, Optional, Sequence, Union
 from urllib.parse import urlparse
 
+import h5py
 import numpy as np
 import rasterio
 import rasterio.session
@@ -102,6 +103,37 @@ def open_image_osio(uri: str, **reader_options: Any) -> ImageReader:
     fh = osio.Adapter(reader)
     reader = rasterio.open(fh)
     return reader  # type: ignore
+
+
+def open_netcdf_osio(uri: str, **reader_options: Any) -> h5py.File:
+    """
+    Open a local or remote (S3) NetCDF file.
+
+    Parameters
+    ----------
+    nc_path
+        Path to the NetCDF file.
+    osio_options
+        Dict passed to the osio ReaderAt if the path is http or s3, can be used to setup credentials.
+
+    Returns
+    -------
+    ds
+        A h5py.File handler
+    """
+    import osio
+
+    if uri.startswith("s3://"):
+        reader = osio.AWSS3ReaderAt(uri, **reader_options)
+        fh = osio.Adapter(reader)
+    elif uri.startswith("https://") or uri.startswith("http://"):
+        reader = osio.HTTPReaderAt(uri, **reader_options)
+        fh = osio.Adapter(reader)
+    else:
+        fh = uri
+
+    ds = h5py.File(fh, "r")
+    return ds
 
 
 def open_image_fsspec(uri: str, **extra_args: Any) -> ImageReader:
