@@ -147,6 +147,16 @@ class CapellaMetadata:
     """
     Deduced from collect/state/state_vectors.
     """
+    state_vectors_origin: str
+    """
+    Deduced from collect/state/source: Orbit product used in processing. 
+    Ex: precise_determination, real_time
+    """
+    scale_factor: float
+    """
+    Deduced from collect/image/scale_factor: The value to multiply the TIFF values by
+                                             to recover the true science data
+    """
 
     @property
     def wavelength(self) -> float:
@@ -155,6 +165,29 @@ class CapellaMetadata:
     @property
     def shape(self) -> tuple[int, int]:
         return (self.height, self.width)
+
+
+@dataclass(frozen=True)
+class CapellaPolynomialMeta:
+    poly_type: Literal["standard", "chebyshev", "legendre"]
+    dimension: Literal[1, 2]
+    """
+    In theory, we could have any number of dimensions, but in practice according to the doc,
+    we can expect only 1D or 2D polynomials
+    """
+    degree: int
+    coefficients: Union[list[float], list[list[float]]]
+    """
+    Either 1D array or 2D Array
+    """
+
+    def __post_init__(self):
+        assert self.poly_type in ["standard", "chebyshev", "legendre"]
+        assert self.dimension in [1, 2]
+
+        np_coefs = np.array(self.coefficients)
+        assert len(np_coefs.shape) == self.dimension
+        assert np.all(np.array(np_coefs.shape) == self.degree + 1)
 
 
 @dataclass(frozen=True)
@@ -176,6 +209,13 @@ meters
     first_line_time: np.datetime64
     """
     *collect/image/image_geometry/first_line_time*: The timestamp of the first line, converted to np.datetime64.
+    """
+    fdop_cen_poly2d_meta: CapellaPolynomialMeta
+    """
+    *collect/image/frequency_doppler_centroid_polynomial*:
+            A 2D polynomial mapping range and azimuth time to doppler centroid
+            frequency in Hz. Notice that the range dependence of the DC polynomial
+            uses range distance. The azimuth variable is seconds since first_line_time.
     """
 
     @property
@@ -245,6 +285,8 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     azimuth_resolution = image["azimuth_resolution"]
     azimuth_looks = image["azimuth_looks"]
 
+    scale_factor = image["scale_factor"]
+
     center_frequency = radar["center_frequency"]
 
     transmit_polarization = radar["transmit_polarization"]
@@ -259,6 +301,9 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
     assert orbit_direction in ["ascending", "descending", "null"], (
         "Unrecognized orbit direction string"
     )
+    assert state["coordinate_system"] == {"type": "ecef"}, (
+        "ECEF is the only supported coordinate system"
+    )
 
     # State vectors
     state_vectors = []
@@ -269,6 +314,8 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         sv_velocity = _get_3D_tuple(p["velocity"])
         state_vectors.append(StateVector(sv_time_since_ref, sv_pos, sv_velocity))
 
+    state_vectors_origin = state["source"]
+
     if product_type == "SLC":
         image_geometry = image["image_geometry"]
 
@@ -276,6 +323,12 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
         assert im_geom_type == "slant_plane", (
             f"Unsupported image geometry type: {im_geom_type}"
         )
+        assert (
+            np.all(
+                np.array(image_geometry["doppler_centroid_polynomial"]["coefficients"])
+            )
+            == 0
+        ), "Only Zero-Doppler slant plane geometry supported for now"
 
         # The next attributes are only valid when the image geometry type is slant plane
         starting_range = image_geometry["range_to_first_sample"]
@@ -286,6 +339,14 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
 
         first_line_time = parse_date_as_numpy_datetime64(
             image_geometry["first_line_time"]
+        )
+
+        fdop_poly_dict = image["frequency_doppler_centroid_polynomial"]
+        fdop_cen_poly2d_meta = CapellaPolynomialMeta(
+            fdop_poly_dict["type"],
+            fdop_poly_dict["dimension"],
+            fdop_poly_dict["degree"],
+            fdop_poly_dict["coefficients"],
         )
         return CapellaSLCMetadata(
             start_timestamp=start_timestamp,
@@ -308,11 +369,14 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             look_direction=look_direction,
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
+            state_vectors_origin=state_vectors_origin,
+            scale_factor=scale_factor,
             # SLC specific:
             starting_range=starting_range,
             range_pixel_size=range_pixel_size,
             delta_line_time=delta_line_time,
             first_line_time=first_line_time,
+            fdop_cen_poly2d_meta=fdop_cen_poly2d_meta,
         )
     elif product_type == "GEC":
         reproj_name = image["terrain_models"]["reprojection"]["name"]
@@ -343,6 +407,8 @@ def parse_metadata(json_content: str) -> Union[CapellaSLCMetadata, CapellaGECMet
             look_direction=look_direction,
             orbit_direction=orbit_direction,
             state_vectors=state_vectors,
+            state_vectors_origin=state_vectors_origin,
+            scale_factor=scale_factor,
             # GEC specific:
             alt_inflated_wgs84=alt_inflated_wgs84,
         )

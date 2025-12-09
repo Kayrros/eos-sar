@@ -9,7 +9,7 @@ from botocore import UNSIGNED
 from botocore.config import Config
 from rasterio.io import DatasetReader
 
-from eos.products.capella import metadata
+from eos.products.capella import metadata, polynomial
 from eos.sar.io import open_image, read_file_as_str
 
 
@@ -92,3 +92,11 @@ def test_meta(meta_json_path: str, expected_meta_type, expectation):
     with expectation:
         meta = meta_from_capella_s3_path(meta_json_path)
         assert isinstance(meta, expected_meta_type)
+
+
+@pytest.mark.parametrize("slc_path", SLC_META_PATHS)
+def test_capella_polynomial_creation(slc_path: str):
+    meta = meta_from_capella_s3_path(slc_path)
+    assert isinstance(meta, metadata.CapellaSLCMetadata)
+    # the post init has some asserts that should run
+    polynomial.CapellaPolynomial2D.from_poly_meta(meta.fdop_cen_poly2d_meta)

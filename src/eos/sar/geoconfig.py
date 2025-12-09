@@ -89,9 +89,20 @@ def compute_baseline(prim, sec, points, speed):
     speed = normalize(speed)
     cross = np.cross(line_of_sight, speed)
     cross = normalize(cross)
+    # cross should point upwards, this is automatic for right looking radar using previous formula
+    # while sign needs to be inverted for left looking radar
+    # To avoid having to pass the pointing direction, we deduce the sign directly
+    sign = np.sign(np.sum(prim * cross, axis=1))
+    # assert all of the same sign
+    assert np.all(sign == sign[0])
+    # if the scalar product with vertical was negative, invert the direction
+    if sign[0] == -1:
+        cross = -cross
+
     # projection
     par_baseline = np.sum(baseline * line_of_sight, axis=1)
     perp_baseline = np.sum(baseline * cross, axis=1)
+
     depth_baseline = np.sum(baseline * speed, axis=1)
     return par_baseline, perp_baseline, depth_baseline
 
