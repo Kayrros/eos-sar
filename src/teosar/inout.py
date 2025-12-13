@@ -1,10 +1,11 @@
 import json
 import os
+import warnings
 from typing import Optional
 
+import numpy as np
 import rasterio
 import requests.exceptions
-import tifffile
 
 import eos.products.sentinel1 as s1
 from eos.sar import io
@@ -237,8 +238,46 @@ def imcoords_to_svg(im_coords, svg_path):
         )
 
 
-def save_img(path, array):
-    tifffile.imwrite(path, array)
+def save_img(path, array, transform=None, crs=None):
+    """
+    Save array with rasterio, optionally storing a transform and crs.
+    The array can have a single band and be of shape (h, w)
+    The array can have multiple bands and be of shape (nbands, h, w).
+    """
+    # Get image size
+    array_shape = array.shape
+
+    len_shape = len(array_shape)
+    assert len_shape in [2, 3], (
+        "Only 2D arrays (single band) and 3D arrays (multi band) supported"
+    )
+
+    if len_shape == 2:  # Single band
+        count = 1
+        height, width = array_shape
+    else:  # Multiple bands
+        count, height, width = array_shape
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=FutureWarning)
+        warnings.filterwarnings(
+            "ignore", category=rasterio.errors.NotGeoreferencedWarning
+        )
+        profile = dict(
+            count=count, width=width, height=height, dtype=array.dtype, nodata=np.nan
+        )
+
+        if crs is not None and transform is not None:
+            profile["crs"] = crs
+            profile["transform"] = transform
+        elif (crs is None) ^ (transform is None):
+            print("Both crs and transform should be provided, they will be ignored")
+
+        with rasterio.open(path, "w", **profile) as f:
+            if count == 1:  # Single band
+                f.write(np.squeeze(array), 1)
+            else:  # Multiple bands
+                f.write(np.squeeze(array))
 
 
 def read_img(path, roi=None, get_complex=False):
