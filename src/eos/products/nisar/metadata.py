@@ -43,6 +43,7 @@ class NisarFrequencyMetadata:
     slant_range_first: float
     slant_range_spacing: float
     ground_range_spacing: float
+    azimuth_spacing: float
     acquired_center_frequency: float
     processed_center_frequency: float
     wavelength: float
@@ -80,6 +81,9 @@ class NisarFrequencyMetadata:
         slant_range_spacing = float(ds[f"{frequency_group}/slantRangeSpacing"][()])
         ground_range_spacing = float(
             ds[f"{frequency_group}/sceneCenterGroundRangeSpacing"][()]
+        )
+        azimuth_spacing = float(
+            ds[f"{frequency_group}/sceneCenterAlongTrackSpacing"][()]
         )
         acquired_center_frequency = float(
             ds[f"{frequency_group}/acquiredCenterFrequency"][()]
@@ -123,6 +127,7 @@ class NisarFrequencyMetadata:
             slant_range_first=slant_range_first,
             slant_range_spacing=slant_range_spacing,
             ground_range_spacing=ground_range_spacing,
+            azimuth_spacing=azimuth_spacing,
             acquired_center_frequency=acquired_center_frequency,
             processed_center_frequency=processed_center_frequency,
             wavelength=wavelength,
@@ -139,6 +144,14 @@ class NisarFrequencyMetadata:
         d = asdict(self)
         d["ref_timestamp"] = str(self.ref_timestamp)
         return d
+
+    @property
+    def range_frequency(self) -> float:
+        return LIGHT_SPEED_M_PER_SEC / (2 * self.slant_range_spacing)
+
+    @property
+    def first_col_time(self) -> float:
+        return (2 * self.slant_range_first) / LIGHT_SPEED_M_PER_SEC
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> NisarFrequencyMetadata:
@@ -230,6 +243,10 @@ class NisarRSLCMetadata(NisarMetadata):
         height = ds[f"{swaths_group}/zeroDopplerTime"].size
 
         # Orbit (position and velocity with respect to WGS84 G1762 reference frame)
+        # WGS84 G1762 is equal to EPSG:4978.
+        # From https://epsg.io/6326-datum, "EPSG::6326 has been the then current realization.
+        # No distinction is made between the original and subsequent (G730, G873, G1150, G1674, G1762, G2139 and G2296) WGS 84 frames.
+        # Since 1997, WGS 84 has been maintained within 10cm of the then current ITRF."
         orbit_group = f"science/{radar_band}SAR/RSLC/metadata/orbit"
         state_vectors: list[StateVector] = []
         timesteps = ds[f"{orbit_group}/time"].shape[0]
@@ -347,6 +364,10 @@ class NisarRSLCMetadata(NisarMetadata):
         d["frequency_b"] = self.frequency_b.to_dict() if self.frequency_b else None
         d["ref_timestamp"] = str(self.ref_timestamp)
         return d
+
+    @property
+    def azimuth_frequency(self) -> float:
+        return 1.0 / self.azimuth_time_interval
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> NisarRSLCMetadata:
