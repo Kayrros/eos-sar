@@ -1,3 +1,34 @@
+# [0.42.0](https://github.com/Kayrros/eos-sar/compare/0.41.0..0.42.0) -- 2025-12-16
+
+## Added
+- nisar: metadata: Add NISAR RSLC metadata
+- test: Add tests for NISAR metadata
+- test: Add tests for NISAR projection model
+- nisar: proj_model: Add NISAR projection model
+- io: Add open_netcdf_osio
+
+- tests: Add tests for Capella deramping/cropping/InSAR
+- usage/capella: Add capella stripmap insar usage
+- usage:capella: orthorectification / bperp / custom DEM:
+    * Compute orthorectified interferograms. Calculate perpendicular baseline. Show how to use high resolution DEM stored locally.
+- capella/slc_cropper: Add workflow for cropping/aligning a stack of SLC capella imgs
+- capella/slc_cropper: Add translation information in the crop metadata
+- capella: Add sigma nought calibration
+- resampler: Add CapellaResample obj for deramping and reramping
+- capella/doppler_info: Add CapellaDoppler class for freq dop centroid computation
+- capella/metadata: Add state vectors origin metadata
+- capella/metadata: Add check for ZeroDoppler geometry
+- capella/metadata: Add parsing of Doppler Centroid frequency metadata
+
+- ortho: add `on_multilooked_raster`
+
+## Changed
+- teosar:inout: Enhance save_img to support CRS / transform
+
+## Fixed
+- geoconfig: Fix Bperp for left looking SAR
+
+
 # [0.41.0](https://github.com/Kayrros/eos-sar/compare/0.40.0..0.41.0) -- 2025-08-06
 
 ## Added
