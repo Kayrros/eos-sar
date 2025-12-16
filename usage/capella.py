@@ -14,16 +14,19 @@ import glob
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Optional, Sequence
 
 import fire
 import tqdm
+from rasterio.control import GroundControlPoint
+from rasterio.transform import from_gcps
 from shapely.geometry import shape
 
 import eos.sar
 from eos.dem import DEM, DEMSource, write_crop_to_file
 from eos.products.capella.slc_cropper import CapellaCrop, crop_images
 from eos.sar.dem_to_radar import dem_radarcoding
+from eos.sar.geoconfig import get_geom_config_from_grid_coords
 from eos.sar.model import SensorModel
 from eos.sar.roi import Roi
 from eos.sar.roi_provider import GeometryRoiProvider, RoiProvider
@@ -133,10 +136,32 @@ def compute_simulations_and_store(
         save_img(dir_builder.get_flat_path(date), flat_earth_phase)
         save_img(dir_builder.get_topo_path(date), topo_phase)
 
+        # Compute incidence angle, perpendicular baseline, and delta range in the center of the ROI
+        inc, bperp, delta_r = get_geom_config_from_grid_coords(
+            primary_model,
+            [secondary_model],
+            roi.w // 2,
+            roi.h // 2,
+        )
+
+        # Export the results to a dictionary
+        geometry_metadata_select = {
+            "mean_incidence_angle_radian": inc[0],
+            "mean_perpendicular_baseline_meter": bperp[0][0],
+            "mean_delta_range_meter": delta_r[0][0],
+        }
+        for key, item in geometry_metadata_select.items():
+            print("%s: %f" % (key, geometry_metadata_select[key]))
+
 
 def compute_ifgs_coher_consec_and_store(
-    dstdir: str, filter_size: tuple[int, int] = (3, 3)
+    dstdir: str,
+    filter_size: tuple[int, int] = (3, 3),
+    orthorectifier=None,
+    transform_radar=None,
+    crs_radar=None,
 ):
+    interpolation = eos.sar.ortho.LanczosInterpolation
     dir_builder = DirectoryBuilder(dstdir)
     # Here we can pick up the computation from info saved on disk
     dir_reader = DirectoryReader(dir_builder)
@@ -152,7 +177,9 @@ def compute_ifgs_coher_consec_and_store(
         "ifgs_consec_init",
         "ifgs_consec_flat",
         "ifgs_consec_topocorr",
+        "ifgs_consec_multilooked",
         f"coher_consec_{suffix}",
+        "geo_ifgs_consec_multilooked",
     ]
     out_ifgs = {key: os.path.join(dstdir, key) for key in keys}
     for key in keys:
@@ -163,36 +190,69 @@ def compute_ifgs_coher_consec_and_store(
         init_ifg = ifg.get_init_interf()
         flattened = ifg.get_flattened()
         topo_corrected = ifg.get_topo_corrected()
-        _, coherence = ifg.multilook(
+        multilooked, coherence = ifg.multilook(
             topo_corrected, filter_size, compute_coherence=True, undersample=False
         )
+
         fname = f"{ifg_dates[0]}_{ifg_dates[1]}.tif"
         # save ifgs
-        save_img(os.path.join(out_ifgs[keys[0]], fname), init_ifg)
-        save_img(os.path.join(out_ifgs[keys[1]], fname), flattened)
-        save_img(os.path.join(out_ifgs[keys[2]], fname), topo_corrected)
+        save_img(
+            os.path.join(out_ifgs[keys[0]], fname), init_ifg, transform_radar, crs_radar
+        )
+        save_img(
+            os.path.join(out_ifgs[keys[1]], fname),
+            flattened,
+            transform_radar,
+            crs_radar,
+        )
+        save_img(
+            os.path.join(out_ifgs[keys[2]], fname),
+            topo_corrected,
+            transform_radar,
+            crs_radar,
+        )
         # save phase mlooked ifgs
-        save_img(os.path.join(out_ifgs[keys[3]], fname), coherence)
+        save_img(
+            os.path.join(out_ifgs[keys[3]], fname),
+            multilooked,
+            transform_radar,
+            crs_radar,
+        )
+        save_img(
+            os.path.join(out_ifgs[keys[4]], fname),
+            coherence,
+            transform_radar,
+            crs_radar,
+        )
+        # save geocoded ifgs
+        geocoded_topo_corrected = orthorectifier.apply(multilooked, interpolation)
+        save_img(
+            os.path.join(out_ifgs[keys[5]], fname),
+            geocoded_topo_corrected,
+            orthorectifier.transform,
+            orthorectifier.crs,
+        )
 
 
-def main(orb_str: str, use_apd=True, refine_regist=True, calibrate=True):
+def main(
+    slc_tif_glob_pattern: str,
+    output_dir: str,
+    use_apd: bool = True,
+    refine_regist: bool = True,
+    calibrate: bool = True,
+    path_to_DEM: Optional[str] = None,
+):
     """
-    This main function is specific to the Piton de la Fournaise InSAR stack but can be adapted.
+    This main function was developed around the Piton de la Fournaise InSAR stack but can be adapted.
     It is not optimal in any way in the way the arrays are kept in memory or stored on the disk.
     It is only meant to give an example of a workflow that works and that can be adapted.
-
-    Assumes you have the directory capella_insar next to the script,
-    and that the f"Piton_Fournaise_{orb_str}_eSM" are in the capella_insar directory.
     """
-    assert orb_str in ["RO27", "RO37", "RO13"]
-    experiment_path = "capella_insar/"
-    data_path = os.path.join(experiment_path, f"Piton_Fournaise_{orb_str}_eSM")
-
-    tif_files = glob.glob(os.path.join(data_path, "*/CAPELLA_*_SLC_*.tif"))
+    print("Search path:", slc_tif_glob_pattern)
+    tif_files = glob.glob(slc_tif_glob_pattern)
     tif_files = sorted(tif_files, key=lambda x: get_datetime(os.path.basename(x)))
+    print("tif_files", tif_files)
 
-    # Here the roi was chosen in vpv by opening the primary image
-    # but since the goal is to have a RoiProvider, one can start
+    # since the goal is to have a RoiProvider, one can start
     # from a geometry with GeometryRoiProvider or from a lon, lat with CentroidRoiProvider
     context = {
         "type": "Polygon",
@@ -210,14 +270,20 @@ def main(orb_str: str, use_apd=True, refine_regist=True, calibrate=True):
     geometry = shape(context)
     roi_provider = GeometryRoiProvider(geometry)
 
-    dem_source = eos.dem.DEMStitcherSource()
+    # Default: use GLO30 for topographic correction
+    if path_to_DEM is None:
+        dem_source: eos.dem.DEMSource = eos.dem.DEMStitcherSource()
+    else:
+        # Optional: well-resolved DEM
+        dem_source = eos.dem.MyDEMSource(path_to_DEM, margin=0.1)
 
     result_path = os.path.join(
-        experiment_path,
-        "results",
-        f"{orb_str}_useapd{use_apd}_refineregist{refine_regist}_calibrate{calibrate}",
+        output_dir,
+        f"useapd{use_apd}_refineregist{refine_regist}_calibrate{calibrate}",
     )
+
     os.makedirs(result_path, exist_ok=True)
+
     dir_builder = DirectoryBuilder(result_path)
     primary_id = 0
     dem_sampling_ratio = 0.2
@@ -253,6 +319,23 @@ def main(orb_str: str, use_apd=True, refine_regist=True, calibrate=True):
         crops[i].model for i in range(len(product_ids)) if i != primary_id
     ]
     primary_model = crops[primary_id].model
+
+    # Compute orthorectifier
+    res = 10.0
+    orthorectifier = eos.sar.ortho.Orthorectifier.from_roi(
+        primary_model, roi, res, dem=dem
+    )
+
+    # Compute transform and crs for radar products
+    approx_geom, alts, _ = primary_model.get_approx_geom(dem=dem, roi=roi)
+    tl = GroundControlPoint(0, 0, approx_geom[0][0], approx_geom[0][1], alts[0])
+    tr = GroundControlPoint(0, roi.w, approx_geom[1][0], approx_geom[1][1], alts[1])
+    br = GroundControlPoint(roi.h, roi.w, approx_geom[2][0], approx_geom[2][1], alts[2])
+    bl = GroundControlPoint(roi.h, 0, approx_geom[3][0], approx_geom[3][1], alts[3])
+    gcps = [tl, tr, br, bl]
+    transform = from_gcps(gcps)
+    crs = "epsg:4326"  # "epsg:4979" or "epsg:4326"??
+
     # Computes simulations and saves them on the disk
     compute_simulations_and_store(
         primary_model, dem, roi, secondary_models, secondary_dates, dir_builder
@@ -261,7 +344,9 @@ def main(orb_str: str, use_apd=True, refine_regist=True, calibrate=True):
     filter_size = (3, 3)
     # Computes the consecutive ifgs and coherence maps and save on disk
     # here result_path is taken as input to prove that we can do ifgs from results stored in directory only
-    compute_ifgs_coher_consec_and_store(result_path, filter_size)
+    compute_ifgs_coher_consec_and_store(
+        result_path, filter_size, orthorectifier, transform, crs
+    )
 
 
 # %%
