@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Optional, Union
+from typing import Optional, Union
 
 import h5py
 import numpy as np
@@ -9,7 +9,10 @@ import pyproj
 from numpy.typing import ArrayLike
 from typing_extensions import override
 
-from eos.products.nisar.metadata import NisarRSLCMetadata
+from eos.products.nisar.metadata import (
+    Frequency,
+    NisarRSLCMetadata,
+)
 from eos.sar import coordinates
 from eos.sar.model import Arrayf64, CoordArrayLike, SensorModel
 from eos.sar.model_helper import GenericSensorModelHelper
@@ -29,7 +32,7 @@ class NisarModel(SensorModel):
     @staticmethod
     def from_metadata(
         meta: NisarRSLCMetadata,
-        frequency: Literal["A", "B"],
+        frequency: Frequency,
         orbit: Orbit,
         corrector: Corrector = Corrector(),
         max_iterations: int = 20,
@@ -108,7 +111,7 @@ class NisarModel(SensorModel):
         )
 
 
-def main(h5_file_path, frequency: Literal["A", "B"] = "A") -> NisarModel:
+def main(h5_file_path, frequency: Frequency = "A") -> NisarModel:
     """
     Example usage
     """

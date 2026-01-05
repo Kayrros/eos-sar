@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, get_args
 
 import h5py
 import numpy as np
 from shapely import from_wkt
+from typing_extensions import TypeAlias
 
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC
 from eos.sar.orbit import StateVector
+
+Frequency: TypeAlias = Literal["A", "B"]
+Polarization: TypeAlias = Literal["HH", "HV", "VH", "VV", "RH", "RV", "LH", "LV"]
+
+
+class DatasetNotFoundError(Exception):
+    pass
 
 
 def parse_date_as_numpy_datetime64(date_str: str) -> np.datetime64:
@@ -19,6 +27,7 @@ def parse_date_as_numpy_datetime64(date_str: str) -> np.datetime64:
 class NisarMetadata:
     radar_band: Literal["L", "S"]
     mission_id: str
+    product_id: str
     orbit_direction: Literal["ascending", "descending"]
     look_side: Literal["left", "right"]
     absolute_orbit_number: int
@@ -48,7 +57,7 @@ class NisarFrequencyMetadata:
     processed_center_frequency: float
     wavelength: float
     width: int
-    polarizations: list[Literal["HH", "HV", "VH", "VV", "RH", "RV", "LH", "LV"]]
+    polarizations: list[Polarization]
     ne_backscatter_dataset: Literal["nes0", "noiseEquivalentBackscatter"]
     ne_backscatter_azimuth_time: list[float]
     ne_backscatter_slant_range: list[float]
@@ -57,7 +66,7 @@ class NisarFrequencyMetadata:
 
     def __post_init__(self):
         assert all(
-            polarization in ["HH", "HV", "VH", "VV", "RH", "RV", "LH", "LV"]
+            polarization in get_args(Polarization)
             for polarization in self.polarizations
         ), "Unrecognized polarizations"
         assert self.ne_backscatter_dataset in [
@@ -73,7 +82,7 @@ class NisarFrequencyMetadata:
 
     @staticmethod
     def parse_metadata(
-        ds: h5py.File, frequency: Literal["A", "B"], radar_band: Literal["L", "S"]
+        ds: h5py.File, frequency: Frequency, radar_band: Literal["L", "S"]
     ) -> NisarFrequencyMetadata:
         # Swath
         frequency_group = f"science/{radar_band}SAR/RSLC/swaths/frequency{frequency}"
@@ -195,6 +204,7 @@ class NisarRSLCMetadata(NisarMetadata):
         # Identification
         identification_group = f"science/{radar_band}SAR/identification"
         mission_id = ds[f"{identification_group}/missionId"][()].decode("utf-8")
+        product_id = ds[f"{identification_group}/granuleId"][()].decode("utf-8")
         orbit_direction = (
             ds[f"{identification_group}/orbitPassDirection"][()].decode("utf-8").lower()
         )
@@ -328,6 +338,7 @@ class NisarRSLCMetadata(NisarMetadata):
         return NisarRSLCMetadata(
             radar_band=radar_band,
             mission_id=mission_id,
+            product_id=product_id,
             orbit_direction=orbit_direction,
             look_side=look_side,
             absolute_orbit_number=absolute_orbit_number,
