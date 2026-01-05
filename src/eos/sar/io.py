@@ -275,6 +275,61 @@ def read_windows(
     return arrays
 
 
+def read_hdf5_window(
+    dataset: h5py.Dataset, roi: Roi, get_complex: bool = True, boundless: bool = True
+) -> NDArray[Union[np.float32, np.complex64]]:
+    assert len(dataset.shape) == 2, "Only 2D datasets are supported"
+    clipped_roi = roi.make_valid(dataset.shape)
+
+    array_dtype = dataset.dtype
+
+    # flag to see if input dataset is complex
+    complex_flg = np.issubdtype(array_dtype, np.complexfloating)
+
+    if get_complex:
+        assert complex_flg, "Reader should return a complex type"
+
+    # note that we will cast the data here
+    # this is a safe bet to be compatible with eos-sar at this stage
+    # TODO we might want to avoid casting
+    cast_dtype = np.complex64 if get_complex else np.float32
+
+    out_of_bounds = clipped_roi == Roi(0, 0, 0, 0)
+    # avoid situation when completely falls outside of parent
+    if not out_of_bounds:
+        read_array = dataset[
+            clipped_roi.row : clipped_roi.row + clipped_roi.h,
+            clipped_roi.col : clipped_roi.col + clipped_roi.w,
+        ]
+
+        # if it was complex, but we require amplitude, use numpy abs
+        if not get_complex and complex_flg:
+            read_array = np.abs(read_array)
+
+        # cast to eos-sar friendly dtypes
+        read_array = read_array.astype(cast_dtype, copy=False)
+
+    out: NDArray[Union[np.float32, np.complex64]]
+
+    if boundless:
+        out = np.full(roi.get_shape(), np.nan, dtype=cast_dtype)
+        if not out_of_bounds:
+            # change origin to primary roi instead of parent image frame
+            write_roi = clipped_roi.translate_roi(-roi.col, -roi.row)
+
+            out[
+                write_roi.row : write_roi.row + write_roi.h,
+                write_roi.col : write_roi.col + write_roi.w,
+            ] = read_array
+    else:
+        if out_of_bounds:
+            out = np.full((0, 0), np.nan, dtype=cast_dtype)
+        else:
+            out = read_array
+
+    return out
+
+
 def glob_single_file(pattern: str) -> str:
     """
     Get the full path to a starred expression using glob, for a single file.
