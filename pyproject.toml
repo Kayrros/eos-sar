@@ -2,9 +2,12 @@
 name = "eos-sar"
 authors = [
     { name = "Kayrros"},
-    { name = "external collaborators" },
+    { name = "Centre Borelli"},
+    { name = "individual collaborators" },
 ]
 version = "0.42.1"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.9,<3.14"
 dependencies = [
     "numpy>=2.0.1",

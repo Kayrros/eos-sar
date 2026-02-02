@@ -1,0 +1,28 @@
+EOS-SAR
+Copyright © 2020–2026 Kayrros
+Copyright © 2020–2026 Centre Borelli
+
+This product includes software developed at Kayrros (https://www.kayrros.com/).
+This product includes software developed at Centre Borelli (https://centreborelli.ens-paris-saclay.fr).
+
+--------------------------------------------------------------------------------
+THIRD-PARTY DATA NOTICES
+--------------------------------------------------------------------------------
+This project contains the following component(s) under the 
+Creative Commons Attribution 4.0 International (CC BY 4.0) license:
+
+File: tests/data/QLD_corner_reflector_positions_GDA2020.txt 
+Original Work: QLD_corner_reflector_positions_GDA2020.txt
+Original Author: Geoscience Australia, Fuhrmann, T., Batchelor, J., McCall, T., Garthwaite, M.C.
+Source: http://dx.doi.org/10.11636/Record.2020.034
+Modified: No
+--------------------------------------------------------------------------------
+Rosamond Corner Reflector Array (RCRA) Data
+   Data courtesy of NASA/JPL-Caltech. This data is in the Public Domain 
+   as a work of the U.S. Government.
+--------------------------------------------------------------------------------i
+Copernicus Sentinel Data (Sentinel-1)
+   The access and use of Copernicus Sentinel data is available on a free, 
+   full and open basis and is governed by the Legal Notice on the use of 
+   Copernicus Sentinel Data and Service Information:
+   https://sentinels.copernicus.eu/documents/247904/690755/Sentinel_Data_Legal_Notice

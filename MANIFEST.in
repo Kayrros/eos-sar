@@ -1,5 +1,5 @@
 include CHANGELOG.md
-include LICENCE
+include LICENSE
 include README.md
 global-include *.pyx
 global-include *.pxd
