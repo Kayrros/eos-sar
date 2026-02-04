@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import abc
-import os
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,13 +14,6 @@ import rasterio.session
 import rasterio.windows
 from numpy.typing import ArrayLike, NDArray
 from typing_extensions import TypeAlias
-
-try:
-    import multidem
-
-    has_multidem = True
-except ImportError:
-    has_multidem = False
 
 try:
     import srtm4
@@ -42,7 +34,6 @@ Bounds: TypeAlias = tuple[float, float, float, float]
 """ (lon_min, lat_min, lon_max, lat_max) """
 
 
-# copy-pasted from multidem
 def write_crop_to_file(array, transform, crs, path):
     """
     Write a georeferenced raster to a GeoTIFF file.
@@ -415,46 +406,6 @@ class SRTM4Source(DEMSource):
         return srtm4.crop(bounds, datum="ellipsoidal")
 
 
-class MultidemSource(DEMSource):
-    def __init__(self, demsource="SRTM30"):
-        """
-        Args:
-            demsource (str): DEM source "SRTM30" (default), "TDM90", "SRTM90" or
-                "SRTM90-CGIAR-CSI"
-        """
-        multidem._source_validation(demsource)
-        self.demsource = demsource
-
-    def fetch_dem(self, bounds: Bounds) -> DEM:
-        array, transform, crs = multidem.crop(
-            bounds, source=self.demsource, datum="ellipsoidal"
-        )
-        assert isinstance(array, np.ndarray)
-        assert array.dtype == np.float32
-        assert crs == "EPSG:4326"
-        return DEM(array=array, transform=transform)
-
-    def elevation(self, lons, lats, interpolation="bilinear"):
-        warnings.warn(
-            "DEMSource.elevation is deprecated. Use DEMSource.fetch_dem(bounds).elevation(lons, lats).",
-            DeprecationWarning,
-        )
-        return multidem.elevation(
-            lons,
-            lats,
-            interpolation=interpolation,
-            source=self.demsource,
-            datum="ellipsoidal",
-        )
-
-    def crop(self, bounds):
-        warnings.warn(
-            "DEMSource.crop is deprecated. Use DEMSource.fetch_dem(bounds).crop(bounds).",
-            DeprecationWarning,
-        )
-        return multidem.crop(bounds, source=self.demsource, datum="ellipsoidal")
-
-
 @dataclass(frozen=True)
 class DEMStitcherSource(DEMSource):
     dem_name: str = "glo_30"
@@ -484,15 +435,12 @@ class DEMStitcherSource(DEMSource):
 
 
 def get_any_source() -> DEMSource:
-    if has_multidem:
-        demsource = os.environ.get("EOS_SAR_MULTIDEM_SOURCE", "SRTM30")
-        return MultidemSource(demsource)
     if has_srtm4:
         return SRTM4Source()
     if has_demstitcher:
         return DEMStitcherSource()
     raise RuntimeError(
-        "couldn't find a DEM source; please install multidem, srtm4 or dem-stitcher."
+        "couldn't find a DEM source; please install srtm4 or dem-stitcher."
     )
 
 

@@ -402,7 +402,6 @@ kayrros = [
     { name = "kayrros-bursterio" },
     { name = "kayrros-osio" },
     { name = "kayrros-phoenix", extra = ["plugin-burster", "source-s3"] },
-    { name = "multidem" },
     { name = "s1m" },
 ]
 teosar = [
@@ -443,7 +442,6 @@ requires-dist = [
     { name = "kayrros-osio", marker = "extra == 'kayrros'", specifier = ">=0.3.0", index = "https://pypi.dev-kayrros.ovh/" },
     { name = "kayrros-phoenix", extras = ["source-s3", "plugin-burster"], marker = "extra == 'kayrros'", specifier = ">=1.14.1", index = "https://pypi.dev-kayrros.ovh/" },
     { name = "lxml", specifier = ">=5.3.1" },
-    { name = "multidem", marker = "extra == 'kayrros'", specifier = ">=0.7.1", index = "https://pypi.dev-kayrros.ovh/" },
     { name = "numpy", specifier = ">=2.0.1" },
     { name = "opencv-python-headless", specifier = ">=4.11.0" },
     { name = "ortools", specifier = ">=9.7.0" },
@@ -1078,23 +1076,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/f6/ad0bd2735b9570ebf9c113f024b4f2b34f2331f16197c60babdc168b22d5/ml_dtypes-0.4.1-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:560be16dc1e3bdf7c087eb727e2cf9c0e6a3d87e9f415079d2491cc419b3ebf5", size = 2181057, upload-time = "2024-09-13T19:07:07.21Z" },
     { url = "https://files.pythonhosted.org/packages/3e/55/b9711de47135d4d8766ff7907fe54c8bffff545fd646817c352de37b0ad5/ml_dtypes-0.4.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ad0b757d445a20df39035c4cdeed457ec8b60d236020d2560dbc25887533cf50", size = 2156131, upload-time = "2024-09-13T19:07:09.274Z" },
     { url = "https://files.pythonhosted.org/packages/4b/f3/e5ff8dd27f66c8b80f97f0f89bb0b74e4a7005e5ff5f8f4237126c827911/ml_dtypes-0.4.1-cp39-cp39-win_amd64.whl", hash = "sha256:ef0d7e3fece227b49b544fa69e50e607ac20948f0043e9f76b44f35f229ea450", size = 126727, upload-time = "2024-09-13T19:07:10.561Z" },
-]
-
-[[package]]
-name = "multidem"
-version = "0.7.2"
-source = { registry = "https://pypi.dev-kayrros.ovh/" }
-dependencies = [
-    { name = "boto3" },
-    { name = "botocore" },
-    { name = "numpy" },
-    { name = "pyproj", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "pyproj", version = "3.7.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "rasterio", extra = ["s3"] },
-]
-sdist = { url = "https://pypi.dev-kayrros.ovh/packages/multidem-0.7.2.tar.gz", hash = "md5:f222e209c25fc992557e656026f6d80b" }
-wheels = [
-    { url = "https://pypi.dev-kayrros.ovh/packages/multidem-0.7.2-py3-none-any.whl", hash = "md5:b17bee27fcd5b9aa4a41eff721d7898d" },
 ]
 
 [[package]]

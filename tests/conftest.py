@@ -41,11 +41,6 @@ try:
 except Exception:
     _s3_client = None
 
-    # disable multidem because it implicitly requires AWS credentials
-    import eos.dem
-
-    eos.dem.has_multidem = False
-
 
 @pytest.fixture(scope="session")
 def s3_client(maybe_skip_s3):
