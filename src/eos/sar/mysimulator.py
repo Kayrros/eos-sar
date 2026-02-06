@@ -295,7 +295,7 @@ class MySimulator(MySARSimulator_small_roi):
     
     col_img = None
     
-    def initialize(self, product_metadata, los_epsg4978, roi=None, oversampling_columns=1):
+    def initialize(self, product_metadata, los_epsg4978, roi=None, oversampling_columns=1, compute_layover_shadow_masks=False):
         """
         Initialize the simulator by getting the mapping from the resampled DEM to the image coordinates.
 
@@ -309,6 +309,8 @@ class MySimulator(MySARSimulator_small_roi):
             Region of interest in range-doppler coordinates. The default is None.
         oversampling_columns : int, optional
             Oversampling factor along the columns of the resampled DEM.
+        compute_layover_shadow_masks : bool, optional
+            Set to True if you want to compute the layover and shadow masks.
 
         Returns
         -------
@@ -340,13 +342,15 @@ class MySimulator(MySARSimulator_small_roi):
         self.los_epsg4978 = los_epsg4978
         self.col_img = np.floor(get_image_column_resampled_dem(self.x1, self.y1, self.z1, self.los_epsg4978, self.product_metadata.range_pixel_spacing, col_no_nan, j_indices))
         
-        # Get the layover and shadow masks of the resampled DEM
-        self.layover_mask_dem1 = self.get_layover_mask(self.dem1)
-        self.shadow_mask_dem1 = self.get_shadow_mask(self.dem1)
-
-        # Get the layover and shadow masks in image geometry
-        self.layover_mask_sar = self.mask_resampled_dem_2_image(self.layover_mask_dem1)
-        self.shadow_mask_sar = self.mask_resampled_dem_2_image(self.shadow_mask_dem1)
+        # Layover and shadow masks:
+        if compute_layover_shadow_masks:
+            # get the layover and shadow masks of the resampled DEM
+            self.layover_mask_dem1, self.shadow_mask_dem1 = self.get_layover_and_shadow_masks(self.dem1)
+            self.layover_strict_mask_dem1 = self.layover_mask_dem1 * (~self.shadow_mask_dem1)
+            # get the layover and shadow masks in image geometry
+            self.layover_mask_sar = self.mask_resampled_dem_2_image(self.layover_mask_dem1)
+            self.shadow_mask_sar = self.mask_resampled_dem_2_image(self.shadow_mask_dem1)
+            self.shadow_strict_mask_sar = self.shadow_mask_sar * (~self.layover_mask_sar)
 
         # Set NaN value for integers
         self.nan_value = int(np.nanmin(self.col_img)) - 1000
@@ -778,9 +782,9 @@ class MySimulator(MySARSimulator_small_roi):
     
 
 
-    def get_layover_mask(self, dem):
+    def get_layover_and_shadow_masks(self, dem, print_progress=True):
         """
-        Compute the layover mask of a resampled DEM (ie. whose lines are aligned with the SAR image's rows).
+        Compute the layover and shadow masks of a resampled DEM (ie. whose lines are aligned with the SAR image's rows).
 
         Parameters
         ----------
@@ -789,32 +793,43 @@ class MySimulator(MySARSimulator_small_roi):
 
         Returns
         -------
-        np.ndarray of size (n,m)
+        layover_mask : np.ndarray of size (n,m)
             Mask with True in layover areas and False elsewhere.
-
-        """
-        slopes = compute_slopes_column_dem(dem)
-        return slopes >= self.product_metadata.center_pixel_incidence_angle
-    
-
-
-    def get_shadow_mask(self, dem):
-        """
-        Compute the shadow mask of a resampled DEM (ie. whose lines are aligned with the SAR image's rows).
-
-        Parameters
-        ----------
-        dem : eos.dem.DEM
-            Resampled DEM. dem.array.shape = (n,m)
-
-        Returns
-        -------
-        np.ndarray of size (n,m)
+        shadow_mask : np.ndarray of size (n,m)
             Mask with True in shadow areas and False elsewhere.
 
         """
-        slopes = compute_slopes_column_dem(dem)
-        return slopes <= -self.product_metadata.center_pixel_incidence_angle
+        # Prepare masks
+        n1, m1 = self.dem1.array.shape
+        layover_mask = np.zeros((n1, m1)).astype(bool)
+        shadow_mask = np.zeros((n1, m1)).astype(bool)
+
+        # Get the size in [m] of a grid step along column in the resampled DEM
+        col_res = np.sqrt(self.dem1.transform[0]**2 + self.dem1.transform[3]**2) * 6370e3 * np.pi/180.
+
+        # For each column in the resampled DEM ...
+        if print_progress:
+            print("Computing layover and shadow masks:")
+        for i in range(m1):
+            if print_progress:
+                print(f"{(i/m1)*100}%", end="\r")
+            # ... compute the angle relative to the other columns (for each row independently)
+            dz = self.dem1.array - np.atleast_2d(self.dem1.array[:,i]).T
+            col_res_row = (np.arange(m1) - i) * col_res
+            col_res_row[i] = 1
+            angle_col = np.arctan(dz/col_res_row) * 180./np.pi
+            # ... for points located further in range (ie. to the right)
+            # flag as 'shadow' if the angle is negative and if its absolute value strictly exceeds 90 - incidence angle (in [deg])
+            if i < m1-1:
+                shadow_mask[:,i+1:] += -angle_col[:,i+1:] > 90 - self.product_metadata.center_pixel_incidence_angle
+            # ... for points located nearer in range (ie. to the left)
+            # flag as 'layover' if the angle is positive and is larger than the incidence angle
+            layover_mask[:,:i+1] += angle_col[:,:i+1] >= self.product_metadata.center_pixel_incidence_angle
+        
+        # Return the masks
+        # Note: - in geographical geometry, the strict layover_mask is: layover_mask * ~shadow_mask
+        #       - in SAR geometry, the strict shadow_mask is: shadow_mask * ~layover_mask
+        return layover_mask, shadow_mask
     
 
 
