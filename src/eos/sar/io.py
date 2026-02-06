@@ -1,8 +1,11 @@
 import glob
 import os
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence, Union
 from urllib.parse import urlparse
 
+import fsspec
 import h5py
 import numpy as np
 import rasterio
@@ -78,64 +81,6 @@ def open_image(
     return image_reader  # type: ignore
 
 
-def open_image_osio(uri: str, **reader_options: Any) -> ImageReader:
-    """
-    Open an image using OSIO.
-
-    Parameters
-    ----------
-    uri : str
-        uri to the image.
-    reader_options : dict
-        additional options passed to the AWSS3ReaderAt/HTTPReaderAt constructor
-
-    Returns
-    -------
-    image_reader : rasterio.DatasetReader
-        opened image.
-    """
-    import osio
-
-    if uri.startswith("s3://"):
-        reader = osio.AWSS3ReaderAt(uri, **reader_options)
-    else:
-        reader = osio.HTTPReaderAt(uri, **reader_options)
-    fh = osio.Adapter(reader)
-    reader = rasterio.open(fh)
-    return reader  # type: ignore
-
-
-def open_netcdf_osio(uri: str, **reader_options: Any) -> h5py.File:
-    """
-    Open a local or remote (S3) NetCDF file.
-
-    Parameters
-    ----------
-    nc_path
-        Path to the NetCDF file.
-    osio_options
-        Dict passed to the osio ReaderAt if the path is http or s3, can be used to setup credentials.
-
-    Returns
-    -------
-    ds
-        A h5py.File handler
-    """
-    import osio
-
-    if uri.startswith("s3://"):
-        reader = osio.AWSS3ReaderAt(uri, **reader_options)
-        fh = osio.Adapter(reader)
-    elif uri.startswith("https://") or uri.startswith("http://"):
-        reader = osio.HTTPReaderAt(uri, **reader_options)
-        fh = osio.Adapter(reader)
-    else:
-        fh = uri
-
-    ds = h5py.File(fh, "r")
-    return ds
-
-
 def open_image_fsspec(uri: str, **extra_args: Any) -> ImageReader:
     """
     Open an image using fsspec.
@@ -151,11 +96,106 @@ def open_image_fsspec(uri: str, **extra_args: Any) -> ImageReader:
     image_reader : rasterio.DatasetReader
         opened image.
     """
-    import fsspec
-
     with fsspec.open(uri, mode="rb", compression=None, **extra_args) as f:
         reader = rasterio.open(f)
         return reader  # type: ignore
+
+
+class H5LoaderBase(ABC):
+    @abstractmethod
+    def open(self) -> h5py.File:
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
+@dataclass
+class LocalH5Loader(H5LoaderBase):
+    """
+    Load h5py.File from local file.
+    """
+
+    path: str
+    h5_file: Optional[h5py.File] = field(default=None, init=False, repr=False)
+
+    def open(self) -> h5py.File:
+        # Standard local opening
+        self.h5_file = h5py.File(self.path, "r")
+        return self.h5_file
+
+    def close(self):
+        if self.h5_file:
+            self.h5_file.close()
+            self.h5_file = None
+
+
+@dataclass
+class RemoteH5Loader(H5LoaderBase):
+    """
+    Load h5py.File from s3 or http.
+    Design this class using
+    https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.open
+    https://s3fs.readthedocs.io/en/latest/api.html#s3fs.core.S3FileSystem
+    https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.implementations.http.HTTPFileSystem
+    """
+
+    url: str
+    block_size: Optional[int] = 10 * 1024 * 1024
+    """
+    block_size: Controls in memory caching in bytes. Default corresponds 10 MB.
+    Set to None to disable caching.
+    """
+    fsspec_open_kwargs: dict[str, Any] = field(default_factory=dict)
+    """
+    fsspec_open_kwargs: Among things you can pass here are credentials.
+    """
+    _fs_file: Optional[fsspec.core.OpenFile] = field(
+        default=None, init=False, repr=False
+    )
+    h5_file: Optional[h5py.File] = field(default=None, init=False, repr=False)
+
+    def open(self) -> h5py.File:
+        if self.url.startswith("s3://"):
+            cache_type_str = "default_cache_type"
+            block_size_str = "default_block_size"
+        elif self.url.startswith("https://") or self.url.startswith("http://"):
+            cache_type_str = "cache_type"
+            block_size_str = "block_size"
+        else:
+            raise NotImplementedError(
+                "Current implemenation only supports s3 and http backends"
+            )
+
+        if self.block_size is not None:
+            kwargs = {
+                cache_type_str: "blockcache",
+                block_size_str: self.block_size,
+                **self.fsspec_open_kwargs,
+            }
+        else:
+            kwargs = self.fsspec_open_kwargs
+
+        self._fs_file = fsspec.open(self.url, mode="rb", **kwargs).open()
+
+        # Pass the buffered file-like object to h5py
+        self.h5_file = h5py.File(self._fs_file, "r")
+        return self.h5_file
+
+    def close(self):
+        if self.h5_file:
+            self.h5_file.close()
+            self.h5_file = None
+        if self._fs_file:
+            self._fs_file.close()
+            self._fs_file = None
 
 
 def read_file_as_str(

@@ -7,6 +7,7 @@ import shapely
 from eos.dem import DEM, SRTM4Source
 from eos.products.nisar.cropper import NisarCrop, crop_images
 from eos.products.nisar.metadata import DatasetNotFoundError
+from eos.sar.io import RemoteH5Loader
 from eos.sar.regist import phase_correlation_on_amplitude
 from eos.sar.roi import Roi
 from eos.sar.roi_provider import GeometryRoiProvider, PrescribedRoiProvider
@@ -33,7 +34,7 @@ def test_cropper():
         }
     )
     cropper_input: dict[str, Any] = {
-        "h5_paths": RSLC_SAMPLE_PATHS,
+        "h5_loaders": [RemoteH5Loader(s3path) for s3path in RSLC_SAMPLE_PATHS],
         "primary_id": 0,
         "frequency": "A",
         "polarization": "HH",
@@ -42,7 +43,6 @@ def test_cropper():
         ),
         "dem_source": SRTM4Source(),
         "get_complex": False,
-        "s3_session": None,
     }
 
     crops, dem = crop_images(**cropper_input)
