@@ -13,21 +13,15 @@ def save_array(result_dir, name, array):
     np.save(os.path.join(result_dir, name), array)
 
 
-def extract_keys(big_dict, list_keys):
-    o = {}
-    for key in list_keys:
-        o[key] = big_dict[key]
-    return o
-
-
-def get_ref_metas(ref_xml_paths):
+def get_bistatic_ref(ref_xml_paths):
     xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in ref_xml_paths]
-    keys = ["slant_range_time", "samples_per_burst", "range_frequency"]
-    ref_metas = [
-        extract_keys(s1.metadata.extract_burst_metadata(xml_content, 0), keys)
+    bistatic_ref = [
+        s1.coordinate_correction.FullBistaticReference.from_burst_metadata(
+            s1.metadata.extract_burst_metadata(xml_content, 0)
+        )
         for xml_content in xml_contents
     ]
-    return ref_metas
+    return bistatic_ref
 
 
 def close_readers(readers):
@@ -69,20 +63,20 @@ def inputs():
     for xml_path in xml_paths:
         xml_content.append(eos.sar.io.read_xml_file(xml_path))
 
-    image_readers = [eos.sar.io.open_image_osio(p) for p in tiff_paths]
+    image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
 
     # # Now extract the needed metadata
     primary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[0])
     secondary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[1])
 
-    ref_metas = get_ref_metas(
+    bistatic_refs = get_bistatic_ref(
         [os.path.join(xml_folder, ref_base) for ref_base in ref_basenames]
     )
 
-    return image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
+    return image_readers, primary_bursts_meta, secondary_bursts_meta, bistatic_refs
 
 
-def _get_objects(burst_meta, ref_meta=None):
+def _get_objects(burst_meta, bistatic_ref=None):
     # create an orbit
     orbit = Orbit(burst_meta["state_vectors"])
     # create a doppler
@@ -94,7 +88,7 @@ def _get_objects(burst_meta, ref_meta=None):
         doppler,
         apd=True,
         bistatic=True,
-        full_bistatic_reference=ref_meta,
+        full_bistatic_reference=bistatic_ref,
         intra_pulse=True,
         alt_fm_mismatch=True,
     )
@@ -126,7 +120,8 @@ def plot_freq_profile(img, axis=1, fs=1, title="", result_dir=None):
     ax.set_title(title)
     if result_dir is not None:
         plt.savefig(os.path.join(result_dir, f"{'_'.join(title.split())}.png"), dpi=250)
-    plt.show()
+    # plt.show()
+    plt.close()
     print(f"Specs for {title}: ")
     print(f"Center frequency {np.mean([f_low, f_high])} Hz")
     print(f"width : {f_high - f_low} Hz")
@@ -137,7 +132,7 @@ def main(result_dir="."):
     os.makedirs(result_dir, exist_ok=True)
 
     image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs()
-    dem_source = eos.dem.get_any_source()
+    dem_source = eos.dem.SRTM4Source()
 
     orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
     # construct primary swath model
@@ -399,6 +394,11 @@ def main(result_dir="."):
 
 
 if __name__ == "__main__":
+    import time
+
     import fire
 
+    start = time.time()
     fire.Fire(main)
+    duration = time.time() - start
+    print(f"Finished! Took {duration} seconds")
