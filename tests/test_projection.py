@@ -218,10 +218,10 @@ def test_projection_grd():
     assert isinstance(pti, float), "vectorized projection func failed on scalar input"
 
 
-def test_projection_corner_reflectors(phx_client):
+def test_projection_corner_reflectors(cdse_auth):
     from math import ceil, floor
 
-    from eos.products.sentinel1.orbit_catalog import PhoenixSentinel1OrbitCatalogBackend
+    from eos.products.sentinel1.orbit_catalog import CDSESentinel1OrbitCatalogBackend
     from eos.sar import fourier_zoom, max_finding
 
     # subset of corner reflectors that give a mosaic of reasonable size
@@ -259,10 +259,9 @@ def test_projection_corner_reflectors(phx_client):
     query = Sentinel1OrbitCatalogQuery(
         product_ids=[f.rstrip(".SAFE") for f in safes], quality=BestEffort
     )
-    backend = PhoenixSentinel1OrbitCatalogBackend(
-        collection_source=phx_client.get_collection("esa-sentinel-1-csar-aux").at(
-            "aws:proxima:kayrros-prod-sentinel-aux"
-        )
+    backend = CDSESentinel1OrbitCatalogBackend(
+        username=cdse_auth[0],
+        password=cdse_auth[1],
     )
     statevectors = orbit_catalog.search(backend, query).single()
 

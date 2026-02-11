@@ -52,19 +52,6 @@ class ProductProviderBase(ABC):
         ...
 
 
-class PhoenixProductProvider(ProductProviderBase):
-    @override
-    def __call__(self, product_id: str) -> Sentinel1SLCProductInfo:
-        """
-        Preserve previous behavior of Callable
-        """
-        return (
-            eos.products.sentinel1.product.PhoenixSentinel1ProductInfo.from_product_id(
-                product_id
-            )
-        )
-
-
 @dataclass(frozen=True)
 class CDSEProductProvider(ProductProviderBase):
     cdse_access_key_id: str
@@ -186,45 +173,6 @@ class BackendFactory(ABC):
     def create_product_provider(self) -> ProductProvider: ...
 
 
-class PhoenixBackendFactory(BackendFactory):
-    def create_slc_catalog_backend(self) -> s1_catalog.Sentinel1SLCCatalogBackend:
-        """
-        Helper function to get slc backend using phoenix default client for SLC collection at ASF source.
-        """
-        import phoenix.catalog
-
-        client = phoenix.catalog.Client()
-        collection = client.get_collection("esa-sentinel-1-csar-l1-slc").at(
-            "asf:daac:sentinel-1"
-        )
-        backend = s1_catalog.PhoenixSentinel1SLCCatalogBackend(
-            collection_source=collection
-        )
-
-        return backend
-
-    def create_orbit_catalog_backend(
-        self,
-    ) -> orbit_catalog.Sentinel1OrbitCatalogBackend:
-        """
-        Helper function to get orbit aux backend using phoenix with proxima source.
-        """
-        import phoenix.catalog
-
-        backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-            collection_source=phoenix.catalog.Client()
-            .get_collection("esa-sentinel-1-csar-aux")
-            .at("aws:proxima:kayrros-prod-sentinel-aux")
-        )
-        return backend
-
-    def create_product_provider(self) -> ProductProvider:
-        """
-        Helper function to get a slc product info provider using phoenix with ASF source + burster.
-        """
-        return PhoenixProductProvider()
-
-
 @dataclass(frozen=True)
 class CDSEBackendFactory(BackendFactory):
     cdse_access_key_id: str
@@ -268,18 +216,14 @@ def main(
     last_n_prods: Optional[int] = None,
     roi_provider: Optional[RoiProvider] = None,
     dem_source: Optional[eos.dem.DEMSource] = None,
-    backend_factory: Optional[BackendFactory] = None,
     cache: Cache = eos.cache.no_cache(),
+    *,
+    backend_factory: BackendFactory,
 ):
     if isinstance(geometry, str):
         geometry = shapely.wkt.loads(geometry)
 
-    # prepare backend factory
-    if backend_factory is None:
-        # This works for Kayrros users who have configured Phoenix access
-        backend_factory = PhoenixBackendFactory()
-
-    # query phoenix
+    # query catalog for slcs
     prod_pol = {"vv": ["SV", "DV"], "vh": ["DV"], "hh": ["SH", "DH"], "hv": ["DH"]}[
         polarization
     ]
@@ -475,9 +419,10 @@ def main_ovl(
     primary_id=0,
     osids_of_interest=None,
     dem_source: Optional[eos.dem.DEMSource] = None,
-    product_provider: Optional[ProductProvider] = None,
     cache: Cache = eos.cache.no_cache(),
-    orbit_backend: Optional[orbit_catalog.Sentinel1OrbitCatalogBackend] = None,
+    *,
+    product_provider: ProductProvider,
+    orbit_backend: orbit_catalog.Sentinel1OrbitCatalogBackend,
 ) -> list[Union[OvlPrimaryPipeline, OvlSecondaryPipeline]]:
     # destination path
     os.makedirs(dstdir, exist_ok=True)
@@ -488,14 +433,6 @@ def main_ovl(
     primary_pipeline = OvlPrimaryPipeline(
         product_ids_per_date[primary_id], directory_builder, dem_source
     )
-
-    # Necessary to get eos product info objects
-    if product_provider is None or orbit_backend is None:
-        backend_factory = PhoenixBackendFactory()
-        if product_provider is None:
-            product_provider = backend_factory.create_product_provider()
-        if orbit_backend is None:
-            orbit_backend = backend_factory.create_orbit_catalog_backend()
 
     # Necessary to get the ephemerides (orbits)
     orbits = get_orbits(orbit_backend, product_ids_per_date, orbit_type, cache=cache)

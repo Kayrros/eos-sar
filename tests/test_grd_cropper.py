@@ -15,21 +15,16 @@ from eos.products.sentinel1.grd_cropper import (
     FilesystemResultDestination,
     MemoryResultDestination,
     Params,
-    PhoenixInputProduct,
     ProductsAreFromDifferentDatatakes,
     get_cdse_orbit_catalog_backend,
-    get_phoenix_orbit_catalog_backend,
     process,
 )
 
 
-def test_grd_cropper(phx_client, tmp_path):
+def test_grd_cropper(cdse_auth, cdse_s3_session, tmp_path):
     pid = "S1A_IW_GRDH_1SDV_20240125T041457_20240125T041522_052258_065159_C088"
 
-    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
-        "aws:proxima:sentinel-s1-l1c"
-    )
-    item = collection.get_item(pid)
+    cdse_backend = CDSESentinel1GRDCatalogBackend()
 
     params = Params(
         polarizations=["VV", "VH"],
@@ -39,7 +34,13 @@ def test_grd_cropper(phx_client, tmp_path):
         filtering=None,
     )
     input = CropperInput(
-        products=[PhoenixInputProduct(item)],
+        products=[
+            CDSEInputProduct(
+                product_id=pid,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            )
+        ],
         params=params,
         destination_geometry=BboxDestinationGeometry(
             bbox=(29.00, 41.00, 29.10, 41.10),
@@ -54,7 +55,7 @@ def test_grd_cropper(phx_client, tmp_path):
             }
         ),
         dem_source=eos.dem.DEMStitcherSource(),
-        orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
+        orbit_catalog_backend=get_cdse_orbit_catalog_backend(*cdse_auth),
     )
 
     metadata = process(input)
@@ -76,13 +77,10 @@ def test_grd_cropper(phx_client, tmp_path):
     )
 
 
-def test_grd_cropper_2(phx_client, tmp_path):
+def test_grd_cropper_2(cdse_auth, cdse_s3_session, tmp_path):
     pid = "S1A_IW_GRDH_1SDV_20221205T015438_20221205T015503_046190_0587C2_F48B"
 
-    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
-        "aws:proxima:sentinel-s1-l1c"
-    )
-    item = collection.get_item(pid)
+    cdse_backend = CDSESentinel1GRDCatalogBackend()
 
     params = Params(
         polarizations=["VV", "VH"],
@@ -92,7 +90,13 @@ def test_grd_cropper_2(phx_client, tmp_path):
         filtering=None,
     )
     input = CropperInput(
-        products=[PhoenixInputProduct(item)],
+        products=[
+            CDSEInputProduct(
+                product_id=pid,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            )
+        ],
         params=params,
         destination_geometry=BboxDestinationGeometry(
             bbox=(73.73, 70.96, 73.92, 71.02),
@@ -107,7 +111,7 @@ def test_grd_cropper_2(phx_client, tmp_path):
             }
         ),
         dem_source=eos.dem.DEMStitcherSource(),
-        orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
+        orbit_catalog_backend=get_cdse_orbit_catalog_backend(*cdse_auth),
     )
 
     process(input)
@@ -118,13 +122,10 @@ def test_grd_cropper_2(phx_client, tmp_path):
     assert np.isnan(r).sum() == 0
 
 
-def test_grd_cropper_completely_outside(phx_client, tmp_path):
+def test_grd_cropper_completely_outside(cdse_auth, cdse_s3_session, tmp_path):
     pid = "S1A_IW_GRDH_1SDV_20221205T015438_20221205T015503_046190_0587C2_F48B"
 
-    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
-        "aws:proxima:sentinel-s1-l1c"
-    )
-    item = collection.get_item(pid)
+    cdse_backend = CDSESentinel1GRDCatalogBackend()
 
     params = Params(
         polarizations=["VV", "VH"],
@@ -134,7 +135,13 @@ def test_grd_cropper_completely_outside(phx_client, tmp_path):
         filtering=None,
     )
     input = CropperInput(
-        products=[PhoenixInputProduct(item)],
+        products=[
+            CDSEInputProduct(
+                product_id=pid,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            )
+        ],
         params=params,
         destination_geometry=BboxDestinationGeometry(
             bbox=(53.73, 50.96, 53.92, 51.02),
@@ -149,7 +156,7 @@ def test_grd_cropper_completely_outside(phx_client, tmp_path):
             }
         ),
         dem_source=eos.dem.DEMStitcherSource(),
-        orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
+        orbit_catalog_backend=get_cdse_orbit_catalog_backend(*cdse_auth),
     )
 
     process(input)
@@ -224,15 +231,11 @@ def test_grd_cropper_assembly(tmp_path, cdse_auth, cdse_s3_session):
     assert np.isnan(r).sum() == 0
 
 
-def test_grd_cropper_multiple_datatakes(phx_client):
+def test_grd_cropper_multiple_datatakes(cdse_auth, cdse_s3_session):
     pid1 = "S1A_IW_GRDH_1SDV_20221205T015438_20221205T015503_046190_0587C2_F48B"
     pid2 = "S1A_IW_GRDH_1SDV_20240125T041457_20240125T041522_052258_065159_C088"
 
-    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
-        "aws:proxima:sentinel-s1-l1c"
-    )
-    item1 = collection.get_item(pid1)
-    item2 = collection.get_item(pid2)
+    cdse_backend = CDSESentinel1GRDCatalogBackend()
 
     params = Params(
         polarizations=["VV", "VH"],
@@ -242,7 +245,18 @@ def test_grd_cropper_multiple_datatakes(phx_client):
         filtering=None,
     )
     input = CropperInput(
-        products=[PhoenixInputProduct(item1), PhoenixInputProduct(item2)],
+        products=[
+            CDSEInputProduct(
+                product_id=pid1,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            ),
+            CDSEInputProduct(
+                product_id=pid2,
+                cdse_backend=cdse_backend,
+                s3_session=cdse_s3_session,
+            ),
+        ],
         params=params,
         destination_geometry=BboxDestinationGeometry(
             bbox=(73.73, 70.96, 73.92, 71.02),
@@ -252,7 +266,7 @@ def test_grd_cropper_multiple_datatakes(phx_client):
         ),
         result_destination=MemoryResultDestination.make_empty(),
         dem_source=eos.dem.DEMStitcherSource(),
-        orbit_catalog_backend=get_phoenix_orbit_catalog_backend(client=phx_client),
+        orbit_catalog_backend=get_cdse_orbit_catalog_backend(*cdse_auth),
     )
 
     with pytest.raises(ProductsAreFromDifferentDatatakes):

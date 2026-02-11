@@ -3,7 +3,6 @@ import os
 from typing import Any
 
 import numpy as np
-import phoenix as phx
 import shapely.geometry
 from rasterio import rasterio
 
@@ -68,7 +67,7 @@ def process(
 
     dem = model.fetch_dem(dem_source)
     alt = dem.elevation(lon, lat)
-    assert isinstance(alt, float)
+    assert isinstance(alt, np.float32), f"{type(alt)}"
     y, x, _ = model.projection(lon, lat, alt)
 
     roi = Roi(int(x) - W, int(y) - H, W * 2, H * 2)
@@ -99,12 +98,6 @@ def process(
     return model, raster, roi, dem, meta
 
 
-def download_maybe(path: str, id: str) -> None:
-    if not os.path.exists(path):
-        it = collection.get_item(id)
-        it.assets.download_to_fileobj(open(path, "wb"), "DATA")
-
-
 def simulate_phases(model1, model2, roi1, dem):
     topo = eos.sar.geom_phase.TopoCorrection(model1, [model2], grid_size=50, degree=7)
 
@@ -120,31 +113,24 @@ def simulate_phases(model1, model2, roi1, dem):
     return topo_phase, flat_earth
 
 
-collection = (
-    phx.catalog.Client()
-    .get_collection("asi-cosmo-skymed-csk-stripmap-l1a")
-    .at("aws:proxima:kayrros-prod-cosmo-skymed")
-)
+def main(experiment_dir="csk_experiment", debug: bool = False):
+    id1 = "CSKS1_SCS_B_HI_13_HH_RD_FF_20190528001000_20190528001007"
+    id2 = "CSKS4_SCS_B_HI_13_HH_RD_FF_20190604001000_20190604001007"
 
-id1 = "CSKS1_SCS_B_HI_13_HH_RD_FF_20190528001000_20190528001007"
-id2 = "CSKS4_SCS_B_HI_13_HH_RD_FF_20190604001000_20190604001007"
-
-lon = -96.6040765
-lat = 35.9888679
-W = 1700
-H = 1700
-
-
-def main(outdir="/tmp/t/", debug: bool = False):
-    os.makedirs(outdir, exist_ok=True)
+    lon = -96.6040765
+    lat = 35.9888679
+    W = 1700
+    H = 1700
 
     # download and read the rasters
-    path = f"{outdir}/{id1}.h5"
-    download_maybe(path, id1)
+    path = f"{experiment_dir}/{id1}.h5"
+    assert os.path.exists(path)
+    outdir = experiment_dir
+
     m1, img1, r1, d1, meta1 = process(path, f"{outdir}/img1.tif", lon, lat, W, H)
 
-    path = f"{outdir}/{id2}.h5"
-    download_maybe(path, id2)
+    path = f"{experiment_dir}/{id2}.h5"
+    assert os.path.exists(path)
     m2, img2, r2, _, meta2 = process(path, f"{outdir}/img2.tif", lon, lat, W, H)
 
     # compute deramping

@@ -3,7 +3,6 @@ from __future__ import annotations
 import abc
 import concurrent.futures
 import dataclasses
-import datetime
 import json
 import math
 from dataclasses import dataclass
@@ -26,10 +25,7 @@ import eos.sar.regist
 from eos.products import sentinel1
 from eos.products.sentinel1 import orbit_catalog
 from eos.products.sentinel1.metadata import Sentinel1GRDMetadata
-from eos.products.sentinel1.product import (
-    PhoenixSentinel1GRDProductInfo,
-    Sentinel1GRDProductInfo,
-)
+from eos.products.sentinel1.product import Sentinel1GRDProductInfo
 from eos.products.sentinel1.proj_model import Sentinel1GRDModel
 from eos.sar import (  # type: ignore[attr-defined]
     io,
@@ -38,7 +34,6 @@ from eos.sar import (  # type: ignore[attr-defined]
 from eos.sar.io import read_window
 from eos.sar.orbit import Orbit
 from eos.sar.roi import Roi
-from eos.sar.rtc import RadiometricTerrainCorrector
 
 GRDProductProvider = Callable[[str], Sentinel1GRDProductInfo]
 
@@ -377,74 +372,6 @@ class CannotFindReferenceMetadataException(Exception): ...
 
 
 @dataclass(frozen=True)
-class PhxProductBasedSliceGenerator(SliceGenerator):
-    """
-    This generator looks at the Sentinel-1 catalog to find products overlapping with the requested slice.
-    The projection model of the resulting simulation will be derived from found products.
-    """
-
-    phx_collection: Any
-    """ Kayrros specific: collection: esa-sentinel-1-csar-l1-grd with a source """
-    anx: dict[str, Any]
-    """ Kayrros specific: collection: esa-sentinel-1-csar-l1-grd, static_assets: "ANX" """
-    dem_source: eos.dem.DEMSource
-    options: SliceGenerationOptions
-    orbit_catalog_backend: Optional[orbit_catalog.Sentinel1OrbitCatalogBackend]
-    product_provider: GRDProductProvider
-
-    @override
-    def generate_slice(
-        self, slice_spec: SliceSpec
-    ) -> tuple[Sentinel1GRDMetadata, NDArray[np.float32]]:
-        # TODO: get consecutive products for assembly
-        product_info = self._search_reference_product_info(slice_spec)
-        if not product_info:
-            raise CannotFindReferenceMetadataException(
-                f"cannot find reference for the slice {slice_spec}"
-            )
-
-        meta, proj_model = _make_proj_model([product_info], self.orbit_catalog_backend)
-        roi = _compute_roi_for_slice(slice_spec, meta, proj_model)
-        simulation = _simulate_slice(self.options, proj_model, roi, self.dem_source)
-        new_meta = _adjust_grd_metadata(meta, proj_model, roi)
-        return new_meta, simulation
-
-    def _search_reference_product_info(
-        self, slice_spec: SliceSpec
-    ) -> Optional[Sentinel1GRDProductInfo]:
-        import phoenix as phx
-
-        relative_orbit_number = slice_spec.relative_orbit_number
-        slice_id = slice_spec.slice_id
-        approx_lonlat = slice_spec.approx_lonlat
-
-        filters = [
-            phx.catalog.Field("sentinel1:sensor_mode") == "IW",
-            phx.catalog.Field("sentinel1:relative_orbit_number")
-            == relative_orbit_number,
-            phx.catalog.Geometry.intersects(approx_lonlat.buffer(5.0)),
-            # skip products that don't have a POE aux file
-            # because we use the POE ANX time (from self.anx) later
-            phx.catalog.Field("datetime")
-            < datetime.datetime.now() - datetime.timedelta(days=22),
-        ]
-
-        items = list(self.phx_collection.list_items(filters=filters, results=10000))
-        # reverse search, assuming newer products have better orbits (probably not true anymore since 2024)
-        items = items[::-1]
-
-        for it in items:
-            # TODO: handle orbit crossing
-            slice_ids = _phx_item_to_slice_ids(it, slice_spec.slicing_spec, self.anx)
-
-            if slice_id in slice_ids:
-                product = self.product_provider(it.id)
-                return product
-
-        return None
-
-
-@dataclass(frozen=True)
 class SpecificProductSliceGenerator(SliceGenerator):
     """
     This generator is mostly for testing purposes.
@@ -469,33 +396,6 @@ class SpecificProductSliceGenerator(SliceGenerator):
 
 def _to_timestamp(s: str) -> float:
     return dateutil.parser.parse(s).timestamp()
-
-
-def _phx_item_to_slice_ids(
-    item: Any, slicing_spec: SlicingSpec, anx: dict[str, Any]
-) -> list[int]:
-    """
-    Return the list of slice id that intersect with the given GRD item.
-    This function requires the item to be old enough to have POE ANX processed.
-    """
-    seconds_per_slice = slicing_spec.seconds_per_slice
-
-    platform = f"sentinel-{item.id[1:3].lower()}"
-    absolute_orbit_number = item.properties["sentinel1:orbit_number"]
-    times = anx["platform"][platform][absolute_orbit_number]
-    anx_time = times["poe"]
-
-    anx_timestamp = _to_timestamp(anx_time)
-    begin_timestamp = _to_timestamp(item.properties["sentinel1:begin_position"])
-    end_timestamp = _to_timestamp(item.properties["sentinel1:end_position"])
-
-    begin_anx = begin_timestamp - anx_timestamp
-    end_anx = end_timestamp - anx_timestamp
-
-    first_slice = math.floor(begin_anx / seconds_per_slice)
-    last_slice = math.ceil(end_anx / seconds_per_slice)
-
-    return list(range(first_slice, last_slice))
 
 
 def _make_proj_model(
@@ -778,114 +678,3 @@ def calibrate(
             np.save("/tmp/test.npy", rtc_mosaic)
         assert np.all(touched_dbg != -99)
     assert np.all(touched_rows)
-
-
-if __name__ == "__main__":
-
-    def main(
-        product_id: str = "S1A_IW_GRDH_1SDV_20220527T130626_20220527T130651_043397_052EB3_7733",
-        calibration: str | None = None,
-    ):
-        import os
-        import time
-
-        import phoenix as phx
-
-        client = phx.catalog.Client()
-        collection = client.get_collection("esa-sentinel-1-csar-l1-grd")
-        anx = collection.static_assets.get("ANX").download_as_bytes()
-        anx = json.loads(anx)
-
-        dem_source = eos.dem.DEMStitcherSource()
-
-        orbit_catalog_backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-            collection_source=phx.catalog.Client()
-            .get_collection("esa-sentinel-1-csar-aux")
-            .at("aws:proxima:kayrros-prod-sentinel-aux")
-        )
-
-        generator = PhxProductBasedSliceGenerator(
-            phx_collection=collection.at("aws:proxima:sentinel-s1-l1c"),
-            anx=anx,
-            dem_source=dem_source,
-            options=SliceGenerationOptions(
-                col_margins_for_tiling=100,
-                col_step_for_tiling=2048,
-                max_workers=4,
-            ),
-            orbit_catalog_backend=orbit_catalog_backend,
-            product_provider=PhoenixSentinel1GRDProductInfo.from_product_id,
-        )
-
-        os.makedirs("tmp", exist_ok=True)
-        slice_provider = SliceProvider(
-            storage=LocalSliceStorage(directory=Path("./tmp")),
-            generator=generator,
-        )
-
-        slicing_spec = SlicingSpec(
-            milliseconds_per_slice=3070,
-            row_margin=20,
-            near_col_margin=100,
-            far_col_margin=100,
-        )
-
-        product = PhoenixSentinel1GRDProductInfo.from_product_id(product_id)
-        meta = sentinel1.metadata.extract_grd_metadata(product.get_xml_annotation("VV"))
-
-        orbit_catalog_backend = orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-            collection_source=phx.catalog.Client()
-            .get_collection("esa-sentinel-1-csar-aux")
-            .at("aws:proxima:kayrros-prod-sentinel-aux")
-        )
-        query = orbit_catalog.Sentinel1OrbitCatalogQuery(
-            product_ids=[product.product_id], quality=orbit_catalog.BestEffort
-        )
-        statevectors = orbit_catalog.search(orbit_catalog_backend, query).single()
-        if statevectors is not None:
-            meta = meta.with_new_state_vectors(statevectors, "")
-
-        orbit = Orbit(meta.state_vectors)
-        proj_model = sentinel1.proj_model.grd_model_from_meta(meta, orbit)
-
-        reader = product.get_image_reader("VV")
-        if calibration:
-            cal_xml = product.get_xml_calibration("VV")
-            noise_xml = product.get_xml_noise("VV")
-            ipf = product.ipf
-            calibrator = sentinel1.calibration.Sentinel1Calibrator(
-                cal_xml, noise_xml, ipf
-            )
-            reader = sentinel1.calibration.CalibrationReader(
-                reader, calibrator, method=calibration
-            )
-
-        h, w = meta.height, meta.width
-        roi = Roi(0, 0, w, h)
-        roi = Roi(10000, 8000, 3000, 3500)
-        print(roi)
-
-        array: NDArray[np.float32]
-        array = read_window(reader, roi, get_complex=False, out_dtype=np.float32)  # type: ignore
-        old = array.copy()
-
-        print("calibrate new product")
-        t = time.time()
-        calibrate(
-            slice_provider, slicing_spec, meta, proj_model, roi, array, debug=True
-        )
-        print("calibrate new product", time.time() - t)
-
-        np.save("./tmp/a.npy", old)
-        np.save("./tmp/b.npy", array)
-        del array
-
-        dem = proj_model.fetch_dem(dem_source, roi)
-        rtc = RadiometricTerrainCorrector(proj_model, dem, roi)
-        corrected = rtc.apply(old)
-        np.save("./tmp/c.npy", corrected)
-        np.save("./tmp/c-sim.npy", rtc.get_simulation())
-
-    import fire
-
-    fire.Fire(main)

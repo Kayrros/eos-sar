@@ -115,34 +115,6 @@ EXPECTED_GRD_NEW_COG = [
 ]
 
 
-def test_phx_catalog_slc(phx_client):
-    query = QUERY
-    expected_slc = EXPECTED_SLC
-    from eos.products.sentinel1.catalog import PhoenixSentinel1SLCCatalogBackend
-
-    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-slc").at(
-        "asf:daac:sentinel-1"
-    )
-    backend = PhoenixSentinel1SLCCatalogBackend(collection_source=collection)
-    result = search_slc(backend, query)
-    assert result.product_ids == expected_slc
-
-
-def test_phx_catalog_grd(phx_client):
-    query = QUERY
-    expected_grd = EXPECTED_GRD
-    from eos.products.sentinel1.catalog import PhoenixSentinel1GRDCatalogBackend
-
-    collection = phx_client.get_collection("esa-sentinel-1-csar-l1-grd").at(
-        "asf:daac:sentinel-1"
-    )
-
-    backend = PhoenixSentinel1GRDCatalogBackend(collection_source=collection)
-    result = search_grd(backend, query)
-    print(result.product_ids)
-    assert result.product_ids == expected_grd
-
-
 @pytest.mark.parametrize(
     "query,expected_slc", [(QUERY, EXPECTED_SLC), (QUERY_NEW, EXPECTED_SLC_NEW)]
 )

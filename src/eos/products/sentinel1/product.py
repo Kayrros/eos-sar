@@ -8,7 +8,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import rasterio
 import rasterio.session
@@ -21,7 +21,7 @@ from eos.products.sentinel1.catalog import (
     CDSESentinel1GRDCatalogBackend,
     CDSESentinel1SLCCatalogBackend,
 )
-from eos.sar.io import ImageOpener, ImageReader
+from eos.sar.io import ImageReader
 
 logger = logging.Logger(__name__)
 
@@ -303,143 +303,6 @@ class SafeSentinel1ProductInfo(Sentinel1SLCProductInfo):
     @override
     def get_manifest(self) -> str:
         return self.manifest_content
-
-
-try:
-    import phoenix.catalog
-except ImportError:
-    pass
-else:
-    try:
-        from bursterio import BursterSwathReader
-        from phoenix.catalog.plugins.slc_burster import Burster
-    except ImportError:
-        pass
-    else:
-
-        class PhoenixSentinel1ProductInfo(Sentinel1SLCProductInfo):
-            def __init__(self, item: Any, index: bool = True):
-                super().__init__(item.id)
-                self.item = item
-                self.burstem = Burster.from_item(self.item)
-                if index:
-                    self.burstem.index()
-
-            @override
-            def get_image_reader(self, swath: str, pol: str) -> ImageReader:
-                return BursterSwathReader(self.burstem, swath, pol)  # type: ignore
-
-            @override
-            def get_xml_annotation(self, swath: str, pol: str) -> str:
-                xml_annotation_key = f"{swath.upper()}_{pol.upper()}_ANNOTATION_XML"
-                content: str = self.burstem.download_as_bytes(
-                    xml_annotation_key
-                ).decode("utf-8")
-                return content
-
-            @override
-            def get_xml_calibration(self, swath: str, pol: str) -> str:
-                xml_annotation_key = f"{swath.upper()}_{pol.upper()}_CALIBRATION_XML"
-                content: str = self.burstem.download_as_bytes(
-                    xml_annotation_key
-                ).decode("utf-8")
-                return content
-
-            @override
-            def get_xml_noise(self, swath: str, pol: str) -> str:
-                xml_annotation_key = f"{swath.upper()}_{pol.upper()}_NOISE_XML"
-                content: str = self.burstem.download_as_bytes(
-                    xml_annotation_key
-                ).decode("utf-8")
-                return content
-
-            @override
-            def get_manifest(self) -> str:
-                content: str = self.burstem.download_as_bytes("MANIFEST").decode(
-                    "utf-8"
-                )
-                return content
-
-            @staticmethod
-            def from_product_id(
-                product_id: str,
-                index: bool = True,
-                collection: Optional[Any] = None,
-                source: Optional[str] = None,
-            ) -> PhoenixSentinel1ProductInfo:
-                if collection is None:
-                    collection = (
-                        phoenix.catalog.Client()
-                        .get_collection("esa-sentinel-1-csar-l1-slc")
-                        .at("asf:daac:sentinel-1")
-                    )
-                assert collection is not None
-                if source:
-                    collection = collection.at(source)
-                    assert collection is not None
-                item = collection.get_item(product_id)
-                return PhoenixSentinel1ProductInfo(item, index=index)
-
-    class PhoenixSentinel1GRDProductInfo(Sentinel1GRDProductInfo):
-        def __init__(self, item: Any, image_opener: ImageOpener):
-            super().__init__(item.id)
-            self.item = item
-            self.image_opener = image_opener
-
-        @override
-        def get_image_reader(self, pol: str) -> ImageReader:
-            key = pol.upper()
-            uri = self.item.assets.uri(key)
-            return self.image_opener(uri)
-
-        @override
-        def get_xml_annotation(self, pol: str) -> str:
-            xml_annotation_key = f"{pol.upper()}_ANNOTATION"
-            content: str = self.item.assets.download_as_bytes(
-                xml_annotation_key
-            ).decode("utf-8")
-            return content
-
-        @override
-        def get_xml_calibration(self, pol: str) -> str:
-            xml_annotation_key = f"{pol.upper()}_CALIBRATION"
-            content: str = self.item.assets.download_as_bytes(
-                xml_annotation_key
-            ).decode("utf-8")
-            return content
-
-        @override
-        def get_xml_noise(self, pol: str) -> str:
-            xml_annotation_key = f"{pol.upper()}_NOISE"
-            content: str = self.item.assets.download_as_bytes(
-                xml_annotation_key
-            ).decode("utf-8")
-            return content
-
-        @override
-        def get_manifest(self) -> str:
-            content: bytes = self.item.assets.download_as_bytes("MANIFEST")
-            return content.decode("utf-8")
-
-        @staticmethod
-        def from_product_id(
-            product_id: str,
-            image_opener: ImageOpener = eos.sar.io.open_image,
-            collection: Optional[Any] = None,
-            source: Optional[str] = None,
-        ) -> PhoenixSentinel1GRDProductInfo:
-            if collection is None:
-                collection = (
-                    phoenix.catalog.Client()
-                    .get_collection("esa-sentinel-1-csar-l1-grd")
-                    .at("aws:proxima:sentinel-s1-l1c")
-                )
-            assert collection is not None
-            if source:
-                collection = collection.at(source)
-                assert collection is not None
-            item = collection.get_item(product_id)
-            return PhoenixSentinel1GRDProductInfo(item, image_opener)
 
 
 @dataclass

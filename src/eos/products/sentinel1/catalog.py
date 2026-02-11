@@ -2,7 +2,7 @@ import abc
 import datetime
 import logging
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Union
+from typing import Any, Literal, Union
 
 import requests
 import shapely
@@ -97,66 +97,6 @@ def search_grd(
     cache: eos.cache.Cache = eos.cache.no_cache(),
 ) -> Sentinel1CatalogResult:
     return _search_from_backend(backend, query, cache)
-
-
-try:
-    import phoenix.catalog as phx
-except ImportError:
-    pass
-else:
-
-    def _phx_search(collection_source: Any, query: Sentinel1CatalogQuery) -> list[str]:
-        filters = [
-            phx.Geometry.intersects(query.geometry),
-            phx.Field("sentinel1:sensor_mode") == "IW",
-            phx.Field("datetime") >= query.start_date,
-            phx.Field("datetime") < query.end_date,
-            phx.Field("sentinel1:polarization").is_in(*query.polarization),
-        ]
-
-        orbit = query.relative_orbit_number
-
-        # look at neighbouring orbits because of its loose definition around the equator
-        def validate(o: int) -> int:
-            return (o - 1 + 175) % 175 + 1
-
-        orbits = (validate(orbit - 1), orbit, validate(orbit + 1))
-        filters.append(phx.Field("sentinel1:relative_orbit_number").is_in(*orbits))
-
-        items: Iterable[phx.Item] = collection_source.search_items(
-            filters=filters, results=200000
-        )
-
-        items = filter(lambda it: it.assets.status == "online", items)
-        items = list(items)
-
-        # deduplicate same products (different hash)
-        # TODO: we need to do better than this
-        items = {it.id[:-5]: it for it in items}
-
-        return [it.id for it in items.values()]
-
-    @dataclass(frozen=True)
-    class PhoenixSentinel1SLCCatalogBackend(Sentinel1SLCCatalogBackend):
-        collection_source: Any
-
-        def __post_init__(self):
-            assert self.collection_source.id == "esa-sentinel-1-csar-l1-slc"
-
-        @override
-        def search(self, query: Sentinel1CatalogQuery) -> list[str]:
-            return _phx_search(self.collection_source, query)
-
-    @dataclass(frozen=True)
-    class PhoenixSentinel1GRDCatalogBackend(Sentinel1GRDCatalogBackend):
-        collection_source: Any
-
-        def __post_init__(self):
-            assert self.collection_source.id == "esa-sentinel-1-csar-l1-grd"
-
-        @override
-        def search(self, query: Sentinel1CatalogQuery) -> list[str]:
-            return _phx_search(self.collection_source, query)
 
 
 def _cdse_list_items(request: str) -> list[str]:

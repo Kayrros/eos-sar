@@ -35,11 +35,6 @@ teosar-light = [
     "tqdm>=4.67.0",
     "tifffile>=2024.1.0",
 ]
-kayrros = [
-    "kayrros-phoenix[source-s3,plugin-burster]>=1.14.1",
-    "kayrros-burster>=1.0.0",
-    "kayrros-bursterio>=0.2.0",
-]
 
 [build-system]
 requires = ["setuptools", "cython", "numpy"]
@@ -65,18 +60,6 @@ dev = [
     # usage/
     "fire>=0.6.0",
 ]
-
-[tool.uv.sources]
-kayrros-phoenix = { index = "kayrros" }
-kayrros-burster = { index = "kayrros" }
-kayrros-bursterio = { index = "kayrros" }
-
-[[tool.uv.index]]
-name = "kayrros"
-url = "https://pypi.dev-kayrros.ovh/"
-# Explicit means that the official PyPI will be used by default, except
-# when 'kayrros' is specified in tool.uv.sources.
-explicit = true
 
 [tool.ruff]
 line-length = 88

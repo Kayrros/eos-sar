@@ -1,15 +1,6 @@
-import importlib.util
 import os
 
 import pytest
-
-
-@pytest.fixture(scope="session")
-def phx_client(maybe_skip_phx):
-    import phoenix.catalog
-
-    phx_client = phoenix.catalog.Client()
-    return phx_client
 
 
 @pytest.fixture(scope="session")
@@ -61,14 +52,6 @@ def maybe_skip_cdse_s3():
         pytest.skip(
             "skipped because CDSE S3 credentials are not found (CDSE_ACCESS_KEY_ID, CDSE_SECRET_ACCESS_KEY)"
         )
-
-
-@pytest.fixture(scope="session")
-def maybe_skip_phx():
-    if importlib.util.find_spec("phoenix") is None:
-        pytest.skip("skipped because Phoenix is not installed")
-    if "PHX_USERNAME" not in os.environ:
-        pytest.skip("skipped because Phoenix credentials are not found")
 
 
 @pytest.fixture(scope="session")

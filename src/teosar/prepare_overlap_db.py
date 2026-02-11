@@ -1,5 +1,6 @@
 import numpy as np
 
+from eos.products.sentinel1 import orbit_catalog
 from eos.sar.utils import write_array
 from teosar import inout, tsinsar
 from teosar.utils import OvlIfg
@@ -54,6 +55,9 @@ def main(
     dem_sampling_ratio,
     primary_id,
     osids_of_interest=None,
+    *,
+    product_provider: tsinsar.ProductProvider,
+    orbit_backend: orbit_catalog.Sentinel1OrbitCatalogBackend,
 ):
     pipelines = tsinsar.main_ovl(
         dstdir,
@@ -69,6 +73,8 @@ def main(
         dem_sampling_ratio,
         primary_id,
         osids_of_interest=osids_of_interest,
+        product_provider=product_provider,
+        orbit_backend=orbit_backend,
     )
     assert len(pipelines) == 2, "The code below works only on two dates for now"
 
