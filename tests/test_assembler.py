@@ -1,4 +1,5 @@
 import numpy as np
+from rasterio.io import DatasetReader
 
 from eos.products import sentinel1
 from eos.products.sentinel1.catalog import CDSESentinel1GRDCatalogBackend
@@ -61,6 +62,11 @@ def test_grd_assembler(cdse_s3_session):
     )
 
     assert (raster_both == raster_p1 + raster_p2).all()
+
+    assert isinstance(reader1, DatasetReader)
+    assert isinstance(reader2, DatasetReader)
+    reader1.close()
+    reader2.close()
 
 
 def test_projection_and_localization(cdse_s3_session):
@@ -174,6 +180,9 @@ def test_grd_assembler_start_of_datatake(cdse_s3_session):
     raster = asm2.crop(roi2, {product_id: reader})
     assert (raster != 0).all()
 
+    assert isinstance(reader, DatasetReader)
+    reader.close()
+
 
 def test_grd_assembler_end_of_datatake(cdse_s3_session):
     pol = "vv"
@@ -215,6 +224,9 @@ def test_grd_assembler_end_of_datatake(cdse_s3_session):
     # it should only contain values
     raster = asm2.crop(roi2, {product_id: reader})
     assert (raster != 0).all()
+
+    assert isinstance(reader, DatasetReader)
+    reader.close()
 
 
 def test_grd_assemble_metadata(cdse_s3_session):

@@ -1,24 +1,23 @@
-import os
-
 import numpy as np
 import pytest
+from rasterio.io import DatasetReader
 
 import eos.dem
 import eos.products.sentinel1
 import eos.products.sentinel1 as s1
 import eos.sar
+from eos.products.sentinel1.catalog import CDSESentinel1SLCCatalogBackend
 from eos.products.sentinel1.coordinate_correction import FullBistaticReference
 from eos.products.sentinel1.doppler_info import Sentinel1Doppler
 from eos.products.sentinel1.metadata import Sentinel1BurstMetadata
+from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 from eos.products.sentinel1.proj_model import Sentinel1BurstModel
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector
 
 
-def get_ref_metas(ref_xml_paths, s3_client):
-    xml_contents = [
-        eos.sar.io.read_xml_file(xml_path, s3_client) for xml_path in ref_xml_paths
-    ]
+def get_ref_metas(products):
+    xml_contents = [product.get_xml_annotation("iw2", "vv") for product in products]
     ref_metas = [
         FullBistaticReference.from_burst_metadata(
             s1.metadata.extract_burst_metadata(xml_content, 0)
@@ -29,51 +28,39 @@ def get_ref_metas(ref_xml_paths, s3_client):
 
 
 @pytest.fixture(scope="module")
-def inputs(s3_client):
-    xml_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
-    )
-
-    tiff_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/measurement"
-    )
-
-    xml_basenames = [
-        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml",
-        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml",
+def inputs(cdse_s3_session):
+    product_ids = [
+        "S1B_IW_SLC__1SDV_20190803T164006_20190803T164034_017424_020C57_25CA",
+        "S1A_IW_SLC__1SDV_20190809T164050_20190809T164117_028495_033896_2CC5",
     ]
 
-    tiff_basenames = [
-        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff",
-        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff",
+    catalog_backend = CDSESentinel1SLCCatalogBackend()
+    products = [
+        CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            catalog_backend, cdse_s3_session, product_id
+        )
+        for product_id in product_ids
     ]
 
-    ref_basenames = [
-        "s1b-iw2-slc-vv-20190803t164006-20190803t164034-017424-020c57-005.xml",
-        "s1a-iw2-slc-vv-20190809t164051-20190809t164117-028495-033896-005.xml",
-    ]
+    # read the xmls of iw3 vv as strings
+    xml_content = [product.get_xml_annotation("iw3", "vv") for product in products]
 
-    # list of our xmls
-    xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
-
-    tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
-
-    # read the xmls as strings
-    xml_content = []
-    for xml_path in xml_paths:
-        xml_content.append(eos.sar.io.read_xml_file(xml_path, s3_client))
-
-    image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
+    # get image readers of iw3 vv
+    image_readers = [product.get_image_reader("iw3", "vv") for product in products]
 
     # Now extract the needed metadata
     primary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[0])
     secondary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[1])
 
-    ref_metas = get_ref_metas(
-        [os.path.join(xml_folder, ref_base) for ref_base in ref_basenames], s3_client
-    )
+    ref_metas = get_ref_metas(products)
 
-    return image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
+    yield image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
+
+    # teardown: close readers
+    # https://docs.pytest.org/en/stable/how-to/fixtures.html#yield-fixtures-recommended
+    for reader in image_readers:
+        assert isinstance(reader, DatasetReader)
+        reader.close()
 
 
 @pytest.fixture(scope="module")

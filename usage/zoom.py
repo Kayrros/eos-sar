@@ -1,11 +1,19 @@
+"""
+Run with uv run --env-file .env --with matplotlib usage/zoom.py
+Ensure "CDSE_ACCESS_KEY_ID" and "CDSE_SECRET_ACCESS_KEY" are in the .env file
+"""
+
 import os
 
+import boto3
 import numpy as np
 from matplotlib import pyplot as plt
 
 import eos.dem
 import eos.products.sentinel1 as s1
 import eos.sar
+from eos.products.sentinel1.catalog import CDSESentinel1SLCCatalogBackend
+from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 from eos.sar.orbit import Orbit
 
 
@@ -13,67 +21,55 @@ def save_array(result_dir, name, array):
     np.save(os.path.join(result_dir, name), array)
 
 
-def get_bistatic_ref(ref_xml_paths):
-    xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in ref_xml_paths]
-    bistatic_ref = [
-        s1.coordinate_correction.FullBistaticReference.from_burst_metadata(
-            s1.metadata.extract_burst_metadata(xml_content, 0)
-        )
-        for xml_content in xml_contents
-    ]
-    return bistatic_ref
-
-
 def close_readers(readers):
     for read in readers:
         read.close()
 
 
+def get_ref_metas(products):
+    xml_contents = [product.get_xml_annotation("iw2", "vv") for product in products]
+    ref_metas = [
+        s1.coordinate_correction.FullBistaticReference.from_burst_metadata(
+            s1.metadata.extract_burst_metadata(xml_content, 0)
+        )
+        for xml_content in xml_contents
+    ]
+    return ref_metas
+
+
 def inputs():
-    xml_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
+    assert "CDSE_ACCESS_KEY_ID" in os.environ and "CDSE_SECRET_ACCESS_KEY" in os.environ
+    cdse_s3_session = boto3.Session(
+        aws_access_key_id=os.environ["CDSE_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["CDSE_SECRET_ACCESS_KEY"],
     )
 
-    tiff_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/measurement"
-    )
-
-    xml_basenames = [
-        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml",
-        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml",
+    product_ids = [
+        "S1B_IW_SLC__1SDV_20190803T164006_20190803T164034_017424_020C57_25CA",
+        "S1A_IW_SLC__1SDV_20190809T164050_20190809T164117_028495_033896_2CC5",
     ]
 
-    tiff_basenames = [
-        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff",
-        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff",
+    catalog_backend = CDSESentinel1SLCCatalogBackend()
+    products = [
+        CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            catalog_backend, cdse_s3_session, product_id
+        )
+        for product_id in product_ids
     ]
 
-    ref_basenames = [
-        "s1b-iw2-slc-vv-20190803t164006-20190803t164034-017424-020c57-005.xml",
-        "s1a-iw2-slc-vv-20190809t164051-20190809t164117-028495-033896-005.xml",
-    ]
+    # read the xmls of iw3 vv as strings
+    xml_content = [product.get_xml_annotation("iw3", "vv") for product in products]
 
-    # list of our xmls
-    xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
+    # get image readers of iw3 vv
+    image_readers = [product.get_image_reader("iw3", "vv") for product in products]
 
-    tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
-
-    # read the xmls as strings
-    xml_content = []
-    for xml_path in xml_paths:
-        xml_content.append(eos.sar.io.read_xml_file(xml_path))
-
-    image_readers = [eos.sar.io.open_image(p) for p in tiff_paths]
-
-    # # Now extract the needed metadata
+    # Now extract the needed metadata
     primary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[0])
     secondary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[1])
 
-    bistatic_refs = get_bistatic_ref(
-        [os.path.join(xml_folder, ref_base) for ref_base in ref_basenames]
-    )
+    ref_metas = get_ref_metas(products)
 
-    return image_readers, primary_bursts_meta, secondary_bursts_meta, bistatic_refs
+    return image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
 
 
 def _get_objects(burst_meta, bistatic_ref=None):

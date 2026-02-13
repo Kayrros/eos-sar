@@ -52,6 +52,7 @@ dev = [
     # testing
     "pytest>=8.2.2",
     "pytest-xdist>=3.6.1",
+    "pytest-rerunfailures>=16.0.1",
     # dem sources
     "srtm4[crop]>=1.2.5",
     "dem-stitcher>=2.5.12",

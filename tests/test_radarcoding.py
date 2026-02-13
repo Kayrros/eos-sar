@@ -8,21 +8,14 @@ from eos.sar import dem_to_radar, io, roi
 from eos.sar.orbit import Orbit
 
 
-def test_radar_coding(s3_client):
-    remote_test = True
-
-    if remote_test:
-        xml_folder = (
-            "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
-        )
-    else:
-        xml_folder = "../tests/data"
+def test_radar_coding():
+    xml_folder = "./tests/data"
 
     basename = "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
     xml_path = os.path.join(xml_folder, basename)
 
     # read xml
-    xml_content = io.read_xml_file(xml_path, s3_client)
+    xml_content = io.read_xml_file(xml_path)
 
     burst_id = 1
 

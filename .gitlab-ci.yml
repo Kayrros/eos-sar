@@ -11,22 +11,24 @@ variables:
 test:
   stage: test
   tags:
-    - high
+    - code-quality
   script:
-    - uv run --all-extras pytest . -n auto -v
+    - uv run --all-extras pytest . -n auto -v -m "not cdse"
+    - uv run --all-extras pytest . -v -m "cdse"
 
 # also test with a different resolution, to make sure everything works when using the oldest dependencies
 test:compatibility:
   stage: test
   tags:
-    - high
+    - code-quality
   script:
     - export UV_RESOLUTION=lowest-direct
     - rm uv.lock
     - echo 3.9 >.python-version
     - uv lock
     - uv tree
-    - uv run --all-extras pytest . -n auto -v
+    - uv run --all-extras pytest . -n auto -v -m "not cdse"
+    - uv run --all-extras pytest . -v -m "cdse"
 
 lint:
   stage: test

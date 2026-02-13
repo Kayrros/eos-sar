@@ -1,17 +1,18 @@
-import os
-
 import numpy as np
 import pyproj
 from numpy.typing import NDArray
+from rasterio.io import DatasetReader
 
 import eos.dem
 import eos.sar
 from eos.products import sentinel1
 from eos.products.sentinel1 import orbit_catalog
+from eos.products.sentinel1.catalog import CDSESentinel1SLCCatalogBackend
 from eos.products.sentinel1.orbit_catalog import (
     BestEffort,
     Sentinel1OrbitCatalogQuery,
 )
+from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 from eos.sar import range_doppler
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC
 from eos.sar.geoconfig import get_grid, localize_on_ellipsoid, normalize
@@ -218,7 +219,7 @@ def test_projection_grd():
     assert isinstance(pti, float), "vectorized projection func failed on scalar input"
 
 
-def test_projection_corner_reflectors(cdse_auth):
+def test_projection_corner_reflectors(cdse_auth, cdse_s3_session):
     from math import ceil, floor
 
     from eos.products.sentinel1.orbit_catalog import CDSESentinel1OrbitCatalogBackend
@@ -239,15 +240,17 @@ def test_projection_corner_reflectors(cdse_auth):
 
     # products near 2020, 1, 1 in which we have the coordinates, otherwise the
     # velocity of deformation in the file needs to be used to get coordinates at date
-    s3_bucket = "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/corner_reflectors_australia"
     safes = [
-        "S1A_IW_SLC__1SSH_20200103T083235_20200103T083305_030633_03829E_71AD.SAFE",
-        "S1A_IW_SLC__1SSH_20200103T083303_20200103T083331_030633_03829E_9342.SAFE",
+        "S1A_IW_SLC__1SSH_20200103T083235_20200103T083305_030633_03829E_71AD",
+        "S1A_IW_SLC__1SSH_20200103T083303_20200103T083331_030633_03829E_9342",
     ]
 
+    catalog_backend = CDSESentinel1SLCCatalogBackend()
     products = [
-        sentinel1.product.SafeSentinel1ProductInfo(os.path.join(s3_bucket, safe))
-        for safe in safes
+        CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            catalog_backend, cdse_s3_session, product_id
+        )
+        for product_id in safes
     ]
 
     pol = "HH"
@@ -256,9 +259,7 @@ def test_projection_corner_reflectors(cdse_auth):
     crop_size = 32
     zoom_factor = 32
 
-    query = Sentinel1OrbitCatalogQuery(
-        product_ids=[f.rstrip(".SAFE") for f in safes], quality=BestEffort
-    )
+    query = Sentinel1OrbitCatalogQuery(product_ids=safes, quality=BestEffort)
     backend = CDSESentinel1OrbitCatalogBackend(
         username=cdse_auth[0],
         password=cdse_auth[1],
@@ -441,6 +442,12 @@ def test_projection_corner_reflectors(cdse_auth):
     assert (rows_pred - rows_meas).std() < 0.03, (
         "Row standard deviation higher than expected"
     )
+
+    # close readers
+    for reader in readers.values():
+        assert isinstance(reader, sentinel1.calibration.CalibrationReader)
+        assert isinstance(reader.reader, DatasetReader)
+        reader.reader.close()
 
 
 def test_projection_with_DopplerCentroid():
