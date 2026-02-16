@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Iterator, Literal, Optional, Union
 
-import boto3
 import shapely.wkt
 import tqdm
 from typing_extensions import override
@@ -62,6 +61,8 @@ class CDSEProductProvider(ProductProviderBase):
         """
         Preserve previous behavior of Callable
         """
+        import boto3
+
         session = boto3.Session(
             aws_access_key_id=self.cdse_access_key_id,
             aws_secret_access_key=self.cdse_secret_access_key,
