@@ -1,3 +1,12 @@
+"""
+uv run --env-file .env usage/grd.py
+The .env file must contain
+    CDSE_ACCESS_KEY_ID
+    CDSE_SECRET_ACCESS_KEY
+    CDSE_USERNAME
+    CDSE_PASSWORD
+"""
+
 import os
 from typing import Optional
 

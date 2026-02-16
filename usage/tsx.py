@@ -1,3 +1,10 @@
+"""
+uv run --extra teosar-light usage/tsx.py
+
+TSX can be processed without the teosar-light extra, but this extra is used to
+make it easier to save the results into the directory structure.
+"""
+
 import glob
 import os
 from typing import Sequence

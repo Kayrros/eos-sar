@@ -1,3 +1,10 @@
+"""
+First ensure you have an OpenCL driver installed on your machine:
+    https://documen.tician.de/pyopencl/misc.html#enabling-access-to-cpus-and-gpus-via-py-opencl
+Then run:
+uv run --extra teosar periodo_ex.py
+"""
+
 from __future__ import annotations
 
 import json

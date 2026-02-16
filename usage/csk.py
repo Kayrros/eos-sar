@@ -1,3 +1,7 @@
+"""
+uv run usage/csk.py
+"""
+
 import json
 import os
 from typing import Any
@@ -114,6 +118,13 @@ def simulate_phases(model1, model2, roi1, dem):
 
 
 def main(experiment_dir="csk_experiment", debug: bool = False):
+    """
+    Expects that these 2 files
+        id1 = "CSKS1_SCS_B_HI_13_HH_RD_FF_20190528001000_20190528001007"
+        id2 = "CSKS4_SCS_B_HI_13_HH_RD_FF_20190604001000_20190604001007"
+
+    are in the experiment_dir.
+    """
     id1 = "CSKS1_SCS_B_HI_13_HH_RD_FF_20190528001000_20190528001007"
     id2 = "CSKS4_SCS_B_HI_13_HH_RD_FF_20190604001000_20190604001007"
 
@@ -122,7 +133,7 @@ def main(experiment_dir="csk_experiment", debug: bool = False):
     W = 1700
     H = 1700
 
-    # download and read the rasters
+    # read the rasters
     path = f"{experiment_dir}/{id1}.h5"
     assert os.path.exists(path)
     outdir = experiment_dir

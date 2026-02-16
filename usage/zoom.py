@@ -1,5 +1,5 @@
 """
-Run with uv run --env-file .env --with matplotlib usage/zoom.py
+Run with uv run --env-file .env --with matplotlib usage/zoom.py --result_dir usage/zoom_results
 Ensure "CDSE_ACCESS_KEY_ID" and "CDSE_SECRET_ACCESS_KEY" are in the .env file
 """
 

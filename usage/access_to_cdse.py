@@ -1,3 +1,11 @@
+"""
+uv run --env-file .env usage/access_to_cdse.py
+
+The .env file shoudl contain:
+    CDSE_ACCESS_KEY_ID
+    CDSE_SECRET_ACCESS_KEY
+"""
+
 import os
 
 import boto3

@@ -1,15 +1,11 @@
-# /// script
-# requires-python = ">=3.12"
-# dependencies = [
-#     "fire",
-#     "dem-stitcher",
-#     "kayrros-eos-sar[teosar-light,kayrros]",
-# ]
-#
-# [tool.uv.sources]
-# kayrros-eos-sar = { path = "../", editable = true }
-#
-# ///
+"""
+uv run --extra teosar-light usage/capella.py
+
+Note that the capella code can run without the teosar-light dependency.
+We only use it here for the ease of building a directory structure to store the
+results.
+"""
+
 import glob
 import logging
 import os
