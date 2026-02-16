@@ -9,3 +9,4 @@ recursive-exclude tests *
 recursive-exclude usage *
 recursive-exclude tools *
 
+recursive-include src *cl

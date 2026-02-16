@@ -29,12 +29,23 @@ teosar = [
     "tifffile>=2024.1.0",
     "tensorflow-probability[tf]>=0.24.0",  # see https://github.com/tensorflow/probability/releases/tag/v0.24.0
     "siphash24>=1.0",  # pytools is required by pyopencl, and gives a warning: RecommendedHashNotFoundWarning: Unable to import recommended hash 'siphash24.siphash13',
-    "pyopencl>=2025.1",
+    "pyopencl[pocl]>=2025.1",
 ]
 teosar-light = [
     "tqdm>=4.67.0",
     "tifffile>=2024.1.0",
 ]
+
+[tool.setuptools]
+# 1. The Master Toggle: Tells setuptools to respect MANIFEST.in
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# 2. The Manual Backup: Ensures .cl files are mapped to the package
+"*" = ["*.cl"]
 
 [build-system]
 requires = ["setuptools", "cython", "numpy"]

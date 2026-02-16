@@ -539,7 +539,7 @@ dependencies = [
 
 [package.optional-dependencies]
 teosar = [
-    { name = "pyopencl" },
+    { name = "pyopencl", extra = ["pocl"] },
     { name = "siphash24" },
     { name = "tensorflow-probability", extra = ["tf"] },
     { name = "tifffile", version = "2024.8.30", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -578,7 +578,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.1" },
     { name = "opencv-python-headless", specifier = ">=4.11.0" },
     { name = "ortools", specifier = ">=9.7.0" },
-    { name = "pyopencl", marker = "extra == 'teosar'", specifier = ">=2025.1" },
+    { name = "pyopencl", extras = ["pocl"], marker = "extra == 'teosar'", specifier = ">=2025.1" },
     { name = "pyproj", specifier = ">=3.5.0" },
     { name = "python-dateutil", specifier = ">=2.9.0" },
     { name = "rasterio", specifier = ">=1.4.0" },
@@ -1730,6 +1730,14 @@ wheels = [
 ]
 
 [[package]]
+name = "pocl-binary-distribution"
+version = "3.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7d/2d/7e7b1a6d7f807655d891a7d92fca12ea8cfae6f5dd48953f45d03d47d632/pocl_binary_distribution-3.0-py2.py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b70c3d7835afd9aabc43dcffe0035d6a71d54eb35d8d55fc2fd4eb1e037128a9", size = 58106985, upload-time = "2022-10-16T08:22:58.079Z" },
+]
+
+[[package]]
 name = "propcache"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1933,6 +1941,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/36/eba118d7a5bc524951c6d04d532385017fde7dced272b461c986dc0d8021/pyopencl-2025.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8f9725218ac096eb4460376cbd7ec0324bd1e96d25112c75ba8009e71a37fa97", size = 724579, upload-time = "2025-01-22T00:16:53.422Z" },
     { url = "https://files.pythonhosted.org/packages/8f/38/6227fee896a1102f2cf4b25a8ce3402705035545c62dbe6dcbe06d7389df/pyopencl-2025.1-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:e802ba6d93a08036a33f561c04cd7af39f37e8f95915aa73423d2c7235c66062", size = 1173465, upload-time = "2025-01-22T00:16:55.561Z" },
     { url = "https://files.pythonhosted.org/packages/a4/d0/0fd03e9bba1da48705c67be4e136c378cbd6920e91366304ed27e588a57f/pyopencl-2025.1-cp39-cp39-win_amd64.whl", hash = "sha256:792f6cda9852022bc6fad8f48602ef869d972aca4183acb5acc26fe0b416cbe8", size = 458168, upload-time = "2025-01-22T00:16:56.96Z" },
+]
+
+[package.optional-dependencies]
+pocl = [
+    { name = "pocl-binary-distribution" },
 ]
 
 [[package]]
