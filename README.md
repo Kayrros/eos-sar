@@ -2,13 +2,25 @@
 
 This package provides access to some generic SAR (Synthetic Aperture Radar) processing algorithms.
 
-Currently, algorithms specific to **Sentinel-1 SLC** in **IW** mode have been implemented.
+Currently supported sensors: 
+
+- Sentinel-1 SLC in IW mode 
+
+- For the stripmap acquisition mode, some support for: 
+  
+  - Cosmo-SkyMed
+  
+  - TerraSAR-X
+  
+  - Capella 
+
+- NISAR (initial support, work in progress) 
 
 ## Requirements & Installation
 
 To install the package in editable mode, you can run:
 
-    uv sync --frozen
+    uv sync
 
 or
 
@@ -20,32 +32,45 @@ If you wish to install srtm4, make sure to install with the "crop" extra depende
 
     pip install srtm4["crop"]
 
+Both these libraries are included by default in the dev dependencies.
+
 If you wish to use another DEM source, make sure to inherit from the template `eos.dem.DEMSource` and to provide functions for cropping/querying a DEM.
+
+The package also has some extras, such as: 
+
+- `teosar-light` to run the `teosar/tsinsar.py` module that creates a time series of coregistered Sentinel-1 crops with flattened phases, ready for interferometry. 
+
+- `teosar` which as some support for Persistent Scatterer Interferometry, through `teosar/ferreti_2001.py` for instance. Note that this part of the codebase is more research oriented and not heavily tested. !! This extra has a dependency on pyopencl.[ PyOpenCL cannot run code without an OpenCL device driver](https://documen.tician.de/pyopencl/misc.html#enabling-access-to-cpus-and-gpus-via-py-opencl) (for CPU or GPU). If you want this extra (teosar) to properly run, ensure you have installed an OpenCL driver.
 
 ## Usage
 
-Check the usage folder for a tutorial. The tutorial corresponds to performing an interferogram (among other things) on data spanning an earthquake taking place at [January 7 2022: M 6.6 - 113 km SW of Jinchang, China](https://sarviews-hazards.alaska.edu/Event/e2dfcb22-e1a4-43d8-a17e-c6b175849463).
+Check the usage folder for a tutorial. The tutorial corresponds to performing a Sentinel-1 interferogram (among other things) on data spanning an earthquake taking place at [January 7 2022: M 6.6 - 113 km SW of Jinchang, China](https://sarviews-hazards.alaska.edu/Event/e2dfcb22-e1a4-43d8-a17e-c6b175849463).
 
-Before running the tutorial, the necessary data must first be downloaded. There are also additional dependencies. So you can simply run this in a shell:
+For the tutorial, you need a [CDSE](https://dataspace.copernicus.eu/) account. You also need to generate [AWS secrets](https://eodata-s3keysmanager.dataspace.copernicus.eu/). 
+Then, set them as environment variables, by creating a .env file for instance: 
 
-    pip install jupyter matplotlib # install dependencies
-    cd eos-sar
-    python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20211230T024411_V20211229T224022_20211230T015752.EOF usage/tutorial/data/orb
-    python tools/download_from_asf.py https://s1qc.asf.alaska.edu/aux_resorb/S1A_OPER_AUX_RESORB_OPOD_20220111T024731_V20220110T224022_20220111T015752.EOF usage/tutorial/data/orb
-    python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20211229T231926_20211229T231953_041230_04E66A_3DBE.zip usage/tutorial/data/safes --unzip
-    python tools/download_from_asf.py https://datapool.asf.alaska.edu/SLC/SA/S1A_IW_SLC__1SDV_20220110T231926_20220110T231953_041405_04EC57_103E.zip usage/tutorial/data/safes --unzip
-    jupyter notebook # launch notebook
+```
+CDSE_ACCESS_KEY_ID = <value>
+CDSE_SECRET_ACCESS_KEY = <value>
+CDSE_USERNAME = <value>
+CDSE_PASSWORD = <value>
+```
 
-*eos-sar/usage/tutorial/data* folder will be created containing the safes and the associated orbit files. The two products will be downloaded and unzipped in the directory. The two corresponding orbits will also be downloaded.
+Then, you can run the file `usage/tutorial.ipynb`.
 
-Then, you can check the file `usage/tutorial.ipynb`.
+```
+uv run --env-file .env --with jupyter --with matplotlib jupyter lab
+```
 
-The features shown in the tutorial are listed below:
+The main features shown in the tutorial are listed below:
 
 - Physical sensor model for projection and localization in a Sentinel-1 image.
 - Reading/ Calibration of S-1 data.
-- Registration/ resampling/ debursting of a secondary image onto a primary image. The processing can be restricted to a region of interest.
+- Registration/ resampling/ debursting of a secondary image onto a primary image. 
+  The processing can be restricted to a region of interest.
+- Line of sight computation
 - Interferogram formation, orbital and topographic phase estimation and removal, coherence estimation.
+- Orthorectification
 
 ## Contributing
 
@@ -53,12 +78,10 @@ The features shown in the tutorial are listed below:
 
 To run the tests, we use `pytest`:
 
-    uv run --frozen pytest .
+    uv run --all-extras pytest -n auto -v -m "not cdse" .
+    uv run --env-file .env --all-extras pytest -v -m "cdse" .
 
-Some tests currently use Kayrros cloud storage and internal services (behind VPN), which means that certain credentials must be set up for these tests. Currently, only local tests will run and others will be skipped if you don't have these credentials.
-For Kayrros users (with VPN and credentials):
-
-    uv run --all-extras pytest .
+Ideally, you would put your CDSE credentials in the .env file (see section above), so that the tests that read data from CDSE can run. Otherwise, the tests will be skipped. Note that the tests reading from CDSE are run separately in the commands above, on a single worker, to avoid issues related to rate limiting. Also, those tests are marked as "flaky", i.e., they are retried if/when they fail (due to rate limiting).
 
 ### Code formatting
 
@@ -73,6 +96,21 @@ uv run ruff format .
 
 Avoid making commits that only format the code; instead, amend commits or rebase the changes against the relevant commit.
 
+You can also use the pre-commit. 
+
+```
+source .venv/bin/activate # the .venv needs to be activated
+uvx pre-commit install # you can do this once
+git add file.py 
+git commit -m "message here" # pre-commit runs, might fail, no commit
+# In case the pre-commit failed because of formatting
+# --> retry
+# In case the pre-commit failed because of typing (mypy)
+# --> fix problems then retry
+git add file.py
+git commit -m "message here" # should work now
+```
+
 ### Making a release
 
 1. generate the changelog: `uv run --no-project --with git-cliff git cliff --unreleased` and update `CHANGELOG.md` manually
@@ -82,7 +120,5 @@ Avoid making commits that only format the code; instead, amend commits or rebase
 5. push with the tag (`git push --tags`)
 
 ### Tips for external contributors
-
-Adding a package: `uv add --frozen <package>`.
 
 Make sure to have pyproj data: `pyproj sync -v --file us_nga_egm96_15`
