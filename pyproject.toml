@@ -1,5 +1,5 @@
 [project]
-name = "kayrros-eos-sar"
+name = "eos-sar"
 authors = [
     { name = "Kayrros"},
     { name = "external collaborators" },
