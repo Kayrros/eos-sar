@@ -1,3 +1,11 @@
+# [0.42.1](https://github.com/Kayrros/eos-sar/compare/0.42.0..0.42.1)
+
+## Added
+- test: Add tests for NISAR RSLC cropper
+- nisar: cropper: Add NISAR RSLC cropper
+- nisar: Add product_id in metadata and define TypeAlias
+- io: Add hdf5 window reading
+
 # [0.42.0](https://github.com/Kayrros/eos-sar/compare/0.41.0..0.42.0) -- 2025-12-16
 
 ## Added
