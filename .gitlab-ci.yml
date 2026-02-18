@@ -3,10 +3,8 @@ default:
 
 stages:
   - test
-  - deploy
 
 variables:
-  PIP_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
   # never use the python from the system, as it might lack development headers
   UV_MANAGED_PYTHON: "1"  
 
@@ -53,19 +51,3 @@ fakedeploy:
     - uv build --python 3.11
     - uv build --python 3.12
     - uv build --python 3.13
-
-deploy:
-  stage: deploy
-  variables:
-    UV_PUBLISH_USERNAME: "${PYPI_USERNAME}"
-    UV_PUBLISH_PASSWORD: "${PYPI_PASSWORD}"
-    UV_PUBLISH_URL: "https://pypi.dev-kayrros.ovh/"
-  script:
-    - uv build --python 3.9
-    - uv build --python 3.10
-    - uv build --python 3.11
-    - uv build --python 3.12
-    - uv build --python 3.13
-    - uv publish dist/*
-  only:
-    - tags
