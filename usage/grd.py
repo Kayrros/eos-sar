@@ -1,8 +1,16 @@
+"""
+uv run --env-file .env usage/grd.py
+The .env file must contain
+    CDSE_ACCESS_KEY_ID
+    CDSE_SECRET_ACCESS_KEY
+    CDSE_USERNAME
+    CDSE_PASSWORD
+"""
+
 import os
 from typing import Optional
 
 import numpy as np
-import phoenix.catalog
 import rasterio
 import rasterio.control
 
@@ -12,8 +20,6 @@ import eos.sar
 from eos.products.sentinel1 import orbit_catalog
 from eos.sar.model import SensorModel
 from eos.sar.roi import Roi
-
-client = phoenix.catalog.Client()
 
 
 def _get_gcps(
@@ -48,14 +54,8 @@ def get_product_info(product_id: str) -> sentinel1.product.Sentinel1GRDProductIn
                 product_id,
             )
         )
-    elif "PHX_USERNAME" in os.environ:
-        return sentinel1.product.PhoenixSentinel1GRDProductInfo.from_product_id(
-            product_id
-        )
     else:
-        raise RuntimeError(
-            "Couldn't find CDSE-S3 or PHX credentials for the product info"
-        )
+        raise RuntimeError("Couldn't find CDSE-S3 for the product info")
 
 
 def get_orbit_catalog_backend() -> orbit_catalog.Sentinel1OrbitCatalogBackend:
@@ -64,16 +64,8 @@ def get_orbit_catalog_backend() -> orbit_catalog.Sentinel1OrbitCatalogBackend:
             username=os.environ["CDSE_USERNAME"],
             password=os.environ["CDSE_PASSWORD"],
         )
-    elif "PHX_USERNAME" in os.environ:
-        import phoenix.catalog
-
-        return orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-            collection_source=phoenix.catalog.Client()
-            .get_collection("esa-sentinel-1-csar-aux")
-            .at("aws:proxima:kayrros-prod-sentinel-aux")
-        )
     else:
-        raise RuntimeError("Couldn't find CDSE or PHX credentials for the catalog")
+        raise RuntimeError("Couldn't find CDSE for the catalog")
 
 
 def main(

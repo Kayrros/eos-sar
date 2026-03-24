@@ -1,22 +1,24 @@
 import json
 
-import boto3
+import pytest
 
 from eos.products.nisar import metadata
-from eos.sar.io import open_netcdf_osio
+from eos.sar.io import RemoteH5Loader
 
-NISAR_RSLC_SAMPLE_PATH = "s3://kayrros-dev-satellite-test-data/NISAR/simulated_samples/l1_rslc/sample1/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001.h5"
+NISAR_RSLC_SAMPLE_PATHS = [
+    "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001.h5",
+]
 
 
-def rslc_meta_from_h5(h5_s3_path: str) -> metadata.NisarRSLCMetadata:
-    osio_options = {"session": boto3.session.Session()}
-    with open_netcdf_osio(h5_s3_path, **osio_options) as ds:
+def rslc_meta_from_h5(h5_path: str) -> metadata.NisarRSLCMetadata:
+    with RemoteH5Loader(h5_path) as ds:
         meta = metadata.NisarRSLCMetadata.parse_metadata(ds)
     return meta
 
 
-def test_rslc_meta_from_h5():
-    meta = rslc_meta_from_h5(NISAR_RSLC_SAMPLE_PATH)
+@pytest.mark.parametrize("h5_path", NISAR_RSLC_SAMPLE_PATHS)
+def test_rslc_meta_from_h5(h5_path: str):
+    meta = rslc_meta_from_h5(h5_path)
     assert isinstance(meta, metadata.NisarRSLCMetadata)
 
     assert meta.radar_band == "L"

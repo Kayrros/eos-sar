@@ -3,32 +3,32 @@ default:
 
 stages:
   - test
-  - deploy
 
 variables:
-  PIP_INDEX_URL: "https://pypi.dev-kayrros.ovh/"
   # never use the python from the system, as it might lack development headers
   UV_MANAGED_PYTHON: "1"  
 
 test:
   stage: test
   tags:
-    - high
+    - code-quality
   script:
-    - uv run --all-extras pytest . -n auto -v
+    - uv run --all-extras pytest . -n auto -v -m "not cdse"
+    - uv run --all-extras pytest . -v -m "cdse"
 
 # also test with a different resolution, to make sure everything works when using the oldest dependencies
 test:compatibility:
   stage: test
   tags:
-    - high
+    - code-quality
   script:
     - export UV_RESOLUTION=lowest-direct
     - rm uv.lock
     - echo 3.9 >.python-version
     - uv lock
     - uv tree
-    - uv run --all-extras pytest . -n auto -v
+    - uv run --all-extras pytest . -n auto -v -m "not cdse"
+    - uv run --all-extras pytest . -v -m "cdse"
 
 lint:
   stage: test
@@ -53,19 +53,3 @@ fakedeploy:
     - uv build --python 3.11
     - uv build --python 3.12
     - uv build --python 3.13
-
-deploy:
-  stage: deploy
-  variables:
-    UV_PUBLISH_USERNAME: "${PYPI_USERNAME}"
-    UV_PUBLISH_PASSWORD: "${PYPI_PASSWORD}"
-    UV_PUBLISH_URL: "https://pypi.dev-kayrros.ovh/"
-  script:
-    - uv build --python 3.9
-    - uv build --python 3.10
-    - uv build --python 3.11
-    - uv build --python 3.12
-    - uv build --python 3.13
-    - uv publish dist/*
-  only:
-    - tags

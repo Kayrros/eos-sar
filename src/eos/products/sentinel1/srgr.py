@@ -39,7 +39,6 @@ class Sentinel1GRDSRGRMetadata:
 
 def _evaluate(azt, x, times, coeffs, origins):
     """
-    (from s1m)
 
     Compute ground range from slant range or the opposite, and the azimuth time.
 

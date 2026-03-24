@@ -1,37 +1,77 @@
+from typing import cast
+
 import numpy as np
 import pytest
+from numpy.typing import NDArray
+from rasterio.io import DatasetReader
 
 from eos.products import sentinel1
+from eos.products.sentinel1.catalog import CDSESentinel1SLCCatalogBackend
+from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 from eos.sar import io
 from eos.sar.roi import Roi
 
 # TODO: from a old and a new product, pre and post IPF 2.9.0
 
-windows = (
-    (1000, 100, 100, 50),  # top left
-    (18100, 12270, 50, 100),  # middle center
-    (10000, 6000, 50, 100),  # bottom right
-)
+windows = {
+    "top_left": Roi(1000, 100, 100, 50),  # top left
+    "middle_center": Roi(18100, 12270, 50, 100),  # middle center
+    "bottom_right": Roi(10000, 6000, 50, 100),  # bottom right
+}
+
+SWATHS = ["iw1", "iw2", "iw3"]
+POLARIZATIONS = ["vv", "vh"]
 
 
-def get_infos(swath, pol, method, with_noise, s3_client):
+@pytest.fixture(scope="module")
+def img_infos(cdse_s3_session):
+    """
+    Read all calibration and noise xmls. Also read all numpy arrays (for all windows).
+    """
     pid = "S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5"
-    basepath = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/test_calibration"
-    )
-    calibration = io.read_xml_file(
-        f"{basepath}/{pid}.SAFE/{swath}-{pol}-calibration.xml", s3_client
-    )
-    noise = None
-    if with_noise:
-        noise = io.read_xml_file(
-            f"{basepath}/{pid}.SAFE/{swath}-{pol}-noise.xml", s3_client
-        )
-    calibrator = sentinel1.calibration.Sentinel1Calibrator(calibration, noise)
 
-    image_path = f"{basepath}/{pid}.SAFE/{swath}-{pol}.tiff"
-    reader = io.open_image(image_path)
+    catalog_backend = CDSESentinel1SLCCatalogBackend()
 
+    product = CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+        catalog_backend, cdse_s3_session, pid
+    )
+    calibration_per_swath_per_pol: dict[str, dict[str, str]] = dict()
+    noise_per_swath_per_pol: dict[str, dict[str, str]] = dict()
+    arrays_per_swath_per_pol_per_window: dict[
+        str, dict[str, dict[str, NDArray[np.complex64]]]
+    ] = dict()
+
+    for swath in SWATHS:
+        calibration_per_swath_per_pol[swath] = dict()
+        noise_per_swath_per_pol[swath] = dict()
+        arrays_per_swath_per_pol_per_window[swath] = dict()
+        for pol in POLARIZATIONS:
+            calibration_per_swath_per_pol[swath][pol] = product.get_xml_calibration(
+                swath, pol
+            )
+            noise_per_swath_per_pol[swath][pol] = product.get_xml_noise(swath, pol)
+            arrays_per_swath_per_pol_per_window[swath][pol] = dict()
+            reader = product.get_image_reader(swath, pol)
+            for win_txt, win_roi in windows.items():
+                arr = io.read_window(reader, win_roi, get_complex=True)
+                assert arr.dtype == np.complex64
+                arrays_per_swath_per_pol_per_window[swath][pol][win_txt] = cast(
+                    NDArray[np.complex64], arr
+                )
+            assert isinstance(reader, DatasetReader)
+            reader.close()
+    return (
+        calibration_per_swath_per_pol,
+        noise_per_swath_per_pol,
+        arrays_per_swath_per_pol_per_window,
+    )
+
+
+def get_infos(swath, pol, method, with_noise):
+    pid = "S1B_IW_SLC__1SDV_20190702T032447_20190702T032514_016949_01FE47_69C5"
+
+    # # TODO replace DUMMY_URL with an actual path where the SNAP reference data will reside
+    basepath = "DUMMY_URL/eos_test_data/test_calibration"
     snapmethod = method.capitalize() + "0"
     if with_noise:
         image_path = f"{basepath}/{pid}_T_Cal.data/{snapmethod}_{swath.upper()}_{pol.upper()}.img"
@@ -41,7 +81,7 @@ def get_infos(swath, pol, method, with_noise, s3_client):
         )
     snap_reader = io.open_image(image_path)
 
-    return calibrator, reader, snap_reader
+    return snap_reader
 
 
 def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex, snap=None):
@@ -66,45 +106,69 @@ def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex, sna
 
 @pytest.mark.parametrize("with_noise", (False, True))
 @pytest.mark.parametrize("method", ("gamma", "beta", "sigma"))
-@pytest.mark.parametrize("swath", ("iw1", "iw2", "iw3"))
-@pytest.mark.parametrize("pol", ("vv", "vh"))
-@pytest.mark.parametrize("window", windows)
-def test_calibration_without_noise(window, pol, swath, method, with_noise, s3_client):
-    _, _, w, h = window
-    roi = Roi.from_roi_tuple(window)
+@pytest.mark.parametrize("swath", SWATHS)
+@pytest.mark.parametrize("pol", POLARIZATIONS)
+@pytest.mark.parametrize("window_txt", list(windows.keys()))
+def test_calibration_without_noise(
+    window_txt, pol, swath, method, with_noise, img_infos
+):
+    (
+        calibration_per_swath_per_pol,
+        noise_per_swath_per_pol,
+        arrays_per_swath_per_pol_per_window,
+    ) = img_infos
+    calibration = calibration_per_swath_per_pol[swath][pol]
+    noise = noise_per_swath_per_pol[swath][pol] if with_noise else None
+    calibrator = sentinel1.calibration.Sentinel1Calibrator(calibration, noise)
+    roi = windows[window_txt]
+    h = roi.h
+    w = roi.w
 
-    calibrator, reader, snap_reader = get_infos(
-        swath, pol, method, with_noise, s3_client
-    )
+    # snap_reader = get_infos( swath, pol, method, with_noise    )
 
-    image = io.read_window(reader, roi, get_complex=False)
-    assert image.shape == (h, w)
-    assert image.dtype == np.float32
-
-    imagec = io.read_window(reader, roi)
+    imagec = arrays_per_swath_per_pol_per_window[swath][pol][window_txt]
     assert imagec.shape == (h, w)
     assert imagec.dtype == np.complex64
 
-    for clip in (True, False) if with_noise else (False,):
-        print(clip)
+    image = np.abs(imagec)
+    assert image.shape == (h, w)
+    assert image.dtype == np.float32
 
+    for clip in (True, False) if with_noise else (False,):
         arr = calibrator.calibrate_inplace(
             image.copy(), roi, method=method, dont_clip_noise=not clip
         )
+        assert arr.dtype == image.dtype
+        assert arr.shape == image.shape
+
         arrc = calibrator.calibrate_inplace(
             imagec.copy(), roi, method=method, dont_clip_noise=not clip
         )
+        assert arrc.dtype == imagec.dtype
+        assert arrc.shape == imagec.shape
 
-        snap = None
-        if not with_noise or not clip:
-            # only check against snap if we ask for noise and clip or if we don't ask for noise correction
-            snap = io.read_window(snap_reader, roi, get_complex=False)
+        # snap = None
+        # if not with_noise or not clip:
+        # only check against snap if we ask for noise and clip or if we don't ask for noise correction
+        # snap = io.read_window(snap_reader, roi, get_complex=False)
 
-        compare_arrays(arr, arrc, imagec, snap)
+        # compare_arrays(arr, arrc, imagec, snap)
 
 
-def test_inplaceness(s3_client):
-    calibrator, _, _ = get_infos("iw1", "vv", "sigma", False, s3_client)
+def test_inplaceness(img_infos):
+    (
+        calibration_per_swath_per_pol,
+        _,
+        _,
+    ) = img_infos
+
+    swath = "iw1"
+    pol = "vv"
+
+    calibration = calibration_per_swath_per_pol[swath][pol]
+    noise = None
+    calibrator = sentinel1.calibration.Sentinel1Calibrator(calibration, noise)
+
     arr = np.ones((20, 20), dtype=np.float32)
     roi = Roi(1000, 100, 20, 20)
     arr2 = calibrator.calibrate_inplace(arr, roi, "sigma")

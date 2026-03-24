@@ -2,8 +2,8 @@ import logging
 from dataclasses import dataclass
 from typing import Literal, Optional, Union, cast
 
+import h5py
 import numpy as np
-from boto3.session import Session as S3Session
 from numpy.typing import NDArray
 from typing_extensions import TypeAlias
 
@@ -16,7 +16,7 @@ from eos.products.nisar.metadata import (
 )
 from eos.products.nisar.proj_model import NisarModel
 from eos.sar.atmospheric_correction import ApdCorrection
-from eos.sar.io import open_netcdf_osio, read_hdf5_window
+from eos.sar.io import H5LoaderBase, read_hdf5_window
 from eos.sar.orbit import Orbit
 from eos.sar.projection_correction import Corrector
 from eos.sar.regist import (
@@ -68,7 +68,7 @@ def get_amplitude(
 
 
 def get_primary_crop(
-    primary_h5_path: str,
+    primary_h5py_file: h5py.File,
     frequency: Frequency,
     polarization: Polarization,
     roi_provider: RoiProvider,
@@ -77,17 +77,8 @@ def get_primary_crop(
     get_complex: bool = True,
     use_apd: bool = True,
     calibration: Optional[Calibration] = None,
-    s3_session: Optional[S3Session] = None,
 ) -> NisarCrop:
-    if primary_h5_path.startswith("s3://") and s3_session is None:
-        logger.warning(f"No s3_session provided to read {primary_h5_path}")
-
-    reader_options = (
-        {"session": s3_session} if primary_h5_path.startswith("s3://") else {}
-    )
-
-    primary_ds = open_netcdf_osio(primary_h5_path, **reader_options)
-    primary_metadata = NisarRSLCMetadata.parse_metadata(primary_ds)
+    primary_metadata = NisarRSLCMetadata.parse_metadata(primary_h5py_file)
     primary_product_id = primary_metadata.product_id
     logger.info(f"Processing {primary_product_id}")
 
@@ -99,14 +90,13 @@ def get_primary_crop(
     primary_roi, _, _ = roi_provider.get_roi(primary_model, dem_source)
 
     dataset = f"science/LSAR/RSLC/swaths/frequency{frequency}/{polarization}"
-    if dataset not in primary_ds.keys():
+    if dataset not in primary_h5py_file.keys():
         raise DatasetNotFoundError(
             f"Dataset {dataset} not found in {primary_product_id}"
         )
     primary_array = read_hdf5_window(
-        primary_ds[dataset], primary_roi, get_complex=get_complex, boundless=True
+        primary_h5py_file[dataset], primary_roi, get_complex=get_complex, boundless=True
     )
-    primary_ds.close()
 
     if calibration is not None:
         raise NotImplementedError("Calibration not implemented yet.")
@@ -170,7 +160,7 @@ def get_primary_registLUT(
 
 
 def get_primary_crop_dem_registLUT(
-    primary_h5_path: str,
+    primary_h5py_file: h5py.File,
     frequency: Frequency,
     polarization: Polarization,
     roi_provider: RoiProvider,
@@ -180,10 +170,9 @@ def get_primary_crop_dem_registLUT(
     get_complex: bool = True,
     use_apd: bool = True,
     calibration: Optional[Calibration] = None,
-    s3_session: Optional[S3Session] = None,
 ) -> tuple[NisarCrop, DEM, RegistrationLUT]:
     primary_crop = get_primary_crop(
-        primary_h5_path,
+        primary_h5py_file,
         frequency,
         polarization,
         roi_provider,
@@ -191,7 +180,6 @@ def get_primary_crop_dem_registLUT(
         get_complex=get_complex,
         use_apd=use_apd,
         calibration=calibration,
-        s3_session=s3_session,
     )
 
     dem = primary_crop.model.fetch_dem(dem_source, roi=primary_crop.roi)
@@ -204,7 +192,7 @@ def get_primary_crop_dem_registLUT(
 
 
 def get_secondary_crop(
-    secondary_h5_path: str,
+    secondary_h5py_file: h5py.File,
     frequency: Frequency,
     polarization: Polarization,
     primary_roi: Roi,
@@ -214,17 +202,8 @@ def get_secondary_crop(
     get_complex: bool = True,
     use_apd: bool = True,
     calibration: Optional[Calibration] = None,
-    s3_session: Optional[S3Session] = None,
 ) -> NisarCrop:
-    if secondary_h5_path.startswith("s3://") and s3_session is None:
-        logger.warning(f"No s3_session provided to read {secondary_h5_path}")
-
-    reader_options = (
-        {"session": s3_session} if secondary_h5_path.startswith("s3://") else {}
-    )
-
-    secondary_ds = open_netcdf_osio(secondary_h5_path, **reader_options)
-    secondary_metadata = NisarRSLCMetadata.parse_metadata(secondary_ds)
+    secondary_metadata = NisarRSLCMetadata.parse_metadata(secondary_h5py_file)
     secondary_product_id = secondary_metadata.product_id
     logger.info(f"Processing {secondary_product_id}")
 
@@ -257,14 +236,16 @@ def get_secondary_crop(
 
     # Read
     dataset = f"science/LSAR/RSLC/swaths/frequency{frequency}/{polarization}"
-    if dataset not in secondary_ds.keys():
+    if dataset not in secondary_h5py_file.keys():
         raise DatasetNotFoundError(
             f"Dataset {dataset} not found in {secondary_product_id}"
         )
     secondary_array = read_hdf5_window(
-        secondary_ds[dataset], roi_in_secondary, get_complex=get_complex, boundless=True
+        secondary_h5py_file[dataset],
+        roi_in_secondary,
+        get_complex=get_complex,
+        boundless=True,
     )
-    secondary_ds.close()
 
     if calibration is not None:
         raise NotImplementedError("Calibration not implemented yet.")
@@ -309,7 +290,7 @@ def get_secondary_crop(
 
 
 def crop_images(
-    h5_paths: list[str],
+    h5_loaders: list[H5LoaderBase],
     primary_id: int,
     frequency: Frequency,
     polarization: Polarization,
@@ -321,7 +302,6 @@ def crop_images(
     use_apd: bool = True,
     refine_regist: bool = True,
     calibration: Optional[Calibration] = None,
-    s3_session: Optional[S3Session] = None,
 ) -> tuple[list[NisarCrop], DEM]:
     """
     Crop images and align with a primary image. A DEM covering the images is also returned.
@@ -330,37 +310,36 @@ def crop_images(
     The arrays are treated sequentially with no parallelism.
     For heavier inputs, consider adapting this function to store the result of each array on the disk.
     """
-    primary_h5_path = h5_paths[primary_id]
-    primary_crop, dem, primary_registration_LUT = get_primary_crop_dem_registLUT(
-        primary_h5_path,
-        frequency,
-        polarization,
-        roi_provider,
-        dem_source,
-        dem_sampling_ratio,
-        get_complex=get_complex,
-        use_apd=use_apd,
-        calibration=calibration,
-        s3_session=s3_session,
-    )
-
-    crops = []
-    for i, secondary_h5_path in enumerate(h5_paths):
-        # skip primary image
-        if i == primary_id:
-            continue
-        secondary_crop = get_secondary_crop(
-            secondary_h5_path,
+    with h5_loaders[primary_id] as primary_h5py_file:
+        primary_crop, dem, primary_registration_LUT = get_primary_crop_dem_registLUT(
+            primary_h5py_file,
             frequency,
             polarization,
-            primary_crop.roi,
-            primary_registration_LUT,
-            primary_array_amp=primary_crop.amplitude if refine_regist else None,
+            roi_provider,
+            dem_source,
+            dem_sampling_ratio,
             get_complex=get_complex,
             use_apd=use_apd,
             calibration=calibration,
-            s3_session=s3_session,
         )
+
+    crops = []
+    for i, secondary_h5_loader in enumerate(h5_loaders):
+        # skip primary image
+        if i == primary_id:
+            continue
+        with secondary_h5_loader as secondary_h5py_file:
+            secondary_crop = get_secondary_crop(
+                secondary_h5py_file,
+                frequency,
+                polarization,
+                primary_crop.roi,
+                primary_registration_LUT,
+                primary_array_amp=primary_crop.amplitude if refine_regist else None,
+                get_complex=get_complex,
+                use_apd=use_apd,
+                calibration=calibration,
+            )
 
         crops.append(secondary_crop)
 

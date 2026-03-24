@@ -1,6 +1,5 @@
 from math import ceil, floor
 
-import boto3
 import numpy as np
 import pandas as pd
 import pytest
@@ -8,15 +7,16 @@ import pytest
 from eos.products.nisar import metadata
 from eos.products.nisar.proj_model import NisarModel
 from eos.sar.fourier_zoom import fourier_zoom
-from eos.sar.io import open_netcdf_osio
+from eos.sar.io import RemoteH5Loader
 from eos.sar.max_finding import sub_pixel_maxima
 from eos.sar.orbit import Orbit
 from eos.sar.roi import Roi
 
 RSLC_SAMPLE_PATHS = [
-    "s3://kayrros-dev-satellite-test-data/NISAR/simulated_samples/l1_rslc/sample1/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001.h5",
-    "s3://kayrros-dev-satellite-test-data/NISAR/simulated_samples/l1_rslc/sample2/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5",
+    "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001.h5",
+    "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5",
 ]
+
 
 # Expected position error statistics (in pixels) for the Rosamond corner reflectors
 # documented in the Quality Assurance (QA) report provided for the two RSLC samples.
@@ -44,24 +44,21 @@ RSLC_SAMPLE_CORNER_REFLECTOR_STATS = {
 }
 
 
-def rslc_meta_from_h5(h5_s3_path: str) -> metadata.NisarRSLCMetadata:
-    osio_options = {"session": boto3.session.Session()}
-    with open_netcdf_osio(h5_s3_path, **osio_options) as ds:
+def rslc_meta_from_h5(h5_path: str) -> metadata.NisarRSLCMetadata:
+    with RemoteH5Loader(h5_path) as ds:
         meta = metadata.NisarRSLCMetadata.parse_metadata(ds)
     return meta
 
 
 def dataset_exists_in_h5(h5_s3_path: str, dataset: str) -> bool:
-    osio_options = {"session": boto3.session.Session()}
-    with open_netcdf_osio(h5_s3_path, **osio_options) as ds:
+    with RemoteH5Loader(h5_s3_path) as ds:
         return dataset in ds.keys()
 
 
 def read_dataset_from_h5(
     h5_s3_path: str, dataset: str, row: int, col: int, width: int, height: int
 ) -> np.ndarray:
-    osio_options = {"session": boto3.session.Session()}
-    with open_netcdf_osio(h5_s3_path, **osio_options) as ds:
+    with RemoteH5Loader(h5_s3_path) as ds:
         data = ds[dataset][row : row + height, col : col + width]
     return data
 

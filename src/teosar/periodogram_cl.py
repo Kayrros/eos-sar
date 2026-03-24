@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-import os
+from importlib import resources
 from typing import (
     Any,  # noqa
     Optional,
@@ -130,10 +130,9 @@ class PeriodogramCL:
         # Most common thread group size that fit all GPUs are 64, 128, 256
         self.num_threads_per_ps = 256
 
-        # Compile the OpenCL code
-        script_dir = os.path.dirname(os.path.realpath(__file__))
-        f = open(os.path.join(script_dir, "periodogram.cl"), "r")
-        fstr = "".join(f.readlines())
+        with resources.files("teosar").joinpath("periodogram.cl").open("r") as f:
+            fstr = "".join(f.readlines())
+
         build_options = "-DUSE_DOUBLE" if use_double_precision else ""
         build_options += " -DLOCAL_SIZE=%d" % self.num_threads_per_ps
         build_options += " -DCONSTANTS_PER_SUM_TERM=%d" % num_constants_per_sum_term

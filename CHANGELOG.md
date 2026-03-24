@@ -1,3 +1,66 @@
+# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.42.1..HEAD)
+
+## Changed
+
+- change license to Apache 2.0
+- README: Update readme
+- tutorial: Use CDSE backend instead of pre-downloading with ASF
+- usage: Clarify usage of all scripts
+- phoenix:  Remove phoenix:
+  * Changes in `grd_rtc_slicing.py`: some code was exclusively done with the Phoenix backend. It was moved out, but not replaced. It should be replaced in the future with a CDSE backend. Also the `ANX` file that was available via phoenix is no longer available. An alternative must be found.
+  * Changes in `teosar.tsinsar`: `main` and `main_ovl` : previously, when the backend_factory was None (or product_provider is None or orbit_backend is None for `main_ovl` ) , the fallback was `PhoenixBackendFactory`. Now, this behavior is removed, and these input parameters can no longer be optional Therefore, the signature of `main` and `main_ovl` has been modified.
+  * A `test_teosar.py` test has been added.
+- osio: Replace osio with a slower* fsspec implementation:
+  * osio was removed
+  * Functions `open_netcdf_osio` and `open_image_osio` were removed.
+  * The biggest impact is on NISAR which solely used osio previously for remote reading (s3 and http).
+  * It was replaced with fsspec (with s3 and http backends).
+  * *The current fsspec implementation is a bit slower than osio (for s3, but faster for http). The current fsspec implementation is a temporary fix for osio. Caching is not optimized yet. The recommendation for NISAR (in the product specification) have not been implemented yet.
+  * **Breaking change**: `eos.products.nisar.cropper` contains many functions whose signature has been modified, namely `get_primary_crop`, `get_primary_crop_dem_registLUT`, `get_secondary_crop`, `crop_images`. All of this is fine since NISAR developement is ongoing, the function signature is not stabilized.
+- package: Change package name to eos-sar
+
+## Fixed
+
+- teosar: Fix periodogram.cl packaging and add a test:
+  * closes ISSUE #183
+- teosar: Fix boto3 import:
+  * boto3 is not a dependency, it is now only imported in the class that needs it.
+- usage/zoom: Fix script and remove osio
+
+## Removed
+
+- s3_bucket: Remove kayrros s3 bucket from tests:
+
+  * S3 bucket: No more tests use the Kayrros S3 bucket. When Sentinel-1 data is required, now CDSE backend is used instead of the bucket. The only tests that could use a bucket are `test_mask_border_noise_grd.py` and `test_calibration.py` which require large files corresponding to SNAP results. For now, the comparison against SNAP results has been removed entirely from the code, and will be added back once we have a public location to store test data. To reduce the load on CDSE, some fixtures are used. We also switch to a slower gitlab runner. We run the CDSE tests separately on a single worker. We also mark tests using CDSE fixtures as flaky, so that we can easily retry them.
+  * As for the NISAR tests, they now only use the public http sample links, so they are a bit slower than before.
+
+- s1m: Remove s1m:
+
+  * `s1m` was only used for a single test, which was moved;
+
+- multidem: Remove multidem dependency:
+
+  * dem: `eos.dem.get_any_source()` will not give multidem anymore. This is fine as will be explained below.
+
+  * The code using this function might now behave differently, here is a list:
+
+    ```
+    - usage/zoom.py: dem_source = eos.dem.get_any_source()
+    - src/teosar/tsinsar.py: dem_source = eos.dem.get_any_source()
+    - src/teosar/tsinsar.py: dem_source = eos.dem.get_any_source()
+    - src/eos/products/sentinel1/assembler.py: dem_source = eos.dem.get_any_source()
+    - tests/test_rtc.py: dem_source = eos.dem.get_any_source()
+    - tests/test_localize_without_alt.py: dem_source = eos.dem.get_any_source()
+    - tests/test_ortho.py: dem = model.fetch_dem(eos.dem.get_any_source(), roi)
+    - tests/test_projection.py: dem_source = eos.dem.get_any_source()
+    - tests/test_geom_phase.py: dem_source = eos.dem.get_any_source()
+    - tests/test_resampling_stitching.py: dem_source = eos.dem.get_any_source()
+    ```
+
+  * The tests listed above pass. One test that did not pass (not listed) is `tests/test_radarcoding.py`and it has been modified to pass by increasing a margin. The assembler entry corresponds to the `Sentinel1AssemblyCropper.crop` method. For this method, as well as `src/teosar/tsinsar`, this function is only used when `dem_source` is None, which should not be the case in any prod environement, so this is fine.
+
+- CI: Remove deploy stage
+
 # [0.42.1](https://github.com/Kayrros/eos-sar/compare/0.42.0..0.42.1)
 
 ## Added

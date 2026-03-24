@@ -55,19 +55,6 @@ class InputProduct(abc.ABC):
 
 
 @dataclass(frozen=True)
-class PhoenixInputProduct(InputProduct):
-    item: Any
-    """ Phoenix catalog Item from the GRD collection. """
-
-    @override
-    def into_product_info(self) -> sentinel1.product.Sentinel1GRDProductInfo:
-        return sentinel1.product.PhoenixSentinel1GRDProductInfo(
-            self.item,
-            image_opener=eos.sar.io.open_image,
-        )
-
-
-@dataclass(frozen=True)
 class CDSEInputProduct(InputProduct):
     product_id: str
     cdse_backend: CDSESentinel1GRDCatalogBackend
@@ -232,16 +219,6 @@ def get_cdse_orbit_catalog_backend(
     username: str, password: str
 ) -> orbit_catalog.Sentinel1OrbitCatalogBackend:
     return orbit_catalog.CDSESentinel1OrbitCatalogBackend(username, password)
-
-
-def get_phoenix_orbit_catalog_backend(
-    client: Any,
-) -> orbit_catalog.Sentinel1OrbitCatalogBackend:
-    return orbit_catalog.PhoenixSentinel1OrbitCatalogBackend(
-        collection_source=client.get_collection("esa-sentinel-1-csar-aux").at(
-            "aws:proxima:kayrros-prod-sentinel-aux"
-        )
-    )
 
 
 def _geom_to_roi(

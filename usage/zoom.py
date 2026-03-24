@@ -1,11 +1,19 @@
+"""
+Run with uv run --env-file .env --with matplotlib usage/zoom.py --result_dir usage/zoom_results
+Ensure "CDSE_ACCESS_KEY_ID" and "CDSE_SECRET_ACCESS_KEY" are in the .env file
+"""
+
 import os
 
+import boto3
 import numpy as np
 from matplotlib import pyplot as plt
 
 import eos.dem
 import eos.products.sentinel1 as s1
 import eos.sar
+from eos.products.sentinel1.catalog import CDSESentinel1SLCCatalogBackend
+from eos.products.sentinel1.product import CDSEUnzippedSafeSentinel1SLCProductInfo
 from eos.sar.orbit import Orbit
 
 
@@ -13,76 +21,58 @@ def save_array(result_dir, name, array):
     np.save(os.path.join(result_dir, name), array)
 
 
-def extract_keys(big_dict, list_keys):
-    o = {}
-    for key in list_keys:
-        o[key] = big_dict[key]
-    return o
-
-
-def get_ref_metas(ref_xml_paths):
-    xml_contents = [eos.sar.io.read_xml_file(xml_path) for xml_path in ref_xml_paths]
-    keys = ["slant_range_time", "samples_per_burst", "range_frequency"]
-    ref_metas = [
-        extract_keys(s1.metadata.extract_burst_metadata(xml_content, 0), keys)
-        for xml_content in xml_contents
-    ]
-    return ref_metas
-
-
 def close_readers(readers):
     for read in readers:
         read.close()
 
 
+def get_ref_metas(products):
+    xml_contents = [product.get_xml_annotation("iw2", "vv") for product in products]
+    ref_metas = [
+        s1.coordinate_correction.FullBistaticReference.from_burst_metadata(
+            s1.metadata.extract_burst_metadata(xml_content, 0)
+        )
+        for xml_content in xml_contents
+    ]
+    return ref_metas
+
+
 def inputs():
-    xml_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
+    assert "CDSE_ACCESS_KEY_ID" in os.environ and "CDSE_SECRET_ACCESS_KEY" in os.environ
+    cdse_s3_session = boto3.Session(
+        aws_access_key_id=os.environ["CDSE_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["CDSE_SECRET_ACCESS_KEY"],
     )
 
-    tiff_folder = (
-        "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/measurement"
-    )
-
-    xml_basenames = [
-        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml",
-        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.xml",
+    product_ids = [
+        "S1B_IW_SLC__1SDV_20190803T164006_20190803T164034_017424_020C57_25CA",
+        "S1A_IW_SLC__1SDV_20190809T164050_20190809T164117_028495_033896_2CC5",
     ]
 
-    tiff_basenames = [
-        "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.tiff",
-        "s1a-iw3-slc-vv-20190809t164050-20190809t164115-028495-033896-006.tiff",
+    catalog_backend = CDSESentinel1SLCCatalogBackend()
+    products = [
+        CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            catalog_backend, cdse_s3_session, product_id
+        )
+        for product_id in product_ids
     ]
 
-    ref_basenames = [
-        "s1b-iw2-slc-vv-20190803t164006-20190803t164034-017424-020c57-005.xml",
-        "s1a-iw2-slc-vv-20190809t164051-20190809t164117-028495-033896-005.xml",
-    ]
+    # read the xmls of iw3 vv as strings
+    xml_content = [product.get_xml_annotation("iw3", "vv") for product in products]
 
-    # list of our xmls
-    xml_paths = [os.path.join(xml_folder, p) for p in xml_basenames]
+    # get image readers of iw3 vv
+    image_readers = [product.get_image_reader("iw3", "vv") for product in products]
 
-    tiff_paths = [os.path.join(tiff_folder, p) for p in tiff_basenames]
-
-    # read the xmls as strings
-    xml_content = []
-    for xml_path in xml_paths:
-        xml_content.append(eos.sar.io.read_xml_file(xml_path))
-
-    image_readers = [eos.sar.io.open_image_osio(p) for p in tiff_paths]
-
-    # # Now extract the needed metadata
+    # Now extract the needed metadata
     primary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[0])
     secondary_bursts_meta = s1.metadata.extract_bursts_metadata(xml_content[1])
 
-    ref_metas = get_ref_metas(
-        [os.path.join(xml_folder, ref_base) for ref_base in ref_basenames]
-    )
+    ref_metas = get_ref_metas(products)
 
     return image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas
 
 
-def _get_objects(burst_meta, ref_meta=None):
+def _get_objects(burst_meta, bistatic_ref=None):
     # create an orbit
     orbit = Orbit(burst_meta["state_vectors"])
     # create a doppler
@@ -94,7 +84,7 @@ def _get_objects(burst_meta, ref_meta=None):
         doppler,
         apd=True,
         bistatic=True,
-        full_bistatic_reference=ref_meta,
+        full_bistatic_reference=bistatic_ref,
         intra_pulse=True,
         alt_fm_mismatch=True,
     )
@@ -126,7 +116,8 @@ def plot_freq_profile(img, axis=1, fs=1, title="", result_dir=None):
     ax.set_title(title)
     if result_dir is not None:
         plt.savefig(os.path.join(result_dir, f"{'_'.join(title.split())}.png"), dpi=250)
-    plt.show()
+    # plt.show()
+    plt.close()
     print(f"Specs for {title}: ")
     print(f"Center frequency {np.mean([f_low, f_high])} Hz")
     print(f"width : {f_high - f_low} Hz")
@@ -137,7 +128,7 @@ def main(result_dir="."):
     os.makedirs(result_dir, exist_ok=True)
 
     image_readers, primary_bursts_meta, secondary_bursts_meta, ref_metas = inputs()
-    dem_source = eos.dem.get_any_source()
+    dem_source = eos.dem.SRTM4Source()
 
     orbit = Orbit(s1.metadata.unique_sv_from_bursts_meta(primary_bursts_meta))
     # construct primary swath model
@@ -399,6 +390,11 @@ def main(result_dir="."):
 
 
 if __name__ == "__main__":
+    import time
+
     import fire
 
+    start = time.time()
     fire.Fire(main)
+    duration = time.time() - start
+    print(f"Finished! Took {duration} seconds")

@@ -7,13 +7,14 @@ import shapely
 from eos.dem import DEM, SRTM4Source
 from eos.products.nisar.cropper import NisarCrop, crop_images
 from eos.products.nisar.metadata import DatasetNotFoundError
+from eos.sar.io import RemoteH5Loader
 from eos.sar.regist import phase_correlation_on_amplitude
 from eos.sar.roi import Roi
 from eos.sar.roi_provider import GeometryRoiProvider, PrescribedRoiProvider
 
 RSLC_SAMPLE_PATHS = [
-    "s3://kayrros-dev-satellite-test-data/NISAR/simulated_samples/l1_rslc/sample1/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001.h5",
-    "s3://kayrros-dev-satellite-test-data/NISAR/simulated_samples/l1_rslc/sample2/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5",
+    "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001/NISAR_L1_PR_RSLC_001_030_A_019_2000_SHNA_A_20081012T060910_20081012T060926_D00402_N_F_J_001.h5",
+    "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5",
 ]
 
 
@@ -33,7 +34,7 @@ def test_cropper():
         }
     )
     cropper_input: dict[str, Any] = {
-        "h5_paths": RSLC_SAMPLE_PATHS,
+        "h5_loaders": [RemoteH5Loader(s3path) for s3path in RSLC_SAMPLE_PATHS],
         "primary_id": 0,
         "frequency": "A",
         "polarization": "HH",
@@ -42,7 +43,6 @@ def test_cropper():
         ),
         "dem_source": SRTM4Source(),
         "get_complex": False,
-        "s3_session": None,
     }
 
     crops, dem = crop_images(**cropper_input)

@@ -8,21 +8,14 @@ from eos.sar import dem_to_radar, io, roi
 from eos.sar.orbit import Orbit
 
 
-def test_radar_coding(s3_client):
-    remote_test = True
-
-    if remote_test:
-        xml_folder = (
-            "s3://kayrros-dev-satellite-test-data/sentinel-1/eos_test_data/annotation"
-        )
-    else:
-        xml_folder = "../tests/data"
+def test_radar_coding():
+    xml_folder = "./tests/data"
 
     basename = "s1b-iw3-slc-vv-20190803t164007-20190803t164032-017424-020c57-006.xml"
     xml_path = os.path.join(xml_folder, basename)
 
     # read xml
-    xml_content = io.read_xml_file(xml_path, s3_client)
+    xml_content = io.read_xml_file(xml_path)
 
     burst_id = 1
 
@@ -49,10 +42,10 @@ def test_radar_coding(s3_client):
         burst_meta, orbit, corrector
     )
 
-    margin = 10
+    margin = 20
 
     # fetch the dem covering the burst model
-    dem_source = eos.dem.get_any_source()
+    dem_source = eos.dem.SRTM4Source()
     dem = bmod.fetch_dem(dem_source, margin=margin)
 
     # define a region of interest where geocoding should occur

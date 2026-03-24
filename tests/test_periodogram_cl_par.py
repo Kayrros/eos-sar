@@ -1,10 +1,3 @@
-"""
-First ensure you have an OpenCL driver installed on your machine:
-    https://documen.tician.de/pyopencl/misc.html#enabling-access-to-cpus-and-gpus-via-py-opencl
-Then run:
-uv run --extra teosar periodo_ex.py
-"""
-
 from __future__ import annotations
 
 import json
@@ -56,8 +49,8 @@ class ThreeParamSimu:
 
 
 # %%
-if __name__ == "__main__":
-    with open("threeparamsimu.json", "r") as f:
+def test_simulate_then_fit():
+    with open("./tests/data/threeparamsimu.json", "r") as f:
         dico = json.load(f)
 
     three_param_simu = ThreeParamSimu.from_dict(dico)
@@ -103,7 +96,6 @@ if __name__ == "__main__":
     q_estimated = opt_vars[:, 0]
     v_estimated = opt_vars[:, 1]
     eta_estimated = opt_vars[:, 2]
-    gammas_estimated = gammas
 
     v_err = np.abs(v_estimated - three_param_simu.v_gt)
     q_err = np.abs(q_estimated - three_param_simu.q_gt)
