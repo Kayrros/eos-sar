@@ -29,6 +29,8 @@ def normalize(
 class RadiometricTerrainCorrector:
     """
     Warning: see eos.sar.simulator.SARSimulator notes. (= avoid large ROI)
+
+    For parameter `simulator_kwargs`, see eos.sar.simulator.SARSimulator.
     """
 
     def __init__(

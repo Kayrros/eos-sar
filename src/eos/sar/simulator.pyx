@@ -169,6 +169,15 @@ cdef inline void saveIlluminationArea(int x0, int y0, int w, int h, double azimu
 
 class SARSimulator:
     """
+    Parameters:
+        proj_model
+        dem
+        oversampling
+        dem_resampling: resampling kernel used to resampling the DEM (pre-processing step).
+            If the input DEM has lower resolution than the target resolution (derived from proj_model),
+            then `rasterio.warp.Resampling.cubic_spline` is probably best.
+            Default to `rasterio.warp.Resampling.cubic` for compatibility reasons.
+
     Warnings:
         1. Because of assumptions for optimizations (warping the DEM),
         the simulation performs poorly on large ROIs.
@@ -182,12 +191,14 @@ class SARSimulator:
     def __init__(self,
                  proj_model: model.SensorModel,
                  dem: eos.dem.DEM,
-                 oversampling=(4, 4)):
+                 oversampling=(4, 4),
+                 dem_resampling=Resampling.cubic):
         self.proj_model = proj_model
         self.dem = dem
         self.coordinate = proj_model.coordinate
 
         self.oversampling_x, self.oversampling_y = oversampling
+        self.dem_resampling = dem_resampling
 
     def _get_sar_resolutions(self, int col, int row):
         # compute the azimuth and range 'resolution' by localizing two points in each direction
@@ -239,7 +250,7 @@ class SARSimulator:
             dst_crs=crs,
             src_nodata=np.nan,
             dst_nodata=np.nan,
-            resampling=Resampling.cubic)
+            resampling=self.dem_resampling)
 
         return dem, transform
 
