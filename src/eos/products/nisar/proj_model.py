@@ -110,6 +110,12 @@ class NisarModel(SensorModel):
             row, col, alt, crs, vert_crs, x_init, y_init, z_init
         )
 
+    @property
+    def coordinate(self) -> coordinates.SLCCoordinate:
+        _coordinate = self.generic_model.coordinate
+        assert isinstance(_coordinate, coordinates.SLCCoordinate)
+        return _coordinate
+
 
 def main(h5_file_path, frequency: Frequency = "A") -> NisarModel:
     """
