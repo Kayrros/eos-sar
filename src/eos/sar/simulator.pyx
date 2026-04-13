@@ -341,7 +341,7 @@ class SARSimulator:
         cdef np.ndarray[np.float64_t, ndim=1] col0_alts = np.empty((Nrows+1,))
         cdef int mid = dem.shape[1] // 2
         col0_alts = dem[rrow, mid].astype(np.float64)
-        col0_lons, col0_lats = dem_transform * (mid, rrow)
+        col0_lons, col0_lats = dem_transform * (mid + .5, rrow + .5)
         row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
         cdef np.ndarray[np.float64_t, ndim=1] azt0 = self.coordinate.to_azt(row0)
 
@@ -361,7 +361,7 @@ class SARSimulator:
 
                     # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
                     row0_alts = dem[i].astype(np.float64)
-                    row0_lons, row0_lats = dem_transform * (rcol, i)
+                    row0_lons, row0_lats = dem_transform * (rcol + .5, i +.5)
 
                 for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
                     row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])
