@@ -418,15 +418,33 @@ class DEMStitcherSource(DEMSource):
     """
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
+        src_is_point = self.dem_name in dem_stitcher.stitcher.PIXEL_CENTER_DEMS
         with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
             array, profile = dem_stitcher.stitch_dem(
                 bounds=list(bounds),
                 dem_name=self.dem_name,
+                dst_ellipsoidal_height=False,  # do not remove geoid at this stage, will be done later
                 merge_nodata_value=0,
+                dst_area_or_point="Point"
+                if src_is_point
+                else "Area",  # prevent dem-stitcher to perform area_or_point 0.5 pix shifts
                 dst_resolution=self.dst_resolution,
                 fill_in_glo_30=self.fill_in_glo_30,
                 dst_tile_dir=self.tiles_cache_dir,
             )
+
+            # For now, we don't expose this as an attribute, but we could if we
+            # wish to use a cached geoid as well
+            geoid_path = dem_stitcher.geoid.get_default_geoid_path(self.dem_name)
+
+            array = dem_stitcher.geoid.remove_geoid(
+                array,
+                profile,
+                geoid_path=geoid_path,
+                dem_area_or_point="Area",  # hardcode to prevent dem-stitcher 0.5 pixel shifts related to area_or_point
+            )
+            array = array[0, ...]
+
         assert isinstance(array, np.ndarray)
         assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
