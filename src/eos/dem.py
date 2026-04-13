@@ -309,9 +309,9 @@ class DEM:
         self._assert_in_raster(xmin, xmax, ymin, ymax)
 
         array = self.array[ymin : ymax + 1, xmin : xmax + 1]
-        resx = self.transform.a
-        resy = self.transform.e
-        transform = affine.Affine.translation(xmin * resx, ymin * resy) * self.transform
+
+        window = rasterio.windows.Window(xmin, ymin, xmax - xmin + 1, ymax - ymin + 1)
+        transform = rasterio.windows.transform(window, self.transform)
 
         return array, transform, self.crs
 
