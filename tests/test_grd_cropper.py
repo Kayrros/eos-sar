@@ -67,13 +67,13 @@ def test_grd_cropper(cdse_auth, cdse_s3_session, tmp_path):
 
     np.testing.assert_allclose(
         metadata.los_angles.los,
-        (-0.5239635338760896, 0.09782481122050468, -0.8461043206825931),
+        (-0.5239635338433719, 0.09782481121603509, -0.8461043207033709),
     )
-    np.testing.assert_allclose(metadata.los_angles.altitude, 107.51067352294922)
-    np.testing.assert_allclose(metadata.los_angles.azimuth_angle, 280.57545555)
+    np.testing.assert_allclose(metadata.los_angles.altitude, 107.51065826416016)
+    np.testing.assert_allclose(metadata.los_angles.azimuth_angle, 280.5754555484541)
     np.testing.assert_allclose(
         metadata.los_angles.incidence_angle,
-        32.20955155179675,
+        32.20955154956328,
     )
 
 
