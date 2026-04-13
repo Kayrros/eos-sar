@@ -213,8 +213,8 @@ class SARSimulator:
 
     def _get_dem_transform(self, proj_model, roi):
         x0, y0, w, h = roi.to_roi()
-        row = np.asarray([y0, y0, y0+h, y0+h])
-        col = np.asarray([x0, x0+w, x0+w, x0])
+        row = np.asarray([y0, y0, y0+h, y0+h]) + 0.5
+        col = np.asarray([x0, x0+w, x0+w, x0]) + 0.5
         lon, lat, _ = proj_model.localization(row, col, alt=np.zeros_like(col))
 
         gcps = [GroundControlPoint(row=r-y0, col=c-x0, x=ln, y=lt) for r, c, ln, lt in zip(row, col, lon, lat)]
