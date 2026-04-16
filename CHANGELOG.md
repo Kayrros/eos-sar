@@ -1,7 +1,14 @@
 # [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.42.1..HEAD)
 
-## Changed
+## Added
+- usage: Add S1 SLC cropping and simulation script
+- tests: Add nisar rtc test
+- usage: Add usage for nisar crop+simulation
+- nisar:proj_model: Add coordinate property
 
+## Changed
+- dem: Simplify code for subsetted dem transform
+- simulator: expose DEM resampling parameter
 - change license to Apache 2.0
 - README: Update readme
 - tutorial: Use CDSE backend instead of pre-downloading with ASF
@@ -20,7 +27,19 @@
 - package: Change package name to eos-sar
 
 ## Fixed
-
+- dem: Fix dem-stitcher bounds edge case:
+    * In an edge case when you request a dem with lat_min and lon_max close to
+    * the tile limits but exceeding it by half a pixel (1x1 degree tiling), the resulting dem
+    * would be smaller than expected, i.e. dem-stitcher did not fetch data
+    * from neighboring tiles. This is because the tile bounds dataset in
+    * dem-stitcher is wrongly translated by half a pixel to the east and half a pixel
+    * to the south. This bug has been corrected, we now fetch a slightly
+    * bigger dem and then subset it.
+- tests: Fix test_grd_cropper where values changed because of dem-stitcher change
+- simulator: Fix gcp coords before estimating transform
+- simulator: Fix 0.5 pixel shift in Simulator.simulate
+- dem: Fix DemStitcherSource to avoid 0.5 pix shifts
+- roi_provider: Fix CentroidRoiProvider assertion to account for numpy types
 - teosar: Fix periodogram.cl packaging and add a test:
   * closes ISSUE #183
 - teosar: Fix boto3 import:
@@ -28,7 +47,6 @@
 - usage/zoom: Fix script and remove osio
 
 ## Removed
-
 - s3_bucket: Remove kayrros s3 bucket from tests:
 
   * S3 bucket: No more tests use the Kayrros S3 bucket. When Sentinel-1 data is required, now CDSE backend is used instead of the bucket. The only tests that could use a bucket are `test_mask_border_noise_grd.py` and `test_calibration.py` which require large files corresponding to SNAP results. For now, the comparison against SNAP results has been removed entirely from the code, and will be added back once we have a public location to store test data. To reduce the load on CDSE, some fixtures are used. We also switch to a slower gitlab runner. We run the CDSE tests separately on a single worker. We also mark tests using CDSE fixtures as flaky, so that we can easily retry them.
