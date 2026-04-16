@@ -419,6 +419,27 @@ class DEMStitcherSource(DEMSource):
 
     def fetch_dem(self, bounds: Bounds) -> DEM:
         src_is_point = self.dem_name in dem_stitcher.stitcher.PIXEL_CENTER_DEMS
+        prev_bounds: Optional[tuple[float, float, float, float]] = None
+
+        if src_is_point:
+            # in this case, there is a small bug concerning the tile bounds in dem-stitcher
+            # that we need to be careful about
+
+            if self.dem_name == "glo_30":
+                dem_res = 1.0 / 3600  # 1 arc second
+            elif self.dem_name == "glo_90":
+                dem_res = 3.0 / 3600  # 3 arc seconds
+            else:
+                assert False, "Unsupported DEM"
+
+            # buffer a bit lat_min and lon_max
+            # to avoid an edge case bug resulting from dem-stitcher tile bounds being slightly wrong
+            # they are wrong because they are translated by half a pixel to the east
+            # and half a pixel to the south
+            prev_bounds = bounds
+            lon_min, lat_min, lon_max, lat_max = bounds
+            bounds = lon_min, lat_min - dem_res / 2, lon_max + dem_res / 2, lat_max
+
         with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
             array, profile = dem_stitcher.stitch_dem(
                 bounds=list(bounds),
@@ -449,7 +470,12 @@ class DEMStitcherSource(DEMSource):
         assert array.dtype == np.float32
         assert profile["crs"] == "EPSG:4326"
         transform = profile["transform"]
-        return DEM(array=array, transform=transform)
+        dem = DEM(array=array, transform=transform)
+
+        if prev_bounds is None:
+            return dem
+        else:
+            return dem.subset(prev_bounds)
 
 
 def get_any_source() -> DEMSource:
