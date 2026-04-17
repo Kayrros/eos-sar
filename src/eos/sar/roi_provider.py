@@ -96,7 +96,7 @@ class CentroidRoiProvider(RoiProvider):
 
         lon, lat = self.point
         alt = dem.elevation(lon, lat)
-        assert isinstance(alt, float)
+        assert isinstance(alt, (float, np.floating))
         row, col, _ = proj_model.projection(lon, lat, alt)
         orig = int(col - self.w / 2), int(row - self.h / 2)
         roi = Roi(*orig, self.w, self.h)

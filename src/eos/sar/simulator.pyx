@@ -213,8 +213,8 @@ class SARSimulator:
 
     def _get_dem_transform(self, proj_model, roi):
         x0, y0, w, h = roi.to_roi()
-        row = np.asarray([y0, y0, y0+h, y0+h])
-        col = np.asarray([x0, x0+w, x0+w, x0])
+        row = np.asarray([y0, y0, y0+h, y0+h]) + 0.5
+        col = np.asarray([x0, x0+w, x0+w, x0]) + 0.5
         lon, lat, _ = proj_model.localization(row, col, alt=np.zeros_like(col))
 
         gcps = [GroundControlPoint(row=r-y0, col=c-x0, x=ln, y=lt) for r, c, ln, lt in zip(row, col, lon, lat)]
@@ -341,7 +341,7 @@ class SARSimulator:
         cdef np.ndarray[np.float64_t, ndim=1] col0_alts = np.empty((Nrows+1,))
         cdef int mid = dem.shape[1] // 2
         col0_alts = dem[rrow, mid].astype(np.float64)
-        col0_lons, col0_lats = dem_transform * (mid, rrow)
+        col0_lons, col0_lats = dem_transform * (mid + .5, rrow + .5)
         row0, col0, _ = self.proj_model.projection(col0_lons, col0_lats, col0_alts)
         cdef np.ndarray[np.float64_t, ndim=1] azt0 = self.coordinate.to_azt(row0)
 
@@ -361,7 +361,7 @@ class SARSimulator:
 
                     # NOTE: if the DEM is nan, computations will be nan and `successes[j]` will be false
                     row0_alts = dem[i].astype(np.float64)
-                    row0_lons, row0_lats = dem_transform * (rcol, i)
+                    row0_lons, row0_lats = dem_transform * (rcol + .5, i +.5)
 
                 for j in range(Ncols+1):  # geo2xyzWGS84 is much faster than pyproj
                     row0_gx[j], row0_gy[j], row0_gz[j] = geo2xyzWGS84(row0_lats[j], row0_lons[j], row0_alts[j])

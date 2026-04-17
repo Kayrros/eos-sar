@@ -2,6 +2,7 @@ import time
 
 import numpy as np
 import pytest
+from shapely import box
 
 import eos.dem
 
@@ -12,14 +13,15 @@ def test_dem_sources_elevation():
 
     # bounds = (3, 42, 8, 47)
     bounds = (3, 44, 4, 46)
-    lons = np.random.rand(10) * (bounds[2] - bounds[0]) + bounds[0]
-    lats = np.random.rand(10) * (bounds[3] - bounds[1]) + bounds[1]
 
     dem_source: eos.dem.DEMSource
 
     dem_source = eos.dem.SRTM4Source()
     t = time.time()
     dem = dem_source.fetch_dem(bounds)
+    actual_bounds = dem.get_extent()
+    lons = np.random.rand(10) * (actual_bounds[2] - actual_bounds[0]) + actual_bounds[0]
+    lats = np.random.rand(10) * (actual_bounds[3] - actual_bounds[1]) + actual_bounds[1]
     print(dem.elevation(lons, lats, interp))
     print(time.time() - t)
     # np.save("/tmp/t/a", dem.array)
@@ -28,6 +30,9 @@ def test_dem_sources_elevation():
     dem_source = eos.dem.DEMStitcherSource()
     t = time.time()
     dem = dem_source.fetch_dem(bounds)
+    actual_bounds = dem.get_extent()
+    lons = np.random.rand(10) * (actual_bounds[2] - actual_bounds[0]) + actual_bounds[0]
+    lats = np.random.rand(10) * (actual_bounds[3] - actual_bounds[1]) + actual_bounds[1]
     print(dem.elevation(lons, lats, interp))
     print(time.time() - t)
     # np.save("/tmp/t/d", dem.array)
@@ -36,17 +41,30 @@ def test_dem_sources_elevation():
     # TODO: assert things
 
 
-def test_dem_crop(tmp_path):
+@pytest.mark.parametrize(
+    "dem_name",
+    [
+        "srtm4",
+        "glo_30",
+        "glo_90",
+    ],
+)
+def test_dem_crop(tmp_path, dem_name):
+    dem_source: eos.dem.DEMSource
+    if dem_name == "srtm4":
+        dem_source = eos.dem.SRTM4Source()
+    else:
+        dem_source = eos.dem.DEMStitcherSource(dem_name)
+
     bounds1 = (3, 44, 4, 46)
-    dem = eos.dem.SRTM4Source().fetch_dem(bounds1)
+    dem = dem_source.fetch_dem(bounds1)
+    assert box(*bounds1).within(box(*dem.get_extent()))
 
     bounds2 = (3.1, 44.3333, 4, 46)
     a, b, c = dem.crop(bounds2)
 
     eos.dem.write_crop_to_file(dem.array, dem.transform, dem.crs, tmp_path / "orig.tif")
     eos.dem.write_crop_to_file(a, b, c, tmp_path / "crop.tif")
-
-    # TODO: assert things
 
 
 def test_dem_crop2(tmp_path):
@@ -60,14 +78,14 @@ def test_dem_crop2(tmp_path):
     eos.dem.write_crop_to_file(a, b, c, tmp_path / "crop.tif")
 
 
-if False:
-    # not passing yet, because the different DEMSource tend to more or less respect the bounds
-    # and also they all have different transform conventions?..
-    def test_dem_subset_same():
-        bounds = (3, 44, 4, 46)
-        dem = eos.dem.DEMStitcherSource().fetch_dem(bounds)
-        dem2 = dem.subset(bounds)
-        assert dem == dem2
+def test_dem_subset_same():
+    bounds = (3, 44, 4, 46)
+    dem = eos.dem.DEMStitcherSource().fetch_dem(bounds)
+    dem2 = dem.subset(bounds)
+
+    assert np.all(dem.array == dem2.array)
+    assert dem.transform == dem2.transform
+    assert dem.crs == dem2.crs
 
 
 def test_dem_subset_and_crop():
