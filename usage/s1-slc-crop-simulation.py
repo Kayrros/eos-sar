@@ -10,12 +10,12 @@ from typing import Literal
 import boto3
 import fire
 import numpy as np
+from eos.sar.simulator import SARSimulator
 from rasterio.warp import Resampling
 
+import eos.dem
 import eos.products.sentinel1 as s1
-import eos.sar
 from eos.sar.roi_provider import CentroidRoiProvider, RoiProvider
-from eos.sar.simulator import SARSimulator
 
 # %%
 ORBIT_PASS = Literal["Ascending", "Descending"]
