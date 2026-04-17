@@ -52,3 +52,34 @@ jobs:
         run: |
           uv run --all-extras pytest . -n auto -v -m "not cdse"
 
+  fakedeploy:
+    name: fakedeploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      - name: Build the project
+        run: uv build
+
+      - name: Test the built package
+        run: |
+          uv venv --seed
+          source .venv/bin/activate
+          pip install dist/*.tar.gz
+          pip install dist/*.whl
+          python -c 'import eos.sar.io'
+          python -c 'import eos.products.sentinel1.assembler'
+
+      - name: Build with different python versions
+        run: |
+          uv build --python 3.10
+          uv build --python 3.11
+          uv build --python 3.12
+          uv build --python 3.13
+          uv build --python 3.14
