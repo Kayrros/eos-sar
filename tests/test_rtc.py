@@ -1,4 +1,5 @@
 import numpy as np
+from eos.sar.simulator import SARSimulator
 from rasterio.warp import Resampling
 
 import eos.dem
@@ -13,7 +14,6 @@ from eos.sar.io import RemoteH5Loader
 from eos.sar.orbit import Orbit
 from eos.sar.roi import Roi
 from eos.sar.rtc import RadiometricTerrainCorrector
-from eos.sar.simulator import SARSimulator
 
 
 def test_rtc_simulation(tmp_path):

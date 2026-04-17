@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+from eos.sar.simulator import SARSimulator
 from rasterio.warp import Resampling
 
 from eos.dem import DEMStitcherSource
@@ -9,7 +10,6 @@ from eos.products.nisar.metadata import Frequency, Polarization
 from eos.sar.io import RemoteH5Loader
 from eos.sar.roi import Roi
 from eos.sar.roi_provider import PrescribedRoiProvider
-from eos.sar.simulator import SARSimulator
 
 logger = logging.getLogger(__name__)
 

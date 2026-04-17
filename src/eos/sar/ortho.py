@@ -268,7 +268,7 @@ class Orthorectifier:
         else:
             assert raster.dtype == np.float32
             out = cv2.remap(
-                raster,
+                raster,  # type: ignore[arg-type]
                 self.coordinate_map[0],
                 self.coordinate_map[1],
                 interpolation=interpolation.cv2_flag,

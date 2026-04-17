@@ -25,6 +25,7 @@
   * *The current fsspec implementation is a bit slower than osio (for s3, but faster for http). The current fsspec implementation is a temporary fix for osio. Caching is not optimized yet. The recommendation for NISAR (in the product specification) have not been implemented yet.
   * **Breaking change**: `eos.products.nisar.cropper` contains many functions whose signature has been modified, namely `get_primary_crop`, `get_primary_crop_dem_registLUT`, `get_secondary_crop`, `crop_images`. All of this is fine since NISAR developement is ongoing, the function signature is not stabilized.
 - package: Change package name to eos-sar
+- CI: use Github Actions instead of Gitlab CI
 
 ## Fixed
 - dem: Fix dem-stitcher bounds edge case:
