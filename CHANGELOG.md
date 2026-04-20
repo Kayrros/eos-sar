@@ -1,6 +1,8 @@
 # [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.42.1..HEAD)
 
 ## Added
+- test_s1_productinfo: Add a test for relative orbit in manifest vs formula
+- metadata: Add S1D relative orbit formula
 - usage: Add S1 SLC cropping and simulation script
 - tests: Add nisar rtc test
 - usage: Add usage for nisar crop+simulation
