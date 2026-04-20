@@ -1,9 +1,12 @@
 import datetime
 
+import pytest
+
 from eos.products.sentinel1.catalog import (
     CDSESentinel1GRDCatalogBackend,
     CDSESentinel1SLCCatalogBackend,
 )
+from eos.products.sentinel1.metadata import extract_bursts_metadata
 from eos.products.sentinel1.product import (
     CDSEUnzippedSafeSentinel1GRDProductInfo,
     CDSEUnzippedSafeSentinel1SLCProductInfo,
@@ -55,3 +58,29 @@ def test_product_properties_grd(cdse_s3_session):
     assert props.orbit_direction == "desc"
     assert props.anx_time == datetime.datetime(2023, 1, 2, 23, 54, 36, 762504)
     assert not props.crossing_anx
+
+
+PRODUCT_IDS = [
+    "S1A_IW_SLC__1SDV_20250313T055953_20250313T060021_058282_07342C_D57A",
+    "S1B_IW_SLC__1SDV_20190104T230513_20190104T230540_014350_01AB40_1885",
+    "S1C_IW_SLC__1SDV_20260418T232653_20260418T232720_007277_00EC0C_7230",
+    "S1D_IW_SLC__1SDV_20260418T220656_20260418T220723_002407_003F18_B144",
+]
+
+
+@pytest.mark.parametrize("product_id", PRODUCT_IDS)
+def test_props_against_burst_meta(cdse_s3_session, product_id):
+
+    catalog_backend = CDSESentinel1SLCCatalogBackend()
+
+    for product_id in PRODUCT_IDS:
+        product = CDSEUnzippedSafeSentinel1SLCProductInfo.from_product_id(
+            catalog_backend, cdse_s3_session, product_id
+        )
+
+        props = product.get_properties()
+
+        metadatas = extract_bursts_metadata(product.get_xml_annotation("iw1", "VV"))
+        bmeta = metadatas[0]
+        assert bmeta.relative_orbit_number == props.relative_orbit_number
+        assert bmeta.absolute_orbit_number == props.absolute_orbit_number
