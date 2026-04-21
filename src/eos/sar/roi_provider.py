@@ -59,11 +59,13 @@ class GeometryRoiProvider(RoiProvider):
 
     @override
     def get_roi(
-        self, proj_model: SensorModel, dem_source: DEMSource
-    ) -> tuple[Roi, Arrayf64, Arrayf64]:
-        dem_bounds = self.geometry.buffer(self.dem_fetch_buffer).bounds
-        dem = dem_source.fetch_dem(dem_bounds)
-
+        self, proj_model: SensorModel, dem_source: DEMSource, dem: DEM | None = None
+    ) -> tuple[Roi, Arrayf64, Arrayf64, DEM]:
+        
+        if not dem:
+            dem_bounds = self.geometry.buffer(self.dem_fetch_buffer).bounds
+            dem = dem_source.fetch_dem(dem_bounds)
+        
         # Get the geometry coords
         geo_coords = _geometry_to_geocoords(self.geometry)
 
@@ -75,8 +77,9 @@ class GeometryRoiProvider(RoiProvider):
             min_width=self.min_width,
             min_height=self.min_height,
         )
-        return roi, rows, cols
+        return roi, rows, cols, dem
 
+    
 
 @dataclass(frozen=True)
 class CentroidRoiProvider(RoiProvider):
