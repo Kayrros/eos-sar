@@ -26,6 +26,7 @@ class TSXMetadata:
     range_time_interval: float
     range_pixel_spacing: float
     wavelength: float
+    calibration_constant: float
 
     @property
     def azimuth_frequency(self) -> float:
@@ -116,7 +117,8 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     wavelength = LIGHT_SPEED_M_PER_SEC / frequency
     orbit_direction = metadata["productInfo"]["missionInfo"]["orbitDirection"].lower()
     look_side = metadata["productInfo"]["acquisitionInfo"]["lookDirection"].lower()
-
+    calibration_constant = float(metadata["calibration"]["calibrationConstant"]["calFactor"])
+    
     assert orbit_direction in ("ascending", "descending")
     assert look_side in ("left", "right")
 
@@ -155,6 +157,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
         range_time_interval=range_time_interval,
         range_pixel_spacing=range_pixel_spacing,
         wavelength=wavelength,
+        calibration_constant = calibration_constant
     )
 
 
