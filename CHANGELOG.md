@@ -1,4 +1,7 @@
-# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.42.1..HEAD)
+# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.43.0..HEAD)
+
+
+# [0.43.0](https://github.com/Kayrros/eos-sar/compare/0.42.1..0.43.0)
 
 ## Added
 - test_s1_productinfo: Add a test for relative orbit in manifest vs formula
