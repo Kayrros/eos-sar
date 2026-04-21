@@ -260,11 +260,11 @@ class Roi:
     def assert_valid(self, parent_shape: tuple[int, int]) -> None:
         h_parent, w_parent = parent_shape
         col_child_min, row_child_min, col_child_max, row_child_max = self.to_bounds()
-        msg = "Roi outside of parent"
-        assert col_child_max < w_parent, msg
-        assert row_child_max < h_parent, msg
-        assert col_child_min >= 0, msg
-        assert row_child_min >= 0, msg
+        msg = "Roi outside of parent "
+        assert col_child_max < w_parent, msg + f"{col_child_max=} >= {w_parent=}"
+        assert row_child_max < h_parent, msg + f"{row_child_max=} >= {h_parent=}"
+        assert col_child_min >= 0, msg + f"{col_child_min=} < {0}"
+        assert row_child_min >= 0, msg + f"{col_child_min=} < {0}"
 
     def make_valid(self, parent_shape: tuple[int, int], inplace: bool = False) -> Roi:
         (
