@@ -20,3 +20,4 @@ from eos.sar import rtc as rtc
 from eos.sar import srgr as srgr
 from eos.sar import unwrapping as unwrapping
 from eos.sar import utils as utils
+from eos.sar import approx_los_track as approx_los_track
