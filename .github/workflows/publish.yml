@@ -1,0 +1,77 @@
+name: publish
+
+# Only ever runs when a version tag (vX.Y.Z) is pushed, e.g. as part of
+# cutting a GitHub release, plus an optional manual trigger for testing.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+jobs:
+  build-sdist:
+    name: build sdist
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.7"
+          enable-cache: true
+
+      - name: Build sdist
+        run: uv build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdist
+          path: dist/*.tar.gz
+
+  build-wheels:
+    name: build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-13 = x86_64, macos-14 = arm64 (Apple Silicon)
+        os: [ubuntu-latest, macos-13, macos-14, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v4.2.0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  publish:
+    name: publish to PyPI
+    needs: [build-sdist, build-wheels]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/eos-sar
+    permissions:
+      # required for PyPI trusted publishing (OIDC)
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.11.7"
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing automatic
