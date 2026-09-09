@@ -53,6 +53,9 @@ jobs:
   publish:
     name: publish to PyPI
     needs: [build-sdist, build-wheels]
+    # only actually publish on a real vX.Y.Z tag push; a manual workflow_dispatch
+    # run (used to test the build matrix) stops after the build jobs.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
       name: pypi
