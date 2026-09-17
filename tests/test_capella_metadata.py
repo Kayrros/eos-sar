@@ -44,25 +44,24 @@ def test_meta_tifftags_vs_jsonfile():
 
 
 SLC_META_PATHS = [
-    "s3://capella-open-data/data/2021/2/4/CAPELLA_C02_SS_SLC_HH_20210204153042_20210204153058/CAPELLA_C02_SS_SLC_HH_20210204153042_20210204153058_extended.json",
-    "s3://capella-open-data/data/2020/12/7/CAPELLA_C02_SM_SLC_HH_20201207083444_20201207083448/CAPELLA_C02_SM_SLC_HH_20201207083444_20201207083448_extended.json",
+    "./tests/data/capella/CAPELLA_C13_SS_SLC_HH_20260819153732_20260819153747_extended.json",
+    "./tests/data/capella/CAPELLA_C18_SM_SLC_HH_20260818222745_20260818222750_extended.json",
 ]
 
-SLC_SPOT_PATH = "s3://capella-open-data/data/2021/8/15/CAPELLA_C03_SP_SLC_HH_20210815144721_20210815144723/CAPELLA_C03_SP_SLC_HH_20210815144721_20210815144723_extended.json"
+SLC_SPOT_PATH = "./tests/data/capella/CAPELLA_C20_SP_SLC_HH_20260823125202_20260823125209_extended.json"
 
 GEC_META_PATHS = [
-    "s3://capella-open-data/data/2021/2/4/CAPELLA_C02_SS_GEC_HH_20210204153042_20210204153058/CAPELLA_C02_SS_GEC_HH_20210204153042_20210204153058_extended.json",
-    "s3://capella-open-data/data/2020/12/7/CAPELLA_C02_SM_GEC_HH_20201207083444_20201207083448/CAPELLA_C02_SM_GEC_HH_20201207083444_20201207083448_extended.json",
+    "./tests/data/capella/CAPELLA_C13_SS_GEC_HH_20260819153732_20260819153747_extended.json",
+    "./tests/data/capella/CAPELLA_C18_SM_GEC_HH_20260818222745_20260818222750_extended.json",
 ]
 
-GEC_SPOT_PATH = "s3://capella-open-data/data/2021/8/15/CAPELLA_C03_SP_GEC_HH_20210815144712_20210815144733/CAPELLA_C03_SP_GEC_HH_20210815144712_20210815144733_extended.json"
+GEC_SPOT_PATH = "./tests/data/capella/CAPELLA_C20_SP_GEC_HH_20260823125202_20260823125209_extended.json"
 
 
-def meta_from_capella_s3_path(
-    capella_s3_path: str,
+def meta_from_capella_path(
+    capella_path: str,
 ) -> Union[metadata.CapellaSLCMetadata, metadata.CapellaGECMetadata]:
-    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
-    json_content = read_file_as_str(capella_s3_path, s3_client=s3)
+    json_content = read_file_as_str(capella_path)
     meta_from_json = metadata.parse_metadata(json_content)
     return meta_from_json
 
@@ -90,13 +89,13 @@ def meta_from_capella_s3_path(
 )
 def test_meta(meta_json_path: str, expected_meta_type, expectation):
     with expectation:
-        meta = meta_from_capella_s3_path(meta_json_path)
+        meta = meta_from_capella_path(meta_json_path)
         assert isinstance(meta, expected_meta_type)
 
 
 @pytest.mark.parametrize("slc_path", SLC_META_PATHS)
 def test_capella_polynomial_creation(slc_path: str):
-    meta = meta_from_capella_s3_path(slc_path)
+    meta = meta_from_capella_path(slc_path)
     assert isinstance(meta, metadata.CapellaSLCMetadata)
     # the post init has some asserts that should run
     polynomial.CapellaPolynomial2D.from_poly_meta(meta.fdop_cen_poly2d_meta)
