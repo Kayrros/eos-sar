@@ -45,11 +45,46 @@ class NisarCrop:
     array: NDArray[Union[np.float32, np.complex64]]
     roi: Roi
     resampling_matrix: NDArray[np.float64]
+    # True for the fully focused samples, in the frame of array
+    valid_mask: NDArray[np.bool_]
     translation: tuple[float, float] = (0.0, 0.0)
 
     @property
     def amplitude(self) -> NDArray[np.float32]:
         return get_amplitude(self.array)
+
+
+def get_subswath_valid_mask(
+    meta: NisarRSLCMetadata, frequency: Frequency, roi: Roi
+) -> NDArray[np.bool_]:
+    """
+    Mask of the fully focused samples over a region of interest (see
+    NisarFrequencyMetadata.subswath_valid_samples). Samples outside of the image
+    are False.
+    """
+    frequency_meta = meta.frequency_a if frequency == "A" else meta.frequency_b
+    assert frequency_meta is not None, f"Frequency {frequency} not in product"
+
+    mask = np.zeros(roi.get_shape(), dtype=bool)
+    clipped_roi = roi.make_valid((meta.height, frequency_meta.width))
+    if clipped_roi == Roi(0, 0, 0, 0):
+        return mask
+
+    starts, ends = frequency_meta.get_subswath_extents(
+        clipped_roi.row, clipped_roi.row + clipped_roi.h
+    )
+    cols = np.arange(clipped_roi.col, clipped_roi.col + clipped_roi.w)
+    clipped_mask = (
+        (cols[None, None, :] >= starts[:, :, None])
+        & (cols[None, None, :] <= ends[:, :, None])
+    ).any(axis=0)
+
+    write_roi = clipped_roi.translate_roi(-roi.col, -roi.row)
+    mask[
+        write_roi.row : write_roi.row + write_roi.h,
+        write_roi.col : write_roi.col + write_roi.w,
+    ] = clipped_mask
+    return mask
 
 
 def get_amplitude(
@@ -77,6 +112,7 @@ def get_primary_crop(
     get_complex: bool = True,
     use_apd: bool = True,
     calibration: Optional[Calibration] = None,
+    mask_partially_focused: bool = True,
 ) -> NisarCrop:
     primary_metadata = NisarRSLCMetadata.parse_metadata(primary_h5py_file)
     primary_product_id = primary_metadata.product_id
@@ -98,6 +134,12 @@ def get_primary_crop(
         primary_h5py_file[dataset], primary_roi, get_complex=get_complex, boundless=True
     )
 
+    primary_valid_mask = get_subswath_valid_mask(
+        primary_metadata, frequency, primary_roi
+    )
+    if mask_partially_focused:
+        primary_array[~primary_valid_mask] = np.nan
+
     if calibration is not None:
         raise NotImplementedError("Calibration not implemented yet.")
 
@@ -110,6 +152,7 @@ def get_primary_crop(
         array=primary_array,
         roi=primary_roi,
         resampling_matrix=np.eye(3, dtype=np.float64),
+        valid_mask=primary_valid_mask,
     )
 
 
@@ -170,6 +213,7 @@ def get_primary_crop_dem_registLUT(
     get_complex: bool = True,
     use_apd: bool = True,
     calibration: Optional[Calibration] = None,
+    mask_partially_focused: bool = True,
 ) -> tuple[NisarCrop, DEM, RegistrationLUT]:
     primary_crop = get_primary_crop(
         primary_h5py_file,
@@ -180,6 +224,7 @@ def get_primary_crop_dem_registLUT(
         get_complex=get_complex,
         use_apd=use_apd,
         calibration=calibration,
+        mask_partially_focused=mask_partially_focused,
     )
 
     dem = primary_crop.model.fetch_dem(dem_source, roi=primary_crop.roi)
@@ -202,6 +247,7 @@ def get_secondary_crop(
     get_complex: bool = True,
     use_apd: bool = True,
     calibration: Optional[Calibration] = None,
+    mask_partially_focused: bool = True,
 ) -> NisarCrop:
     secondary_metadata = NisarRSLCMetadata.parse_metadata(secondary_h5py_file)
     secondary_product_id = secondary_metadata.product_id
@@ -246,6 +292,14 @@ def get_secondary_crop(
         get_complex=get_complex,
         boundless=True,
     )
+    secondary_valid_mask = get_subswath_valid_mask(
+        secondary_metadata, frequency, roi_in_secondary
+    )
+    # NaNs propagate through the interpolation kernel, so the resampled samples
+    # depending on partially focused data are discarded as well
+    if mask_partially_focused:
+        secondary_array[~secondary_valid_mask] = np.nan
+    secondary_nan_mask = np.where(secondary_valid_mask, 0.0, np.nan).astype(np.float32)
 
     if calibration is not None:
         raise NotImplementedError("Calibration not implemented yet.")
@@ -274,7 +328,12 @@ def get_secondary_crop(
 
         translation = (-tcol, -trow)
     else:
+        A = np.eye(3)
         translation = (0.0, 0.0)
+
+    secondary_resampled_valid_mask = ~np.isnan(
+        apply_affine(secondary_nan_mask, A.dot(A_crop), primary_roi.get_shape())
+    )
 
     return NisarCrop(
         secondary_product_id,
@@ -285,6 +344,7 @@ def get_secondary_crop(
         secondary_resampled,
         roi_in_secondary,
         A_crop,
+        secondary_resampled_valid_mask,
         translation,
     )
 
@@ -302,6 +362,7 @@ def crop_images(
     use_apd: bool = True,
     refine_regist: bool = True,
     calibration: Optional[Calibration] = None,
+    mask_partially_focused: bool = True,
 ) -> tuple[list[NisarCrop], DEM]:
     """
     Crop images and align with a primary image. A DEM covering the images is also returned.
@@ -321,6 +382,7 @@ def crop_images(
             get_complex=get_complex,
             use_apd=use_apd,
             calibration=calibration,
+            mask_partially_focused=mask_partially_focused,
         )
 
     crops = []
@@ -339,6 +401,7 @@ def crop_images(
                 get_complex=get_complex,
                 use_apd=use_apd,
                 calibration=calibration,
+                mask_partially_focused=mask_partially_focused,
             )
 
         crops.append(secondary_crop)

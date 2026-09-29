@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass
 from typing import Any, Literal, Optional, get_args
 
 import h5py
 import numpy as np
+from numpy.typing import NDArray
 from shapely import from_wkt
 from typing_extensions import TypeAlias
 
@@ -14,6 +16,8 @@ from eos.sar.orbit import StateVector
 Frequency: TypeAlias = Literal["A", "B"]
 Polarization: TypeAlias = Literal["HH", "HV", "VH", "VV", "RH", "RV", "LH", "LV"]
 
+logger = logging.getLogger(__name__)
+
 
 class DatasetNotFoundError(Exception):
     pass
@@ -21,6 +25,35 @@ class DatasetNotFoundError(Exception):
 
 def parse_date_as_numpy_datetime64(date_str: str) -> np.datetime64:
     return np.datetime64(date_str.removesuffix("Z"), "ns")
+
+
+def parse_bool(value: Any) -> bool:
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        assert value.lower() in ["true", "false"], f"Unrecognized boolean {value}"
+        return value.lower() == "true"
+    return bool(value)
+
+
+def count_lines_with_gaps(starts: NDArray[np.int64], ends: NDArray[np.int64]) -> int:
+    """
+    Count the lines where the union of the subswath extents is not contiguous.
+    starts and ends have shape (number_of_subswaths, height), extents are inclusive.
+    Empty subswaths (start > end) are ignored.
+    """
+    empty = starts > ends
+    # sort the subswaths of each line by start, pushing empty ones to the end
+    sort_key = np.where(empty, np.iinfo(np.int64).max, starts)
+    order = np.argsort(sort_key, axis=0)
+    sorted_starts = np.take_along_axis(starts, order, axis=0)
+    sorted_ends = np.take_along_axis(np.where(empty, -1, ends), order, axis=0)
+    sorted_empty = np.take_along_axis(empty, order, axis=0)
+
+    # a gap exists when a subswath starts after the end of all the previous ones
+    covered_until = np.maximum.accumulate(sorted_ends, axis=0)[:-1]
+    gaps = (sorted_starts[1:] > covered_until + 1) & ~sorted_empty[1:]
+    return int(np.count_nonzero(gaps.any(axis=0)))
 
 
 @dataclass(frozen=True)
@@ -57,6 +90,13 @@ class NisarFrequencyMetadata:
     processed_center_frequency: float
     wavelength: float
     width: int
+    number_of_subswaths: int
+    # Because of the SweepSAR acquisition mode, lines may contain gaps (blind
+    # ranges) and partially focused samples, to be discarded for radiometric and
+    # polarimetric studies. For each subswath and each line, first and last
+    # (inclusive) column of the fully focused samples,
+    # shape (number_of_subswaths, height, 2).
+    subswath_valid_samples: list[list[list[int]]]
     polarizations: list[Polarization]
     ne_backscatter_dataset: Literal["nes0", "noiseEquivalentBackscatter"]
     ne_backscatter_azimuth_time: list[float]
@@ -102,6 +142,11 @@ class NisarFrequencyMetadata:
         )
         wavelength = LIGHT_SPEED_M_PER_SEC / processed_center_frequency
         width = ds[f"{frequency_group}/slantRange"].size
+        number_of_subswaths = int(ds[f"{frequency_group}/numberOfSubSwaths"][()])
+        subswath_valid_samples = [
+            ds[f"{frequency_group}/validSamplesSubSwath{n}"][:].astype(int).tolist()
+            for n in range(1, number_of_subswaths + 1)
+        ]
         polarizations = [
             polarization.decode("utf-8")
             for polarization in ds[f"{frequency_group}/listOfPolarizations"][:]
@@ -141,6 +186,8 @@ class NisarFrequencyMetadata:
             processed_center_frequency=processed_center_frequency,
             wavelength=wavelength,
             width=width,
+            number_of_subswaths=number_of_subswaths,
+            subswath_valid_samples=subswath_valid_samples,
             polarizations=polarizations,
             ne_backscatter_dataset=ne_backscatter_dataset,
             ne_backscatter_azimuth_time=ne_backscatter_azimuth_time,
@@ -153,6 +200,18 @@ class NisarFrequencyMetadata:
         d = asdict(self)
         d["ref_timestamp"] = str(self.ref_timestamp)
         return d
+
+    def get_subswath_extents(
+        self, row_start: int = 0, row_end: Optional[int] = None
+    ) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+        """
+        First and last (inclusive) valid columns of each subswath for the lines
+        [row_start, row_end), as arrays of shape (number_of_subswaths, lines).
+        """
+        extents = np.asarray(self.subswath_valid_samples, dtype=np.int64).reshape(
+            self.number_of_subswaths, -1, 2
+        )[:, row_start:row_end]
+        return extents[..., 0], extents[..., 1]
 
     @property
     def range_frequency(self) -> float:
@@ -190,12 +249,49 @@ class NisarRSLCMetadata(NisarMetadata):
     lut_sigma0: list[list[float]]
     lut_slant_range: list[float]
     lut_azimuth_time: list[float]
+    # None when the product does not provide the information
+    is_dithered: Optional[bool]
 
     def __post_init__(self):
         super().__post_init__()
         assert self.ref_timestamp == self.frequency_a.ref_timestamp
         if self.frequency_b is not None:
             assert self.ref_timestamp == self.frequency_b.ref_timestamp
+
+        for frequency_meta in [self.frequency_a, self.frequency_b]:
+            if frequency_meta is not None:
+                self._check_subswaths(frequency_meta)
+
+    def _check_subswaths(self, frequency_meta: NisarFrequencyMetadata):
+        assert 1 <= frequency_meta.number_of_subswaths <= 5, (
+            "Unexpected number of subswaths"
+        )
+        assert (
+            len(frequency_meta.subswath_valid_samples)
+            == frequency_meta.number_of_subswaths
+        ), "Inconsistent number of subswaths"
+        assert all(
+            np.shape(valid_samples) == (self.height, 2)
+            for valid_samples in frequency_meta.subswath_valid_samples
+        ), "Subswath valid samples should have one [start, end] per line"
+
+        starts, ends = frequency_meta.get_subswath_extents()
+        non_empty = starts <= ends
+        assert (starts[non_empty] >= 0).all(), "Subswath starts before the image"
+        assert (ends[non_empty] < frequency_meta.width).all(), (
+            "Subswath ends after the image"
+        )
+
+        # With dithering (PRF variation), the SweepSAR blind ranges move along
+        # azimuth and can be filled, so the lines are expected to have no gaps.
+        if self.is_dithered:
+            lines_with_gaps = count_lines_with_gaps(starts, ends)
+            if lines_with_gaps > 0:
+                logger.warning(
+                    f"{self.product_id}: acquisition is dithered but "
+                    f"{lines_with_gaps} lines (out of {self.height}) have gaps "
+                    "between subswaths."
+                )
 
     @staticmethod
     def parse_metadata(ds: h5py.File) -> NisarRSLCMetadata:
@@ -219,6 +315,12 @@ class NisarRSLCMetadata(NisarMetadata):
         relative_orbit_number = int(ds[f"{identification_group}/trackNumber"][()])
 
         frame_number = int(ds[f"{identification_group}/frameNumber"][()])
+
+        is_dithered = (
+            parse_bool(ds[f"{identification_group}/isDithered"][()])
+            if "isDithered" in ds[identification_group]
+            else None
+        )
 
         image_start = parse_date_as_numpy_datetime64(
             ds[f"{identification_group}/zeroDopplerStartTime"][()].decode("utf-8")
@@ -364,6 +466,7 @@ class NisarRSLCMetadata(NisarMetadata):
             lut_sigma0=lut_sigma0,
             lut_slant_range=lut_slant_range,
             lut_azimuth_time=lut_azimuth_time,
+            is_dithered=is_dithered,
         )
 
     def to_dict(self) -> dict[str, Any]:
