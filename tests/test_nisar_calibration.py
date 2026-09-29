@@ -7,14 +7,14 @@ import pytest
 from numpy.typing import NDArray
 
 from eos.products.nisar.calibration import CalibrationReader, NisarCalibrator
-from eos.products.nisar.metadata import NisarRSLCMetadata
+from eos.products.nisar.metadata import Frequency, NisarRSLCMetadata, Polarization
 from eos.sar import io
 from eos.sar.io import RemoteH5Loader, Window
 from eos.sar.roi import Roi
 
 RSLC_SAMPLE_PATH = "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5"
-FREQUENCY = "A"
-POLARIZATION = "HH"
+FREQUENCY: Frequency = "A"
+POLARIZATION: Polarization = "HH"
 DATASET = f"science/LSAR/RSLC/swaths/frequency{FREQUENCY}/{POLARIZATION}"
 
 # the sample product is 21559 lines x 6174 columns, with non-trivial
