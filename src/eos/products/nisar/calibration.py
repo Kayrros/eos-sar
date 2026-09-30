@@ -157,8 +157,8 @@ class NisarCalibrator:
         self._lines, self._pixels = lines, pixels
         self._values = values
 
-        assert self._lines[0] <= 0
-        assert self._pixels[0] <= 0
+        # the LUT grid may start after the image origin (e.g. a few columns in
+        # slant range): values are then clamped to the LUT edges on interpolation
         assert len(self._lines) == len(self._values["gamma"])
         assert (
             len(self._lines) * len(self._pixels)
@@ -179,8 +179,6 @@ class NisarCalibrator:
         self._noise_pixels = pixels
         self._noise_values = np.array(freq_metadata.ne_backscatter[polarization])
 
-        assert self._noise_lines[0] <= 0
-        assert self._noise_pixels[0] <= 0
         assert len(self._noise_lines) == len(self._noise_values)
         assert (
             len(self._noise_lines) * len(self._noise_pixels)
