@@ -3,54 +3,11 @@ from typing import Any, Optional, Sequence, Union
 
 import numpy as np
 from numpy.typing import NDArray
-from scipy.interpolate import RegularGridInterpolator
 
 from eos.products.nisar.metadata import Frequency, NisarRSLCMetadata, Polarization
-from eos.products.sentinel1 import _calibration as _cal  # type: ignore
+from eos.sar.calibration import apply_radiometric_calibration, bilinear_interpolation
 from eos.sar.io import ImageReader, Window
 from eos.sar.roi import Roi
-
-
-def _bilinear_interpolation(window, lines, pixels, values):
-    """
-    Bilinear interpolation of `values`, sampled on the (possibly fractional)
-    raster coordinates `lines` x `pixels`, on every pixel of `window`.
-    Outside of the LUT grid, values are clamped to the edges.
-    """
-    x, y, w, h = window
-    values = np.asarray(values, dtype=np.float64)
-    assert values.shape == (len(lines), len(pixels))
-
-    interpolator = RegularGridInterpolator((lines, pixels), values, method="linear")
-
-    # clip the query coordinates to the grid to clamp values at the edges
-    rows = np.clip(np.arange(y, y + h, dtype=np.float64), lines[0], lines[-1])
-    cols = np.clip(np.arange(x, x + w, dtype=np.float64), pixels[0], pixels[-1])
-    rr, cc = np.meshgrid(rows, cols, indexing="ij")
-
-    res = interpolator((rr, cc))
-    return np.ascontiguousarray(res, dtype=np.float32)
-
-
-def _apply_radiometric_calibration(
-    img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude: bool
-):
-    if np.iscomplexobj(img):
-        assert img.dtype == np.complex64
-        assert calib_coeffs.dtype == np.float32
-        assert noise_coeffs is None or noise_coeffs.dtype == np.float32
-        _cal.apply_radiometric_calibration_complex64(
-            img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude
-        )
-        return img
-    else:
-        assert img.dtype == np.float32
-        assert calib_coeffs.dtype == np.float32
-        assert noise_coeffs is None or noise_coeffs.dtype == np.float32
-        _cal.apply_radiometric_calibration_float32(
-            img, calib_coeffs, noise_coeffs, dont_clip_noise, as_amplitude
-        )
-        return img
 
 
 def _time_range_to_line_col(
@@ -75,26 +32,24 @@ def _time_range_to_line_col(
     return lines.astype(np.float64), pixels.astype(np.float64)
 
 
-class NisarCalibrator:
+class NisarRSLCCalibrator:
     """
     Radiometric calibration for NISAR RSLC products, with optional
     noise-equivalent backscatter correction.
 
     Example
-        >>> calibrator = NisarCalibrator(metadata, frequency="A", polarization="HH")
+        >>> calibrator = NisarRSLCCalibrator(metadata, frequency="A", polarization="HH")
         >>> calibrator.calibrate_inplace(myarray, roi, "gamma")
-        >>> calibrator_no_noise = NisarCalibrator(
+        >>> calibrator_no_noise = NisarRSLCCalibrator(
         ...     metadata, frequency="A", polarization="HH", with_noise=False
         ... )
 
     Note
-        For more details, see the NISAR product description on noise-equivalent
-        backscatter: it is provided in the same units as the image power, so
-        `x0_ns = max(0, |RSLC|^2 - noiseEquivalentBackscatter) / x0_LUT^2` (x0 =
-        beta0/gamma0/sigma0). This matches
-        `sentinel1._calibration.apply_radiometric_calibration_{float32,complex64}`
-        with `noise_coeffs` set, which is reused here. Without noise correction,
-        `x0 = |RSLC|^2 / x0_LUT^2`.
+        For more details, see the NISAR product description
+        (https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/DOCS/NISAR_D-102268_RevE_NASA_SDS_Product_Specification_L1_RSLC_clean_w-sigs.pdf)
+        on noise-equivlaent backscatter: it is provided in the same units as the image
+        power, so `x0_ns = max(0, |RSLC|^2 - noiseEquivalentBackscatter) / x0_LUT^2`
+        (x0 = beta0/gamma0/sigma0).
     """
 
     def __init__(
@@ -122,7 +77,6 @@ class NisarCalibrator:
         image,
         roi,
         method,
-        dont_clip_noise: bool = False,
         as_amplitude: bool = False,
     ):
         assert method in ("sigma", "gamma", "beta")
@@ -132,11 +86,11 @@ class NisarCalibrator:
         calib_array = self._get_calibration_array(window, method)
         noise_array = self._get_noise_array(window) if self.has_noise else None
 
-        return _apply_radiometric_calibration(
+        return apply_radiometric_calibration(
             image,
             calib_array,
             noise_array,
-            dont_clip_noise,
+            dont_clip_noise=False,
             as_amplitude=as_amplitude,
         )
 
@@ -157,8 +111,6 @@ class NisarCalibrator:
         self._lines, self._pixels = lines, pixels
         self._values = values
 
-        # the LUT grid may start after the image origin (e.g. a few columns in
-        # slant range): values are then clamped to the LUT edges on interpolation
         assert len(self._lines) == len(self._values["gamma"])
         assert (
             len(self._lines) * len(self._pixels)
@@ -185,15 +137,13 @@ class NisarCalibrator:
             == np.asarray(self._noise_values).size
         )
 
-    def _get_calibration_array(self, window, method, interpolation="bilinear"):
-        values = np.array(self._values[method])
-        if interpolation == "bilinear":
-            return _bilinear_interpolation(window, self._lines, self._pixels, values)
-        else:
-            raise NotImplementedError
+    def _get_calibration_array(self, window, method):
+        return bilinear_interpolation(
+            window, self._lines, self._pixels, np.asarray(self._values[method])
+        )
 
     def _get_noise_array(self, window):
-        return _bilinear_interpolation(
+        return bilinear_interpolation(
             window, self._noise_lines, self._noise_pixels, self._noise_values
         )
 
@@ -204,15 +154,10 @@ class CalibrationReader(ImageReader):
 
     reader: ImageReader
     """Any ImageReader object (has .read(index, window)). Reader to the raster of the product."""
-    calibrator: NisarCalibrator
+    calibrator: NisarRSLCCalibrator
     """Calibrator on the same product (same frequency/polarization)."""
     method: str
     """Calibration method (either "sigma", "gamma", "beta")."""
-    dont_clip_noise: bool = False
-    """
-    If true, during noise calibration, values are not clipped to 0 but stay positive.
-    The default is False.
-    """
     tile_size: Optional[int] = None
     """If not None, the calibration is done by tile, reducing the memory cost for large arrays."""
     as_amplitude: bool = True
@@ -258,7 +203,6 @@ class CalibrationReader(ImageReader):
                     tile.copy(),
                     tile_roi,
                     self.method,
-                    self.dont_clip_noise,
                     as_amplitude=self.as_amplitude,
                 )
         else:
@@ -266,7 +210,6 @@ class CalibrationReader(ImageReader):
                 array,
                 roi,
                 self.method,
-                self.dont_clip_noise,
                 as_amplitude=self.as_amplitude,
             )
 

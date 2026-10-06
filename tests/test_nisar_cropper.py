@@ -5,7 +5,7 @@ import pytest
 import shapely
 
 from eos.dem import DEM, SRTM4Source
-from eos.products.nisar.calibration import NisarCalibrator
+from eos.products.nisar.calibration import NisarRSLCCalibrator
 from eos.products.nisar.cropper import NisarCrop, crop_images, get_primary_crop
 from eos.products.nisar.metadata import DatasetNotFoundError
 from eos.sar.io import RemoteH5Loader
@@ -105,7 +105,7 @@ def test_primary_crop_calibration(calibration):
             calibration=calibration,
         )
 
-    expected = NisarCalibrator(raw_crop.meta, "A", "HH").calibrate_inplace(
+    expected = NisarRSLCCalibrator(raw_crop.meta, "A", "HH").calibrate_inplace(
         raw_crop.array.copy(), raw_crop.roi, calibration, as_amplitude=True
     )
     assert calibrated_crop.array.dtype == np.complex64

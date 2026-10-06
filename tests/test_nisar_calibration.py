@@ -6,11 +6,12 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
-from eos.products.nisar.calibration import CalibrationReader, NisarCalibrator
+from eos.products.nisar.calibration import CalibrationReader, NisarRSLCCalibrator
 from eos.products.nisar.metadata import Frequency, NisarRSLCMetadata, Polarization
 from eos.sar import io
 from eos.sar.io import RemoteH5Loader, Window
 from eos.sar.roi import Roi
+from tests.test_calibration import compare_arrays
 
 RSLC_SAMPLE_PATH = "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5"
 FREQUENCY: Frequency = "A"
@@ -70,7 +71,7 @@ def img_infos(h5_file):
 def calibrators(img_infos):
     meta, _ = img_infos
     return {
-        with_noise: NisarCalibrator(
+        with_noise: NisarRSLCCalibrator(
             meta,
             frequency=FREQUENCY,
             polarization=POLARIZATION,
@@ -83,19 +84,6 @@ def calibrators(img_infos):
 @pytest.fixture(scope="module")
 def calibrator(calibrators):
     return calibrators[True]
-
-
-def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex):
-    # make sure that compute the magnitude of the calibrated complex gives the same as the calibration of the magnitude
-    # (small atol: the complex kernel uses a 1e-9 epsilon when converting back to amplitude)
-    assert np.allclose(np.abs(calibrated_complex), calibrated_abs, atol=1e-6)
-
-    # and that the phase didn't change
-    # since we can have zeros due to the thermal noise correction, make sure we compare angles where it makes sense
-    m = np.abs(calibrated_complex) != 0
-    assert np.allclose(
-        np.angle(calibrated_complex)[m], np.angle(uncalibrated_complex)[m]
-    )
 
 
 @pytest.mark.parametrize("with_noise", (False, True))
@@ -123,7 +111,6 @@ def test_calibration(window_txt, method, with_noise, img_infos, calibrators):
                 image.copy(),
                 roi,
                 method=method,
-                dont_clip_noise=not clip,
                 as_amplitude=as_amplitude,
             )
             assert arr.dtype == image.dtype
@@ -135,7 +122,6 @@ def test_calibration(window_txt, method, with_noise, img_infos, calibrators):
                 imagec.copy(),
                 roi,
                 method=method,
-                dont_clip_noise=not clip,
                 as_amplitude=as_amplitude,
             )
             assert arrc.dtype == imagec.dtype

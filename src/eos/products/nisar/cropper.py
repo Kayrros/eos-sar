@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 from typing_extensions import TypeAlias
 
 from eos.dem import DEM, DEMSource
-from eos.products.nisar.calibration import NisarCalibrator
+from eos.products.nisar.calibration import NisarRSLCCalibrator
 from eos.products.nisar.metadata import (
     DatasetNotFoundError,
     Frequency,
@@ -100,7 +100,7 @@ def get_primary_crop(
     )
 
     if calibration is not None:
-        calibrator = NisarCalibrator(primary_metadata, frequency, polarization)
+        calibrator = NisarRSLCCalibrator(primary_metadata, frequency, polarization)
         primary_array = calibrator.calibrate_inplace(
             primary_array, primary_roi, calibration, as_amplitude=True
         )
@@ -253,7 +253,7 @@ def get_secondary_crop(
 
     # calibrate in the secondary geometry, before resampling
     if calibration is not None:
-        calibrator = NisarCalibrator(secondary_metadata, frequency, polarization)
+        calibrator = NisarRSLCCalibrator(secondary_metadata, frequency, polarization)
         secondary_array = calibrator.calibrate_inplace(
             secondary_array, roi_in_secondary, calibration, as_amplitude=True
         )
