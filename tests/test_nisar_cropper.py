@@ -5,7 +5,8 @@ import pytest
 import shapely
 
 from eos.dem import DEM, SRTM4Source
-from eos.products.nisar.cropper import NisarCrop, crop_images
+from eos.products.nisar.calibration import NisarRSLCCalibrator
+from eos.products.nisar.cropper import NisarCrop, crop_images, get_primary_crop
 from eos.products.nisar.metadata import DatasetNotFoundError
 from eos.sar.io import RemoteH5Loader
 from eos.sar.regist import phase_correlation_on_amplitude
@@ -84,3 +85,30 @@ def test_cropper():
     with pytest.raises(DatasetNotFoundError):
         cropper_input["polarization"] = "VV"  # not present in sample files
         crops, dem = crop_images(**cropper_input)
+
+
+@pytest.mark.parametrize("calibration", ["beta", "sigma", "gamma"])
+def test_primary_crop_calibration(calibration):
+    # roi exceeds image limits to check that calibration handles nodata
+    roi_provider = PrescribedRoiProvider(roi=Roi(-10, -10, 200, 300))
+    with RemoteH5Loader(RSLC_SAMPLE_PATHS[0]) as h5_file:
+        raw_crop = get_primary_crop(
+            h5_file, "A", "HH", roi_provider, SRTM4Source(), get_complex=True
+        )
+        calibrated_crop = get_primary_crop(
+            h5_file,
+            "A",
+            "HH",
+            roi_provider,
+            SRTM4Source(),
+            get_complex=True,
+            calibration=calibration,
+        )
+
+    expected = NisarRSLCCalibrator(raw_crop.meta, "A", "HH").calibrate_inplace(
+        raw_crop.array.copy(), raw_crop.roi, calibration, as_amplitude=True
+    )
+    assert calibrated_crop.array.dtype == np.complex64
+    np.testing.assert_array_equal(calibrated_crop.array, expected)
+    assert np.isnan(calibrated_crop.array[:10, :]).all()
+    assert np.isfinite(calibrated_crop.array[10:, 10:]).all()
