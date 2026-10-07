@@ -40,9 +40,6 @@ class NisarRSLCCalibrator:
     Example
         >>> calibrator = NisarRSLCCalibrator(metadata, frequency="A", polarization="HH")
         >>> calibrator.calibrate_inplace(myarray, roi, "gamma")
-        >>> calibrator_no_noise = NisarRSLCCalibrator(
-        ...     metadata, frequency="A", polarization="HH", with_noise=False
-        ... )
 
     Note
         For more details, see the NISAR product description
@@ -57,7 +54,6 @@ class NisarRSLCCalibrator:
         metadata: NisarRSLCMetadata,
         frequency: Frequency,
         polarization: Polarization,
-        with_noise: bool = True,
     ):
         freq_metadata = (
             metadata.frequency_a if frequency == "A" else metadata.frequency_b
@@ -68,9 +64,7 @@ class NisarRSLCCalibrator:
         )
 
         self._load_calibration(metadata, freq_metadata)
-        self.has_noise = with_noise
-        if with_noise:
-            self._load_noise(metadata, freq_metadata, polarization)
+        self._load_noise(metadata, freq_metadata, polarization)
 
     def calibrate_inplace(
         self,
@@ -84,7 +78,7 @@ class NisarRSLCCalibrator:
 
         window = roi.to_roi()
         calib_array = self._get_calibration_array(window, method)
-        noise_array = self._get_noise_array(window) if self.has_noise else None
+        noise_array = self._get_noise_array(window)
 
         return apply_radiometric_calibration(
             image,

@@ -11,7 +11,6 @@ from eos.products.nisar.metadata import Frequency, NisarRSLCMetadata, Polarizati
 from eos.sar import io
 from eos.sar.io import RemoteH5Loader, Window
 from eos.sar.roi import Roi
-from tests.test_calibration import compare_arrays
 
 RSLC_SAMPLE_PATH = "https://nisar.asf.earthdatacloud.nasa.gov/NISAR-SAMPLE-DATA/RSLC/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001/NISAR_L1_PR_RSLC_002_030_A_019_2800_SHNA_A_20081127T061000_20081127T061014_D00404_N_F_J_001.h5"
 FREQUENCY: Frequency = "A"
@@ -27,6 +26,17 @@ windows = {
 }
 
 METHODS = ("gamma", "beta", "sigma")
+
+
+def compare_arrays(calibrated_abs, calibrated_complex, uncalibrated_complex):
+    # make sure that compute the magnitude of the calibrated complex gives the same as the calibration of the magnitude
+    assert np.allclose(np.abs(calibrated_complex), calibrated_abs, atol=1e-6)
+    # and that the phase didn't change
+    # we make sure comparing angles makes sense
+    m = np.abs(calibrated_complex) != 0
+    assert np.allclose(
+        np.angle(calibrated_complex)[m], np.angle(uncalibrated_complex)[m]
+    )
 
 
 @dataclass(frozen=True)
@@ -52,47 +62,27 @@ def h5_file():
 
 
 @pytest.fixture(scope="module")
-def img_infos(h5_file):
-    """
-    Parse the metadata and read the complex arrays for all windows.
-    """
-    meta = NisarRSLCMetadata.parse_metadata(h5_file)
-    arrays_per_window: dict[str, NDArray[np.complex64]] = dict()
-    for win_txt, win_roi in windows.items():
-        arr = io.read_hdf5_window(
-            h5_file[DATASET], win_roi, get_complex=True, boundless=False
-        )
-        assert arr.dtype == np.complex64
-        arrays_per_window[win_txt] = cast(NDArray[np.complex64], arr)
-    return meta, arrays_per_window
-
-
-@pytest.fixture(scope="module")
-def calibrators(img_infos):
-    meta, _ = img_infos
+def arrays_per_window(h5_file) -> dict[str, NDArray[np.complex64]]:
     return {
-        with_noise: NisarRSLCCalibrator(
-            meta,
-            frequency=FREQUENCY,
-            polarization=POLARIZATION,
-            with_noise=with_noise,
+        win_txt: cast(
+            NDArray[np.complex64],
+            io.read_hdf5_window(
+                h5_file[DATASET], win_roi, get_complex=True, boundless=False
+            ),
         )
-        for with_noise in (True, False)
+        for win_txt, win_roi in windows.items()
     }
 
 
 @pytest.fixture(scope="module")
-def calibrator(calibrators):
-    return calibrators[True]
+def calibrator(h5_file):
+    meta = NisarRSLCMetadata.parse_metadata(h5_file)
+    return NisarRSLCCalibrator(meta, frequency=FREQUENCY, polarization=POLARIZATION)
 
 
-@pytest.mark.parametrize("with_noise", (False, True))
 @pytest.mark.parametrize("method", METHODS)
 @pytest.mark.parametrize("window_txt", list(windows.keys()))
-def test_calibration(window_txt, method, with_noise, img_infos, calibrators):
-    _, arrays_per_window = img_infos
-    calibrator = calibrators[with_noise]
-    assert calibrator.has_noise == with_noise
+def test_calibration(window_txt, method, arrays_per_window, calibrator):
     roi = windows[window_txt]
     h = roi.h
     w = roi.w
@@ -105,39 +95,33 @@ def test_calibration(window_txt, method, with_noise, img_infos, calibrators):
     assert image.shape == (h, w)
     assert image.dtype == np.float32
 
-    for clip in (True, False) if with_noise else (False,):
-        for as_amplitude in (True, False):
-            arr = calibrator.calibrate_inplace(
-                image.copy(),
-                roi,
-                method=method,
-                as_amplitude=as_amplitude,
-            )
-            assert arr.dtype == image.dtype
-            assert arr.shape == image.shape
-            assert np.isfinite(arr).all()
-            assert (arr >= 0).all()
+    for as_amplitude in (True, False):
+        arr = calibrator.calibrate_inplace(
+            image.copy(),
+            roi,
+            method=method,
+            as_amplitude=as_amplitude,
+        )
+        assert arr.dtype == image.dtype
+        assert arr.shape == image.shape
+        assert np.isfinite(arr).all()
+        assert (arr >= 0).all()
 
-            arrc = calibrator.calibrate_inplace(
-                imagec.copy(),
-                roi,
-                method=method,
-                as_amplitude=as_amplitude,
-            )
-            assert arrc.dtype == imagec.dtype
-            assert arrc.shape == imagec.shape
+        arrc = calibrator.calibrate_inplace(
+            imagec.copy(),
+            roi,
+            method=method,
+            as_amplitude=as_amplitude,
+        )
+        assert arrc.dtype == imagec.dtype
+        assert arrc.shape == imagec.shape
 
-            compare_arrays(arr, arrc, imagec)
+        compare_arrays(arr, arrc, imagec)
 
 
-@pytest.mark.parametrize("with_noise", (False, True))
 @pytest.mark.parametrize("method", METHODS)
 @pytest.mark.parametrize("window_txt", list(windows.keys()))
-def test_calibration_matches_formula(
-    window_txt, method, with_noise, img_infos, calibrators
-):
-    _, arrays_per_window = img_infos
-    calibrator = calibrators[with_noise]
+def test_calibration_matches_formula(window_txt, method, arrays_per_window, calibrator):
     roi = windows[window_txt]
     image = np.abs(arrays_per_window[window_txt])
 
@@ -145,14 +129,10 @@ def test_calibration_matches_formula(
     assert calib.shape == image.shape
     assert (calib > 0).all()
 
-    if with_noise:
-        noise = calibrator._get_noise_array(roi.to_roi())
-        assert noise.shape == image.shape
-        # x0 = max(0, |RSLC|^2 - noiseEquivalentBackscatter) / x0_LUT^2
-        expected = np.maximum(0, image.astype(np.float64) ** 2 - noise) / calib**2
-    else:
-        # x0 = |RSLC|^2 / x0_LUT^2
-        expected = image.astype(np.float64) ** 2 / calib**2
+    noise = calibrator._get_noise_array(roi.to_roi())
+    assert noise.shape == image.shape
+    # x0 = max(0, |RSLC|^2 - noiseEquivalentBackscatter) / x0_LUT^2
+    expected = np.maximum(0, image.astype(np.float64) ** 2 - noise) / calib**2
 
     arr = calibrator.calibrate_inplace(
         image.copy(), roi, method=method, as_amplitude=False
@@ -172,16 +152,17 @@ def test_noise_is_not_negative(calibrator):
         assert (calibrator._get_noise_array(roi.to_roi()) >= 0).all()
 
 
-def test_noise_reduces_backscatter(img_infos, calibrators):
-    _, arrays_per_window = img_infos
+def test_noise_reduces_backscatter(arrays_per_window, calibrator):
     roi = windows["middle_center"]
     image = np.abs(arrays_per_window["middle_center"])
 
-    with_noise = calibrators[True].calibrate_inplace(image.copy(), roi, "gamma")
-    without_noise = calibrators[False].calibrate_inplace(image.copy(), roi, "gamma")
+    calibrated = calibrator.calibrate_inplace(image.copy(), roi, "gamma")
+    calib = calibrator._get_calibration_array(roi.to_roi(), "gamma")
+    # x0 without noise correction = |RSLC|^2 / x0_LUT^2
+    without_noise = image**2 / calib**2
 
-    assert (with_noise <= without_noise).all()
-    assert (with_noise < without_noise).any()
+    assert (calibrated <= without_noise * (1 + 1e-5)).all()
+    assert (calibrated < without_noise).any()
 
 
 def test_inplaceness(calibrator):
@@ -192,8 +173,7 @@ def test_inplaceness(calibrator):
 
 
 @pytest.mark.parametrize("as_amplitude", (True, False))
-def test_calibration_reader(as_amplitude, h5_file, img_infos, calibrator):
-    _, arrays_per_window = img_infos
+def test_calibration_reader(as_amplitude, h5_file, arrays_per_window, calibrator):
     roi = windows["middle_center"]
     col, row, w, h = roi.to_roi()
     window: Window = ((row, row + h), (col, col + w))
