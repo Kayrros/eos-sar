@@ -14,9 +14,9 @@ from eos.sar.io import open_image, read_file_as_str
 
 
 def test_meta_tifftags_vs_jsonfile():
-    product_id = "CAPELLA_C02_SS_SLC_HH_20210204153042_20210204153058"
+    product_id = "CAPELLA_C15_SS_SLC_HH_20260206221231_20260206221245"
 
-    s3_path = f"s3://capella-open-data/data/2021/2/4/{product_id}/"
+    s3_path = f"s3://capella-open-data/data/2026/2/6/{product_id}/"
     image_path = os.path.join(s3_path, f"{product_id}.tif")
     meta_json_path = os.path.join(s3_path, f"{product_id}_extended.json")
 
