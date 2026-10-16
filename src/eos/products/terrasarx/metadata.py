@@ -8,7 +8,68 @@ import xmltodict
 
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC
 from eos.sar.orbit import StateVector
+from pathlib import Path
+from xml.etree import ElementTree as ET
+from xml.etree.ElementTree import Element
 
+@dataclass
+class TDM1Metadata:
+    tdm1_xml: Element
+    acquisition_date: datetime.datetime | None = None
+    orthogonal_interferometric_baseline: float = -9999.0
+    master_satellite_id: Literal["TSX-1", "TDX-1"] | None = None
+
+    @classmethod
+    def from_xml(cls, xml_path: Path) -> "TDM1Metadata":
+        root = ET.parse(xml_path).getroot()
+
+        def _text(tag: str) -> str | None:
+            node = root.find(f".//{tag}")
+            return node.text.strip() if node is not None and node.text else None
+
+        date = _text("datatakeStartTime")
+        baseline = _text("effectiveBaseline")
+        master = cls._get_primary_satelitte(root)
+        return cls(
+            tdm1_xml=root,
+            acquisition_date=datetime.datetime.fromisoformat(date) if date else None,
+            orthogonal_interferometric_baseline=float(baseline) if baseline else -9999.0,
+            master_satellite_id=master,  # type: ignore[arg-type]
+        )
+
+    @staticmethod
+    def _get_primary_satelitte(root) -> str:
+        acq_info = root.find(".//commonAcquisitionInfo")
+        if acq_info is None:
+            raise AttributeError("Element commonAcquisitionInfo not found.")
+
+        def _get(tag: str) -> str:
+            node = acq_info.find(tag)
+            if node is None or not node.text:
+                raise AttributeError(f"Element {tag} not found.")
+            return node.text.strip()
+
+        sat_1, sat_2, master = _get("satelliteIDsat1"), _get("satelliteIDsat2"), _get("inSARmasterID")
+
+        match master:
+            case "SAT1":
+                return sat_1
+            case "SAT2":
+                return sat_2
+            case _:
+                raise ValueError(f"Unknown inSARmasterID: {master}")
+
+    def _float(self, tag: str) -> float | None:
+        n = self.tdm1_xml.find(f".//{tag}")
+        return float(n.text) if n is not None and n.text else None
+
+    @property
+    def range_bandwidth(self) -> float | None:
+        return self._float("rangeBandwidthInCenter")
+
+    @property
+    def azimuth_bandwidth(self) -> float | None:
+        return self._float("azimuthBandwidthInCenter")
 
 @dataclass(frozen=True)
 class TSXMetadata:
@@ -22,11 +83,14 @@ class TSXMetadata:
     image_start: float
     azimuth_time_interval: float
     azimuth_pixel_spacing: float
+    azimuth_window_coefficient: float
     slant_range_time: float
     range_time_interval: float
     range_pixel_spacing: float
+    range_window_coefficient: float
     wavelength: float
     calibration_constant: float
+    prf: float
 
     @property
     def azimuth_frequency(self) -> float:
@@ -54,10 +118,131 @@ class TSXMetadata:
             image_start=d["image_start"],
             azimuth_time_interval=d["azimuth_time_interval"],
             azimuth_pixel_spacing=d["azimuth_pixel_spacing"],
+            azimuth_window_coefficient=d["azimuth_window_coefficient"],
             slant_range_time=d["slant_range_time"],
             range_time_interval=d["range_time_interval"],
             range_pixel_spacing=d["range_pixel_spacing"],
+            range_window_coefficient=d["range_window_coefficient"],
             wavelength=d["wavelength"],
+            calibration_constant=d["calibration_constant"],
+            prf=d["prf"]
+        )
+    
+    @staticmethod
+    def from_xml(xml_path: Path) -> TSXMetadata:
+        """
+        Extract relevant metadata fields from TerraSAR-X XML metadata file.
+
+        Args:
+            xml_path (str): Path to a TerraSAR-X XML metadata file.
+
+        Returns:
+            TSXMetadata: TerraSAR-X metadata object
+        """
+        
+        def _text(root: Element, path: str) -> str:
+            el = root.find(path)
+            if el is None or el.text is None:
+                raise ValueError(f"Missing XML element: {path}")
+            return el.text.strip()
+
+
+        def _string_to_timestamp(s: str) -> float:
+            """
+            Convert a string representing a date and time to a float number.
+            """
+            # remove "Z" suffix
+            if s.endswith("Z"):
+                s = s[:-1]
+
+            t = datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f")
+            t = t.replace(tzinfo=datetime.timezone.utc)
+            return t.timestamp()
+
+        root = ET.parse(xml_path).getroot()  # root is <level1Product>
+
+        height = int(_text(root, "productInfo/imageDataInfo/imageRaster/numberOfRows"))
+        width = int(_text(root, "productInfo/imageDataInfo/imageRaster/numberOfColumns"))
+
+        mission_id = _text(root, "generalHeader/mission")
+        assert mission_id in ("TSX-1", "TDX-1", "PAZ-1")
+
+        image_start = _string_to_timestamp(_text(root, "productInfo/sceneInfo/start/timeUTC"))
+        slant_range_time = float(_text(root, "productInfo/sceneInfo/rangeTime/firstPixel"))
+
+        azimuth_time_interval = float(
+            _text(root, "productInfo/imageDataInfo/imageRaster/columnSpacing")
+        )
+        azimuth_pixel_spacing = float(
+            _text(root, "productSpecific/complexImageInfo/projectedSpacingAzimuth")
+        )
+        azimuth_window_coefficient = float(
+            _text(root, "processing/processingParameter/azimuthWindowCoefficient")
+        )
+        range_time_interval = float(
+            _text(root, "productInfo/imageDataInfo/imageRaster/rowSpacing")
+        )
+        range_pixel_spacing = float(
+            _text(root, "productSpecific/complexImageInfo/projectedSpacingRange/slantRange")
+        )
+        range_window_coefficient = float(
+            _text(root, "processing/processingParameter/azimuthWindowCoefficient")
+        )
+
+        frequency = float(_text(root, "instrument/radarParameters/centerFrequency"))
+        wavelength = LIGHT_SPEED_M_PER_SEC / frequency
+        orbit_direction = _text(root, "productInfo/missionInfo/orbitDirection").lower()
+        look_side = _text(root, "productInfo/acquisitionInfo/lookDirection").lower()
+        calibration_constant = float(_text(root, "calibration/calibrationConstant/calFactor"))
+        prf = float(_text(root, "productSpecific/complexImageInfo/commonPRF"))
+        
+        
+        assert orbit_direction in ("ascending", "descending")
+        assert look_side in ("left", "right")
+
+        # state vectors
+        state_vectors: list[StateVector] = []
+        for v in root.findall("platform/orbit/stateVec"):
+            sv = StateVector(
+                time=_string_to_timestamp(_text(v, "timeUTC")),
+                position=(
+                    float(_text(v, "posX")),
+                    float(_text(v, "posY")),
+                    float(_text(v, "posZ")),
+                ),
+                velocity=(
+                    float(_text(v, "velX")),
+                    float(_text(v, "velY")),
+                    float(_text(v, "velZ")),
+                ),
+            )
+            state_vectors.append(sv)
+
+        # longitude, latitude bounding box
+        approx_geom = [
+            (float(_text(c, "lon")), float(_text(c, "lat")))
+            for c in root.findall("productInfo/sceneInfo/sceneCornerCoord")
+        ]
+
+        return TSXMetadata(
+            width=width,
+            height=height,
+            mission_id=mission_id,
+            state_vectors=state_vectors,
+            orbit_direction=orbit_direction,
+            look_side=look_side,
+            approx_geom=approx_geom,
+            image_start=image_start,
+            azimuth_time_interval=azimuth_time_interval,
+            azimuth_pixel_spacing=azimuth_pixel_spacing,
+            azimuth_window_coefficient=azimuth_window_coefficient,
+            slant_range_time=slant_range_time,
+            range_time_interval=range_time_interval,
+            range_pixel_spacing=range_pixel_spacing,
+            range_window_coefficient=range_window_coefficient,
+            wavelength=wavelength,
+            calibration_constant=calibration_constant,
+            prf=prf,
         )
 
 
@@ -72,7 +257,6 @@ def string_to_timestamp(s: str) -> float:
     t = datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f")
     t = t.replace(tzinfo=datetime.timezone.utc)
     return t.timestamp()
-
 
 def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     """
@@ -118,6 +302,7 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
     orbit_direction = metadata["productInfo"]["missionInfo"]["orbitDirection"].lower()
     look_side = metadata["productInfo"]["acquisitionInfo"]["lookDirection"].lower()
     calibration_constant = float(metadata["calibration"]["calibrationConstant"]["calFactor"])
+    prf = float(metadata["productSpecific"]["complexImageInfo"]["commonPRF"])
     
     assert orbit_direction in ("ascending", "descending")
     assert look_side in ("left", "right")
@@ -157,7 +342,8 @@ def parse_tsx_metadata(xml_path: str) -> TSXMetadata:
         range_time_interval=range_time_interval,
         range_pixel_spacing=range_pixel_spacing,
         wavelength=wavelength,
-        calibration_constant = calibration_constant
+        calibration_constant = calibration_constant,
+        prf = prf
     )
 
 
