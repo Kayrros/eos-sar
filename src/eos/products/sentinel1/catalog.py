@@ -21,7 +21,7 @@ class Sentinel1CatalogQuery:
     """Area of Interest, products should *intersect* with it."""
     start_date: datetime.datetime
     end_date: datetime.datetime
-    relative_orbit_number: int
+    relative_orbit_number: int | None
     polarization: list[ProductPolarization]
 
 
@@ -152,10 +152,12 @@ def query_to_request_str(
         f"and Data.CSC.Intersects(area=geography'SRID=4326;{query.geometry.wkt}') "
         f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'processingLevel' and att/OData.CSC.StringAttribute/Value eq 'LEVEL1') "
         f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'productType' and att/OData.CSC.StringAttribute/Value eq '{product_type}') "
-        f"and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number}) "
         f"and {_pol_query_str(query.polarization)}"
-        "&$expand=Attributes&$orderby=ContentDate/Start asc"
     )
+    if query.relative_orbit_number is not None:
+        request += f" and Attributes/OData.CSC.StringAttribute/any(att:att/Name eq 'relativeOrbitNumber' and att/OData.CSC.IntegerAttribute/Value eq {query.relative_orbit_number})"
+
+    request += "&$expand=Attributes&$orderby=ContentDate/Start asc"
     return request
 
 
