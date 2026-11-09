@@ -1,4 +1,4 @@
-# [Unreleased](https://github.com/Kayrros/eos-sar/compare/0.43.1..HEAD)
+# [0.43.2](https://github.com/Kayrros/eos-sar/compare/0.43.1..0.43.2)
 
 ## Added
 - s1 metadata:
@@ -6,6 +6,8 @@
       * Warning: if missing from the dict provided to `from_dict`, the function will fail. Make sure to update potential caches and static metadata files when updating to eos-sar 0.44.0.
    * add properties `radar_frequency`, `range_pixel_spacing`, `azimuth_time_interval` to `Sentinel1BurstMetadata`
    * add properties `radar_frequency` to `Sentinel1GRDMetadata`
+- nisar:calibration: Add NISAR RSLC radiometric calibration
+- test: Add tests for NISAR RSLC calibration
 
 # [0.43.1](https://github.com/Kayrros/eos-sar/compare/0.43.0..0.43.1)
 

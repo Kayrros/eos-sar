@@ -465,7 +465,7 @@ wheels = [
 
 [[package]]
 name = "eos-sar"
-version = "0.43.1"
+version = "0.43.2"
 source = { editable = "." }
 dependencies = [
     { name = "fsspec", extra = ["http", "s3"] },
