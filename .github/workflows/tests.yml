@@ -73,6 +73,8 @@ jobs:
           echo 3.10 >.python-version
           uv lock
           uv tree
+          # download the geoid grid up front: old PROJ versions fail to read it remotely
+          uv run --all-extras pyproj sync -v --file us_nga_egm96_15
           uv run --all-extras pytest . -n auto -v -m "not cdse"
 
   fakedeploy:
