@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 import xmltodict
+import logging
 
 from eos.sar.const import LIGHT_SPEED_M_PER_SEC
 from eos.sar.orbit import StateVector
@@ -12,28 +13,38 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.etree.ElementTree import Element
 
+log = logging.getLogger(__name__)
+
 @dataclass
 class TDM1Metadata:
     tdm1_xml: Element
-    acquisition_date: datetime.datetime | None = None
-    orthogonal_interferometric_baseline: float = -9999.0
-    master_satellite_id: Literal["TSX-1", "TDX-1"] | None = None
+    acquisition_date: datetime.datetime
+    orthogonal_interferometric_baseline: float
+    height_of_ambiguity: float
+    master_satellite_id: Literal["TSX-1", "TDX-1"]
 
     @classmethod
     def from_xml(cls, xml_path: Path) -> "TDM1Metadata":
         root = ET.parse(xml_path).getroot()
 
-        def _text(tag: str) -> str | None:
+        def _text(tag: str) -> str:
             node = root.find(f".//{tag}")
-            return node.text.strip() if node is not None and node.text else None
+            if node is not None and node.text:
+                return node.text.strip()
+            msg = f"{tag} could not be found in {xml_path}."
+            log.error(msg)
+            raise AttributeError(msg)
 
         date = _text("datatakeStartTime")
         baseline = _text("effectiveBaseline")
+        heigth_or_ambiguity = _text("heightOfAmbiguity")
         master = cls._get_primary_satelitte(root)
+        
         return cls(
             tdm1_xml=root,
-            acquisition_date=datetime.datetime.fromisoformat(date) if date else None,
-            orthogonal_interferometric_baseline=float(baseline) if baseline else -9999.0,
+            acquisition_date=datetime.datetime.fromisoformat(date),
+            orthogonal_interferometric_baseline=float(baseline),
+            height_of_ambiguity=float(heigth_or_ambiguity),
             master_satellite_id=master,  # type: ignore[arg-type]
         )
 
@@ -186,7 +197,7 @@ class TSXMetadata:
             _text(root, "productSpecific/complexImageInfo/projectedSpacingRange/slantRange")
         )
         range_window_coefficient = float(
-            _text(root, "processing/processingParameter/azimuthWindowCoefficient")
+            _text(root, "processing/processingParameter/rangeWindowCoefficient")
         )
 
         frequency = float(_text(root, "instrument/radarParameters/centerFrequency"))
